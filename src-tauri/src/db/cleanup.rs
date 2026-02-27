@@ -217,20 +217,23 @@ fn remove_orphan_generated_asset(conn: &Connection, path: &std::path::Path) -> R
 
 pub(crate) fn backfill_missing_history_assets(conn: &Connection, batch_size: usize) -> Result<(), AppError> {
     let batch_size = batch_size.clamp(100, 5_000);
+    let mut last_id: i64 = 0;
 
     loop {
         let mut select_stmt = conn
             .prepare(
-                "SELECT h.id, h.text
-                 FROM history h
-                 LEFT JOIN history_assets ha ON ha.item_id = h.id
-                 WHERE ha.item_id IS NULL
-                 LIMIT ?1",
+                "SELECT id, text
+                 FROM history
+                 WHERE id > ?1
+                 ORDER BY id ASC
+                 LIMIT ?2",
             )
             .map_err(|e| AppError::Database(format!("准备增量回填查询失败: {}", e)))?;
 
         let rows = select_stmt
-            .query_map([batch_size as i64], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+            .query_map([last_id, batch_size as i64], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(|e| AppError::Database(format!("查询增量回填数据失败: {}", e)))?;
 
         let mut pending = Vec::new();
@@ -249,6 +252,7 @@ pub(crate) fn backfill_missing_history_assets(conn: &Connection, batch_size: usi
             .map_err(|e| AppError::Database(format!("准备增量回填插入失败: {}", e)))?;
 
         for (item_id, text) in pending {
+            last_id = item_id;
             for path in extract_generated_asset_paths(&text) {
                 insert_stmt
                     .execute(params![item_id, path.to_string_lossy().to_string()])

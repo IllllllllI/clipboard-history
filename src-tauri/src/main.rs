@@ -27,33 +27,49 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         // 应用设置
         .setup(|app| {
+            log::info!("setup: begin");
             let app_icon = Image::from_bytes(include_bytes!("../icons/Clipboard-256x256.png"))?;
+            log::info!("setup: icon loaded");
 
             // 初始化数据库并注册为托管状态
             let handle = app.handle().clone();
-            let db_state = db::init_db(&handle)
-                .expect("数据库初始化失败");
-            app.manage(db_state);
-            app.manage(
-                image_handler::ImageServiceState::new()
-                    .expect("图片服务初始化失败"),
-            );
+            match db::init_db(&handle) {
+                Ok(db_state) => {
+                    app.manage(db_state);
+                    log::info!("setup: db state managed");
+                }
+                Err(err) => {
+                    log::error!("setup: 数据库初始化失败，应用将以受限模式运行: {err}");
+                }
+            }
+
+            match image_handler::ImageServiceState::new() {
+                Ok(image_service_state) => {
+                    app.manage(image_service_state);
+                    log::info!("setup: image service managed");
+                }
+                Err(err) => {
+                    log::error!("setup: 图片服务初始化失败，应用将以受限模式运行: {err}");
+                }
+            }
 
             // 显式设置主窗口图标，避免平台默认图标与配置不一致
             if let Some(main_window) = app.get_webview_window("main") {
                 let _ = main_window.set_icon(app_icon.clone());
             }
+            log::info!("setup: main window icon set");
 
             // 启动剪贴板监控
             clipboard::start_monitoring(handle);
+            log::info!("setup: clipboard monitor stage done");
 
             // 创建托盘菜单
             let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let show_i = MenuItem::with_id(app, "show", "显示", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            // 创建托盘图标
-            let _tray = TrayIconBuilder::new()
+            // 创建托盘图标（失败时回退显示主窗口，避免进程在后台无入口）
+            let tray_result = TrayIconBuilder::new()
                 .icon(app_icon.clone())
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -65,9 +81,15 @@ fn main() {
                     }
                     "show" => {
                         if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.unminimize();
-                            let _ = w.show();
-                            let _ = w.set_focus();
+                            if let Err(err) = w.unminimize() {
+                                log::warn!("托盘菜单显示窗口失败（unminimize）: {err}");
+                            }
+                            if let Err(err) = w.show() {
+                                log::warn!("托盘菜单显示窗口失败（show）: {err}");
+                            }
+                            if let Err(err) = w.set_focus() {
+                                log::warn!("托盘菜单显示窗口失败（focus）: {err}");
+                            }
                         }
                     }
                     _ => {}
@@ -80,20 +102,45 @@ fn main() {
                     } = event
                     {
                         if let Some(w) = tray.app_handle().get_webview_window("main") {
-                            let _ = w.unminimize();
-                            let _ = w.show();
-                            let _ = w.set_focus();
+                            if let Err(err) = w.unminimize() {
+                                log::warn!("托盘点击显示窗口失败（unminimize）: {err}");
+                            }
+                            if let Err(err) = w.show() {
+                                log::warn!("托盘点击显示窗口失败（show）: {err}");
+                            }
+                            if let Err(err) = w.set_focus() {
+                                log::warn!("托盘点击显示窗口失败（focus）: {err}");
+                            }
                         }
                     }
                 })
-                .build(app)?;
+                .build(app);
+
+            if let Err(err) = tray_result {
+                log::warn!("托盘图标创建失败，回退为显示主窗口: {err}");
+                if let Some(w) = app.get_webview_window("main") {
+                    if let Err(err) = w.unminimize() {
+                        log::warn!("托盘失败回退显示窗口失败（unminimize）: {err}");
+                    }
+                    if let Err(err) = w.show() {
+                        log::warn!("托盘失败回退显示窗口失败（show）: {err}");
+                    }
+                    if let Err(err) = w.set_focus() {
+                        log::warn!("托盘失败回退显示窗口失败（focus）: {err}");
+                    }
+                }
+            }
+
+            log::info!("setup: complete");
 
             Ok(())
         })
         // 窗口关闭时隐藏而非退出
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                window.hide().unwrap();
+                if let Err(err) = window.hide() {
+                    log::warn!("窗口关闭转隐藏失败: {err}");
+                }
                 api.prevent_close();
             }
         })
