@@ -22,6 +22,15 @@ const HIDDEN: PopoverPosition = {
   transition: 'none',
 };
 
+const VISIBLE_BASE: Omit<PopoverPosition, 'top' | 'left'> = {
+  position: 'fixed',
+  zIndex: 9999,
+  opacity: 1,
+  visibility: 'visible',
+  pointerEvents: 'auto',
+  transition: 'opacity 100ms ease',
+};
+
 const PADDING = 4;   // 与视口边缘的安全间距
 const GAP = 4;        // 弹出层与锚点的间距
 
@@ -36,6 +45,7 @@ export function usePopoverPosition(
   isOpen: boolean,
 ) {
   const popoverRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<number | null>(null);
   const [style, setStyle] = useState<PopoverPosition>(HIDDEN);
 
   const computePosition = useCallback(() => {
@@ -55,43 +65,69 @@ export function usePopoverPosition(
     const maxLeft = window.innerWidth - popW - PADDING;
     const finalLeft = Math.max(PADDING, Math.min(anchorRect.left, maxLeft));
 
-    setStyle({
-      position: 'fixed',
-      top: finalTop,
-      left: finalLeft,
-      zIndex: 9999,
-      opacity: 1,
-      visibility: 'visible',
-      pointerEvents: 'auto',
-      transition: 'opacity 100ms ease',
+    setStyle((prev) => {
+      if (
+        prev.top === finalTop &&
+        prev.left === finalLeft &&
+        prev.opacity === 1 &&
+        prev.visibility === 'visible' &&
+        prev.pointerEvents === 'auto'
+      ) {
+        return prev;
+      }
+
+      return {
+        ...VISIBLE_BASE,
+        top: finalTop,
+        left: finalLeft,
+      };
     });
   }, [anchorRef]);
+
+  const scheduleCompute = useCallback(() => {
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+    }
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      computePosition();
+    });
+  }, [computePosition]);
 
   // 首次打开：先隐藏渲染以获取尺寸，再一帧后计算最终位置
   useEffect(() => {
     if (!isOpen) {
       setStyle(HIDDEN);
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
       return;
     }
 
     // 先以隐藏状态放到视口内让浏览器布局（visibility:hidden 不影响页面交互）
-    setStyle(prev => ({ ...prev, visibility: 'hidden', opacity: 0, pointerEvents: 'none' }));
+    setStyle((prev) => ({ ...prev, visibility: 'hidden', opacity: 0, pointerEvents: 'none' }));
 
-    const frameId = requestAnimationFrame(computePosition);
-    return () => cancelAnimationFrame(frameId);
-  }, [isOpen, computePosition]);
+    scheduleCompute();
+    return () => {
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+  }, [isOpen, scheduleCompute]);
 
   // 打开期间响应窗口变化
   useEffect(() => {
     if (!isOpen) return;
 
-    window.addEventListener('resize', computePosition);
-    window.addEventListener('scroll', computePosition, true); // capture 捕获内部滚动
+    window.addEventListener('resize', scheduleCompute);
+    window.addEventListener('scroll', scheduleCompute, true); // capture 捕获内部滚动
     return () => {
-      window.removeEventListener('resize', computePosition);
-      window.removeEventListener('scroll', computePosition, true);
+      window.removeEventListener('resize', scheduleCompute);
+      window.removeEventListener('scroll', scheduleCompute, true);
     };
-  }, [isOpen, computePosition]);
+  }, [isOpen, scheduleCompute]);
 
   return { popoverRef, style } as const;
 }
