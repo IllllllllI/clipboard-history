@@ -1,36 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { resolveImageSrc, extractFormatLabel } from '../../utils/imageUrl';
+
+interface ImagePreviewProps {
+  url: string;
+  onClick: () => void;
+}
 
 /** 图片缩略图预览 */
 export const ImagePreview = React.memo(function ImagePreview({
   url,
   onClick,
-}: {
-  url: string;
-  onClick: () => void;
-}) {
+}: ImagePreviewProps) {
   const [src, setSrc] = useState('');
-  const [meta, setMeta] = useState<{ width: number; height: number; format: string }>({
-    width: 0,
-    height: 0,
-    format: extractFormatLabel(url),
-  });
+  const [meta, setMeta] = useState<{ width: number; height: number; format: string }>({ width: 0, height: 0, format: '' });
+  const formatLabel = useMemo(() => extractFormatLabel(url), [url]);
 
   useEffect(() => {
     const finalUrl = resolveImageSrc(url);
+    let disposed = false;
     setSrc(finalUrl);
+    setMeta({ width: 0, height: 0, format: formatLabel });
 
     const img = new Image();
-    img.onload = () =>
-      setMeta((prev) => ({ ...prev, width: img.naturalWidth, height: img.naturalHeight }));
+    img.onload = () => {
+      if (!disposed) {
+        setMeta((prev) => ({ ...prev, width: img.naturalWidth, height: img.naturalHeight }));
+      }
+    };
+    img.onerror = () => {
+      if (!disposed) {
+        setMeta((prev) => ({ ...prev, width: 0, height: 0 }));
+      }
+    };
     img.src = finalUrl;
-  }, [url]);
+
+    return () => {
+      disposed = true;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [url, formatLabel]);
 
   if (!src) return null;
 
   return (
     <div
-      className="group/img relative h-16 w-auto max-w-[200px] shrink-0 rounded overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center cursor-zoom-in border border-transparent hover:border-indigo-500 transition-all"
+      className="group/img relative h-16 w-auto max-w-[200px] shrink-0 rounded-xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center cursor-zoom-in border border-transparent hover:border-indigo-500 transition-all duration-150 active:scale-[0.99]"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
