@@ -4,6 +4,22 @@ export interface Tag {
   color: string | null;
 }
 
+export type WindowPlacementMode =
+  | 'smart_near_cursor'
+  | 'cursor_top_left'
+  | 'cursor_center'
+  | 'custom_anchor'
+  | 'monitor_center'
+  | 'screen_center'
+  | 'custom'
+  | 'last_position';
+
+export interface WindowPlacementSettings {
+  mode: WindowPlacementMode;
+  customX: number;
+  customY: number;
+}
+
 export type ImagePerformanceProfile = 'quality' | 'balanced' | 'speed';
 
 export interface ImageAdvancedConfig {
@@ -41,6 +57,7 @@ export interface AppSettings {
   allowPrivateNetwork: boolean;
   resolveDnsForUrlSafety: boolean;
   maxDecodedBytes: number;
+  windowPlacement: WindowPlacementSettings;
 }
 
 export interface AppStats {

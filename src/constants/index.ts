@@ -17,4 +17,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   allowPrivateNetwork: false,
   resolveDnsForUrlSafety: true,
   maxDecodedBytes: 160 * 1024 * 1024,
+  windowPlacement: {
+    mode: 'smart_near_cursor',
+    customX: 120,
+    customY: 120,
+  },
 };

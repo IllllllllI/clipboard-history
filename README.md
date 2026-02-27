@@ -1,160 +1,139 @@
-# Clipboard Master (Tauri + React)
+# Clipboard History（Tauri + React）
 
-这是一个使用 Tauri 2.0 和 React 构建的专业级剪切板历史管理工具。
+一个基于 **Tauri 2 + React 19 + TypeScript + Rust** 的桌面剪贴板历史工具，面向日常文本/代码/图片工作流。
 
-## 核心功能
+## 主要功能
 
-- **实时监控**：使用 Rust 后端实时监听系统剪切板变化。
-- **本地数据库**：使用 SQLite 永久保存剪切板历史。
-- **双击粘贴**：双击记录项自动复制并模拟键盘粘贴到当前活动窗口。
-- **拖拽支持**：支持将记录项直接拖拽到其他应用中。
-- **设置面板**：可配置自动捕获、双击粘贴及历史记录上限。
+- 实时监听系统剪贴板并自动入库（SQLite）。
+- 历史记录管理：置顶、收藏、删除、批量清理、自动过期清理。
+- 代码片段能力：新增片段、编辑、语言识别与高亮展示。
+- 标签体系：创建/编辑/删除标签，并给记录打标签。
+- 多形态复制与粘贴：文本、图片、本地文件路径、双击粘贴、点击后粘贴。
+- 图片链路：支持 URL 下载复制、Base64 复制、本地图片复制，并提供性能档位（`quality` / `balanced` / `speed`）。
+- 桌面集成：系统托盘、全局快捷键呼出、窗口定位与隐藏逻辑。
+- UI 体验：沉浸模式、暗色模式、拖拽交互、图片大图预览。
 
-## 项目结构
+## 技术栈
 
-- `src/`: 前端 React 代码。
-- `src-tauri/`: 后端 Rust 代码及配置。
-  - `docs/input-module-architecture.md`: input 模块分层架构与调用链说明。
-  - `capabilities/`: **Tauri 2.0 权限配置**（数据库和剪切板访问）。
-  - `src/main.rs`: 应用入口与命令注册。
-  - `src/image_handler/`: 图片处理模块（下载 / 解码 / 复制）。
-    - `mod.rs`: 模块导出入口。
-    - `service.rs`: `ImageServiceState`（Tauri `State` 注入模式）。
-    - `commands.rs`: Tauri 命令薄封装。
-    - `handler.rs`: 核心编排与集成测试。
-    - `loader.rs`: URL/Base64/文件加载与校验。
-    - `pipeline.rs`: 解码、像素限制、降采样。
-    - `clipboard_writer.rs`: 剪贴板写入与重试。
-  - `src/db.rs`: 数据库门面模块（对外保持 `db::xxx` 命令入口）。
-  - `src/db/`: 数据库子模块。
-    - `schema.rs`: 表结构/索引初始化与迁移。
-    - `history.rs`: 历史记录与批量操作命令。
-    - `tags.rs`: 标签管理命令。
-    - `cleanup.rs`: 删除条目后的本地文件清理逻辑。
-    - `storage.rs`: 数据库路径查询与迁移。
-    - `config.rs`: 数据库目录配置读写与路径解析。
+- 前端：React 19、TypeScript、Vite、Tailwind CSS。
+- 桌面框架：Tauri 2。
+- 后端：Rust（`rusqlite`、`reqwest`、`image`、`arboard`、`enigo`）。
+- 数据存储：SQLite（随应用本地持久化）。
 
-## 如何在本地运行
+## 目录结构（核心）
 
-1. **安装依赖**: `npm install`
-2. **生成图标**: `npx tauri icon ./icon.png` (需准备一张 512x512 的图片)
-3. **启动开发**: `npx tauri dev`
+- `src/`：前端业务代码（组件、Context、Hooks、服务层）。
+- `src/services/tauri.ts`：Tauri API 门面（窗口、快捷键、图片、文件、存储信息）。
+- `src/services/db.ts`：数据库 IPC 门面（历史记录/标签/统计）。
+- `src-tauri/src/main.rs`：应用入口、插件注册、托盘与命令注册。
+- `src-tauri/src/lib.rs`：后端模块总览与导出。
+- `src-tauri/src/db/`：数据库与标签等后端能力。
+- `src-tauri/src/image_handler/`：图片下载、解码、限流、复制链路。
+- `src-tauri/src/input/`：输入模拟、文件打开、文件图标等平台能力。
+- `src-tauri/capabilities/default.json`：Tauri 权限清单。
+- `docs/input-module-architecture.md`：输入模块分层架构说明。
+- `docs/service-api-usage-matrix.md`：前端服务 API 使用矩阵（脚本生成）。
 
-## 测试与构建
+## 环境要求
 
-- 前端构建：`npm run build`
-- Rust 编译检查：`cargo check --manifest-path src-tauri/Cargo.toml`
-- 数据库模块测试：`cargo test --manifest-path src-tauri/Cargo.toml db:: -- --nocapture`
-- 图片处理性能基线（Debug）：`cargo test --manifest-path src-tauri/Cargo.toml image_handler::handler::tests -- --nocapture`
-- 图片处理性能基线（Release）：`cargo test --manifest-path src-tauri/Cargo.toml --release image_handler::handler::tests -- --nocapture`
-- 阶段拆分基线（剪贴板写入）：`cargo test --manifest-path src-tauri/Cargo.toml --release perf_decode_vs_clipboard_write_stage -- --ignored --nocapture`
-- 服务层并发与鲁棒性测试：`cargo test --manifest-path src-tauri/Cargo.toml image_handler::service::tests -- --nocapture`
-- 服务层长时 Soak（默认忽略）：`cargo test --manifest-path src-tauri/Cargo.toml image_handler::service::tests::service_profile_long_running_soak -- --ignored --nocapture`
-- 前端设置同步定向测试：`npx vitest run src/hooks/useSettings.test.ts`
+- Node.js 18+（建议 LTS）。
+- Rust stable（建议通过 `rustup` 安装）。
+- Tauri 2 构建依赖（Windows 需安装 WebView2 与 MSVC 构建工具）。
 
-> Windows 下若遇到 `target/debug/clipboard-history.exe` 文件占用导致测试失败，可使用：
-> `CARGO_TARGET_DIR=src-tauri/target-test cargo test --manifest-path src-tauri/Cargo.toml db:: -- --nocapture`
+## 快速开始
 
-## 图片处理性能与内存基线
+1. 安装依赖
 
-以下数据来自 `src-tauri/src/image_handler/handler.rs` 中的 `image_handler::handler::tests` 压测用例。
+```bash
+npm install
+```
 
-## 图片模块架构说明
+2. 启动前端开发服务（可选，便于单独调 UI）
 
-- 当前图片模块采用 **Tauri State 注入模式**：在 `main.rs` 中注册 `ImageServiceState`，命令层通过 `State<'_, ImageServiceState>` 调用业务逻辑。
-- 命令层保持薄封装，仅做参数接收与结果返回；核心逻辑集中在 `handler/loader/pipeline/clipboard_writer`。
-- 该模式相较全局单例更利于测试隔离与后续扩展（例如按窗口或按会话配置实例）。
+```bash
+npm run dev
+```
 
-## 图片性能档位调参模板
+3. 启动 Tauri 桌面开发模式（推荐日常开发使用）
 
-### 档位建议
+```bash
+npm run tauri:dev
+```
 
-- `quality`：优先保真，适合设计稿、截图精细比对、OCR 前处理。
-- `balanced`：默认推荐，适合大多数日常复制场景。
-- `speed`：优先吞吐，适合高频复制、低性能设备、远程桌面环境。
+## 构建发布
 
-### 场景化推荐
+```bash
+npm run build
+npm run tauri:build
+```
 
-- 如果用户反馈“图片模糊”：先切 `quality`。
-- 如果用户反馈“复制卡顿”：先切 `speed`。
-- 如果用户反馈“偶发慢但可接受”：保持 `balanced`，结合日志看 `copy` 阶段耗时。
+Windows 打包目标由 `src-tauri/tauri.conf.json` 配置为 `nsis` 与 `msi`。
 
-### 调参顺序（建议）
+## 常用脚本
 
-1. 先调整档位（`quality/balanced/speed`），不要一次改多个底层参数。
-2. 观察阶段耗时日志：`load` / `decode` / `copy` / `total`。
-3. 若主要慢在 `copy`，优先降低输出像素（使用 `balanced` 或 `speed`）。
-4. 若主要慢在 `decode`，优先检查输入尺寸与格式（超大图、异常编码）。
-5. 若是网络图慢，检查 URL 来源与下载体积限制。
+- `npm run dev`：启动 Vite 开发服务（端口 3000）。
+- `npm run tauri:dev`：启动桌面开发模式。
+- `npm run build`：构建前端产物。
+- `npm run tauri:build`：构建桌面安装包。
+- `npm run lint`：TypeScript 类型检查。
+- `npm run audit:service-usage`：生成服务层调用审计结果。
 
-### 团队默认策略（建议）
+## 配置说明（默认值）
 
-- 默认档位使用 `balanced`。
-- 客诉“清晰度不足”时临时切 `quality`，确认后再固化。
-- 客诉“延迟高”时临时切 `speed`，并记录设备型号与分辨率作为回归样本。
+默认设置定义于 `src/constants/index.ts`，关键项包括：
 
-## 图片高级配置说明
+- 全局快捷键：`Alt+V`
+- 沉浸模式快捷键：`Ctrl+Shift+Z`
+- 历史上限：`100`
+- 自动清理天数：`30`
+- 图片性能档位：`balanced`
+- 全局唤起窗口位置：`smart_near_cursor`（智能贴近鼠标）
+- `allowPrivateNetwork = false`
+- `resolveDnsForUrlSafety = true`
+- `maxDecodedBytes = 160MB`
 
-- 设置面板新增高级项并与后端实时同步：
-  - `allowPrivateNetwork`：是否允许访问内网/本地地址图片资源（默认 `false`）。
-  - `resolveDnsForUrlSafety`：是否对域名解析结果执行内网拦截校验（默认 `true`）。
-  - `maxDecodedBytes`：解码后像素缓冲内存上限（默认 `160MB`，最小 `8MB`）。
-- 对应后端命令：
-  - `set_image_advanced_config`
-  - `get_image_advanced_config`
-- 安全建议：生产环境保持 `allowPrivateNetwork=false` 且 `resolveDnsForUrlSafety=true`。
+全局唤起窗口位置（`windowPlacement`）支持以下模式：
 
-## 线上排障速查表
+- `smart_near_cursor`：智能贴近鼠标并自动避免越界
+- `cursor_top_left`：窗口左上角对齐鼠标位置
+- `cursor_center`：窗口中心对齐鼠标位置
+- `monitor_center`：显示在鼠标所在屏幕中心
+- `screen_center`：显示在主屏幕中心
+- `custom`：使用自定义绝对坐标（`customX/customY`）
+- `last_position`：保持窗口上次位置，不重新计算
 
-### 步骤 1：先确认后端配置可用
+## 图片链路说明
 
-- 命令：`cargo check --manifest-path src-tauri/Cargo.toml`
-- 观察点：编译必须通过；若失败先修复构建环境再做性能判断。
+图片复制支持三种输入：
 
-### 步骤 2：跑图片链路基线
+- 网络图片 URL（后端下载后写入剪贴板）
+- Base64 Data URL
+- 本地图片文件路径
 
-- 命令：`CARGO_TARGET_DIR=src-tauri/target-test cargo test --manifest-path src-tauri/Cargo.toml image_handler::handler::tests -- --nocapture`
-- 观察点：关注日志中的 `load / decode / copy / total`。
+后端通过 `ImageServiceState` 注入，命令层保持薄封装，核心逻辑位于 `loader / pipeline / clipboard_writer`。
 
-### 步骤 3：定位瓶颈并切档验证
+## 排障建议
 
-- `copy` 明显最高：优先切 `speed`，通常是系统剪贴板写入瓶颈。
-- `decode` 明显最高：检查图片尺寸/格式，优先降档或缩小输入。
-- `load` 明显最高：检查 URL 来源、网络状态、文件体积与重定向链。
+- 先检查 Rust 编译链是否正常：
 
-### 常见结论模板
+```bash
+cargo check --manifest-path src-tauri/Cargo.toml
+```
 
-- **结论 A（写入瓶颈）**：切 `speed` 后 `copy` 下降明显，可判定为剪贴板阶段瓶颈。
-- **结论 B（解码瓶颈）**：`decode` 与图片像素规模线性上升，优先控制输入分辨率。
-- **结论 C（网络瓶颈）**：`load` 波动大且占比最高，优先排查网络与资源地址。
+- 若 `npm run dev` 或 `npm run tauri:dev` 失败，优先确认：
+  - Node 版本是否满足要求；
+  - Rust 工具链是否安装完整；
+  - Windows 下 WebView2 与 C++ 构建工具是否可用。
+- 若窗口关闭后“像没退出”，这是预期行为：主窗口默认关闭转隐藏，可从托盘再次唤起。
 
-### Debug（开发构建）
+## 安全与权限
 
-- `decode 1024x1024`：输入 `1153KB`，输出 `4096KB`，耗时 `115ms`
-- `decode 2048x2048`：输入 `4611KB`，输出 `16384KB`，耗时 `447ms`
-- `decode 3840x2160`：输入 `9118KB`，输出 `14400KB`，耗时 `2769ms`（含降采样）
-- `base64 1920x1080`：解析 `10ms`，解码 `239ms`，输出 `8100KB`
+本项目使用 Tauri 2 Capability 权限模型，相关权限声明在 `src-tauri/capabilities/default.json`，涉及：
 
-### Release（优化构建）
+- 窗口控制权限
+- 全局快捷键权限
+- 剪贴板读写权限
+- 文件系统读取权限
+- 系统对话框与 shell 打开权限
 
-- `decode 1024x1024`：输入 `1153KB`，输出 `4096KB`，耗时 `8ms`
-- `decode 2048x2048`：输入 `4611KB`，输出 `16384KB`，耗时 `34ms`
-- `decode 3840x2160`：输入 `9118KB`，输出 `14400KB`，耗时 `128ms`（含降采样）
-- `base64 1920x1080`：解析 `0ms`，解码 `17ms`，输出 `8100KB`
-
-### Release 阶段拆分（解码 vs 写入剪贴板）
-
-- `stage 1920x1080`：解码 `16ms`，剪贴板写入平均 `84ms`，输出 `8100KB`
-- `stage 3840x2160`：解码 `129ms`，剪贴板写入平均 `26ms`，输出 `14400KB`
-
-### 说明
-
-- 解码后内存主要由 RGBA 像素缓冲决定，近似为 `width × height × 4` 字节。
-- 当前实现已增加像素上限、下载体积上限、重试零额外拷贝，并加入自适应降采样（默认开启）。
-- 对超大图（如 4K），会以更低像素输出换取更快剪贴板写入与更低写入内存开销。
-- 不同机器与编译器版本会影响绝对耗时，建议关注相对趋势与回归差值。
-
-## 注意事项
-
-- **权限**: Tauri 2.0 引入了严苛的权限系统，所有插件功能必须在 `src-tauri/capabilities/default.json` 中声明。
-- **Rust 报错**: 如果遇到 `OUT_DIR` 错误，请运行一次 `npx tauri dev` 以生成编译环境。
+请在新增后端能力时同步更新权限清单，避免运行时权限拒绝。

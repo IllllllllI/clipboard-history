@@ -166,7 +166,10 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     handleDoubleClick: doubleClickRaw,
   } = useUIContext();
 
-  const { shortcutError, isRegistering: shortcutRegistering } = useShortcuts(settings.globalShortcut);
+  const { shortcutError, isRegistering: shortcutRegistering } = useShortcuts(
+    settings.globalShortcut,
+    settings.windowPlacement,
+  );
 
   // 计算过滤后的历史 — 仅依赖 filterHistory 函数引用和 history 数组
   const filteredHistory = useMemo(

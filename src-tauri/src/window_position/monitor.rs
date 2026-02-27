@@ -21,7 +21,7 @@
 //! - 高层 API 仅从 `Monitor` 中提取数据后委托纯函数，保证可测试性。
 
 use tauri::{PhysicalPosition, PhysicalSize, Monitor};
-use super::calculation::calculate_window_position;
+use super::calculation::{calculate_window_position, calculate_smart_near_cursor};
 
 // ============================================================================
 // 纯几何函数（不依赖 tauri::Monitor，可直接单元测试）
@@ -101,6 +101,29 @@ pub fn calculate_position_in_monitor(
     );
 
     let relative_pos = calculate_window_position(relative_cursor, window_size, monitor_size);
+
+    PhysicalPosition::new(
+        monitor_pos.x + relative_pos.x,
+        monitor_pos.y + relative_pos.y,
+    )
+}
+
+/// 在指定显示器区域内，以"智能贴近光标"策略计算窗口全局坐标（纯几何计算）
+///
+/// 与 `calculate_position_in_monitor` 的区别：本函数使用右下偏移+翻转策略，
+/// 而非窗口中心对齐光标。
+pub fn calculate_smart_position_in_monitor(
+    cursor_pos: PhysicalPosition<i32>,
+    window_size: PhysicalSize<u32>,
+    monitor_pos: PhysicalPosition<i32>,
+    monitor_size: PhysicalSize<u32>,
+) -> PhysicalPosition<i32> {
+    let relative_cursor = PhysicalPosition::new(
+        cursor_pos.x - monitor_pos.x,
+        cursor_pos.y - monitor_pos.y,
+    );
+
+    let relative_pos = calculate_smart_near_cursor(relative_cursor, window_size, monitor_size);
 
     PhysicalPosition::new(
         monitor_pos.x + relative_pos.x,
@@ -196,6 +219,33 @@ pub fn calculate_window_position_multi_monitor(
         });
 
     calculate_window_position_for_monitor(cursor_pos, window_size, monitor)
+}
+
+/// 多显示器场景下的智能贴近光标定位
+///
+/// 与 `calculate_window_position_multi_monitor` 类似，但使用右下偏移+翻转策略。
+pub fn calculate_smart_position_multi_monitor(
+    cursor_pos: PhysicalPosition<i32>,
+    window_size: PhysicalSize<u32>,
+    monitors: &[Monitor],
+) -> PhysicalPosition<i32> {
+    if monitors.is_empty() {
+        log::warn!("No monitors available. Returning (0, 0).");
+        return PhysicalPosition::new(0, 0);
+    }
+
+    let monitor = detect_cursor_monitor(cursor_pos, monitors)
+        .unwrap_or_else(|| {
+            log::warn!("Cursor not on any monitor. Using first monitor.");
+            &monitors[0]
+        });
+
+    calculate_smart_position_in_monitor(
+        cursor_pos,
+        window_size,
+        *monitor.position(),
+        *monitor.size(),
+    )
 }
 
 // ============================================================================

@@ -45,6 +45,42 @@ const MIGRATIONS: Migration[] = [
       data.maxDecodedBytes = 160 * 1024 * 1024;
     }
   },
+  // v0.4: 全局快捷键窗口定位策略
+  (data) => {
+    const placement = data.windowPlacement;
+    const allowedModes = new Set([
+      'smart_near_cursor',
+      'cursor_top_left',
+      'cursor_center',
+      'custom_anchor',
+      'monitor_center',
+      'screen_center',
+      'custom',
+      'last_position',
+    ]);
+
+    const fallback = {
+      mode: 'smart_near_cursor',
+      customX: 120,
+      customY: 120,
+    };
+
+    if (typeof placement !== 'object' || placement === null) {
+      data.windowPlacement = fallback;
+      return;
+    }
+
+    const placementObj = placement as Record<string, unknown>;
+    const mode = typeof placementObj.mode === 'string' ? placementObj.mode : fallback.mode;
+    const customX = Number(placementObj.customX);
+    const customY = Number(placementObj.customY);
+
+    data.windowPlacement = {
+      mode: allowedModes.has(mode) ? mode : fallback.mode,
+      customX: Number.isFinite(customX) ? Math.trunc(customX) : fallback.customX,
+      customY: Number.isFinite(customY) ? Math.trunc(customY) : fallback.customY,
+    };
+  },
   // 后续迁移在此追加...
 ];
 

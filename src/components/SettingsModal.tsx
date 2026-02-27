@@ -4,6 +4,7 @@ import { X, FolderOpen, Loader2 } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { TauriService } from '../services/tauri';
 import { getGlobalShortcutConflict, getImmersiveShortcutConflict } from '../utils';
+import type { WindowPlacementMode } from '../types';
 
 // ============================================================================
 // 类型 & 常量
@@ -37,6 +38,17 @@ const IMAGE_PERFORMANCE_OPTIONS = [
   { value: 'balanced', label: '平衡', desc: '默认推荐，兼顾清晰度与写入速度' },
   { value: 'speed', label: '速度优先', desc: '优先降低写入耗时，可能牺牲部分清晰度' },
 ] as const;
+
+const WINDOW_PLACEMENT_OPTIONS: { value: WindowPlacementMode; label: string; desc: string }[] = [
+  { value: 'smart_near_cursor', label: '智能贴近鼠标', desc: '按当前算法靠近鼠标并自动避免超出屏幕' },
+  { value: 'cursor_top_left', label: '窗口左上角对齐鼠标', desc: '窗口左上角对齐到鼠标位置（会做边界修正）' },
+  { value: 'cursor_center', label: '窗口中心对齐鼠标', desc: '窗口中心对齐鼠标位置（会做边界修正）' },
+  { value: 'custom_anchor', label: '窗口内自定义锚点', desc: '指定窗口内某像素点对齐鼠标位置' },
+  { value: 'monitor_center', label: '当前屏幕中心', desc: '显示到鼠标所在屏幕的中心位置' },
+  { value: 'screen_center', label: '主屏幕中心', desc: '显示到主显示器（首屏）中心位置' },
+  { value: 'custom', label: '自定义坐标', desc: '使用你指定的屏幕绝对坐标（X,Y）' },
+  { value: 'last_position', label: '保持上次位置', desc: '不重算位置，保持窗口当前坐标' },
+];
 
 const MIN_DECODED_MB = 8;
 
@@ -470,6 +482,9 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
   const [backendProfileError, setBackendProfileError] = useState<string | null>(null);
   const [backendProfileRetryToken, setBackendProfileRetryToken] = useState(0);
   const decodedMb = Math.max(MIN_DECODED_MB, Math.round(settings.maxDecodedBytes / 1024 / 1024));
+  const isCustomPlacement = settings.windowPlacement.mode === 'custom';
+  const isCustomAnchorPlacement = settings.windowPlacement.mode === 'custom_anchor';
+  const selectedPlacementOption = WINDOW_PLACEMENT_OPTIONS.find(opt => opt.value === settings.windowPlacement.mode);
 
   const fetchImagesInfo = useCallback(async () => {
     const info = await TauriService.getImagesDirInfo(settings.imagesDir || undefined);
@@ -690,6 +705,111 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
                   onChange={(value) => updateSettings({ immersiveShortcut: value })}
                   error={immersiveShortcutConflict || null}
                 />
+              </div>
+
+              {/* 全局唤起窗口位置 */}
+              <div className="space-y-3">
+                <p className="font-medium text-sm">全局唤起窗口位置</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {WINDOW_PLACEMENT_OPTIONS.map(opt => {
+                    const active = opt.value === settings.windowPlacement.mode;
+
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => {
+                          const mode = opt.value as WindowPlacementMode;
+                          updateSettings({
+                            windowPlacement: {
+                              ...settings.windowPlacement,
+                              mode,
+                            },
+                          });
+                        }}
+                        className={`w-full text-left rounded-xl border p-3 transition-colors ${active
+                          ? (dark
+                            ? 'border-indigo-500 bg-indigo-500/10'
+                            : 'border-indigo-500 bg-indigo-50')
+                          : (dark
+                            ? 'border-neutral-700 bg-neutral-800/40 hover:border-neutral-600'
+                            : 'border-neutral-200 bg-neutral-50 hover:border-neutral-300')
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className={`text-sm font-medium ${active ? 'text-indigo-500' : ''}`}>{opt.label}</p>
+                            <p className="text-xs text-neutral-500 mt-0.5">{opt.desc}</p>
+                          </div>
+                          <span
+                            className={`mt-0.5 h-4 w-4 rounded-full border ${active
+                              ? 'border-indigo-500 bg-indigo-500'
+                              : (dark ? 'border-neutral-600 bg-transparent' : 'border-neutral-300 bg-transparent')
+                            }`}
+                          />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-xs text-neutral-500">
+                  当前模式：{selectedPlacementOption?.label ?? '未知'}
+                </p>
+
+                {(isCustomPlacement || isCustomAnchorPlacement) && (
+                  <div className={`rounded-xl border p-3 space-y-2 ${dark ? 'border-neutral-700 bg-neutral-800/40' : 'border-neutral-200 bg-neutral-50'}`}>
+                    <p className="text-xs text-neutral-500">
+                      {isCustomAnchorPlacement ? '窗口内锚点偏移（像素）' : '自定义坐标（屏幕绝对坐标）'}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500 w-10">X</span>
+                        <input
+                          type="number"
+                          step={1}
+                          min={isCustomAnchorPlacement ? 0 : undefined}
+                          value={settings.windowPlacement.customX}
+                          onChange={(e) => {
+                            const nextX = Number.parseInt(e.target.value || '0', 10);
+                            updateSettings({
+                              windowPlacement: {
+                                ...settings.windowPlacement,
+                                customX: Number.isFinite(nextX) ? nextX : 0,
+                              },
+                            });
+                          }}
+                          className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-neutral-200'}`}
+                        />
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500 w-10">Y</span>
+                        <input
+                          type="number"
+                          step={1}
+                          min={isCustomAnchorPlacement ? 0 : undefined}
+                          value={settings.windowPlacement.customY}
+                          onChange={(e) => {
+                            const nextY = Number.parseInt(e.target.value || '0', 10);
+                            updateSettings({
+                              windowPlacement: {
+                                ...settings.windowPlacement,
+                                customY: Number.isFinite(nextY) ? nextY : 0,
+                              },
+                            });
+                          }}
+                          className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-neutral-200'}`}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-[11px] text-neutral-500">
+                      {isCustomAnchorPlacement
+                        ? '窗口内偏移量：该像素点将对齐鼠标位置。如 (0,0) 等同于左上角对齐，(400,300) 表示窗口内 400×300 处对准鼠标'
+                        : '示例：`120,120` 表示窗口左上角位于屏幕坐标 (120,120)'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* 开关设置（快捷键后） */}

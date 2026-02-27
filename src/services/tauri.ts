@@ -4,6 +4,7 @@ import { register, unregister, unregisterAll } from '@tauri-apps/plugin-global-s
 import { open } from '@tauri-apps/plugin-dialog';
 import { open as openPath } from '@tauri-apps/plugin-shell';
 import type { ImageAdvancedConfig, ImagePerformanceProfile } from '../types';
+import type { WindowPlacementSettings } from '../types';
 
 export const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 
@@ -63,9 +64,18 @@ export const TauriService = {
     await getCurrentWindow().setPosition(new PhysicalPosition(-9999, -9999));
   },
 
-  async handleGlobalShortcut(): Promise<void> {
+  async handleGlobalShortcut(placement?: WindowPlacementSettings): Promise<void> {
     if (!isTauri) return;
-    await invoke<void>('handle_global_shortcut', { window: getCurrentWindow() });
+    await invoke<void>('handle_global_shortcut', {
+      window: getCurrentWindow(),
+      placement: placement
+        ? {
+            mode: placement.mode,
+            customX: placement.customX,
+            customY: placement.customY,
+          }
+        : undefined,
+    });
   },
 
   // ── 剪贴板读写 ──

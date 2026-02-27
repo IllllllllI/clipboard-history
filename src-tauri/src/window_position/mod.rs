@@ -38,9 +38,76 @@ pub mod calculation;
 pub mod monitor;
 pub mod window_state;
 
+use serde::Deserialize;
 use tauri::Window;
 use crate::error::AppError;
 use std::time::Instant;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowPlacementMode {
+    SmartNearCursor,
+    CursorTopLeft,
+    CursorCenter,
+    CustomAnchor,
+    MonitorCenter,
+    ScreenCenter,
+    Custom,
+    LastPosition,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowPlacementConfig {
+    pub mode: WindowPlacementMode,
+    pub custom_x: Option<i32>,
+    pub custom_y: Option<i32>,
+}
+
+fn default_placement_config() -> WindowPlacementConfig {
+    WindowPlacementConfig {
+        mode: WindowPlacementMode::SmartNearCursor,
+        custom_x: Some(120),
+        custom_y: Some(120),
+    }
+}
+
+fn clamp_position_to_monitor(
+    pos: tauri::PhysicalPosition<i32>,
+    window_size: tauri::PhysicalSize<u32>,
+    monitor: &tauri::Monitor,
+) -> tauri::PhysicalPosition<i32> {
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+
+    let max_x = monitor_pos.x + (monitor_size.width as i32 - window_size.width as i32).max(0);
+    let max_y = monitor_pos.y + (monitor_size.height as i32 - window_size.height as i32).max(0);
+
+    tauri::PhysicalPosition::new(
+        pos.x.clamp(monitor_pos.x, max_x),
+        pos.y.clamp(monitor_pos.y, max_y),
+    )
+}
+
+fn detect_monitor_from_point<'a>(
+    point: tauri::PhysicalPosition<i32>,
+    monitors: &'a [tauri::Monitor],
+) -> Option<&'a tauri::Monitor> {
+    monitor::detect_cursor_monitor(point, monitors)
+}
+
+fn calculate_monitor_center_position(
+    monitor: &tauri::Monitor,
+    window_size: tauri::PhysicalSize<u32>,
+) -> tauri::PhysicalPosition<i32> {
+    let monitor_pos = monitor.position();
+    let monitor_size = monitor.size();
+
+    let centered_x = monitor_pos.x + (monitor_size.width as i32 - window_size.width as i32).max(0) / 2;
+    let centered_y = monitor_pos.y + (monitor_size.height as i32 - window_size.height as i32).max(0) / 2;
+
+    tauri::PhysicalPosition::new(centered_x, centered_y)
+}
 
 fn restore_if_minimized(window: &Window) -> Result<(), AppError> {
     let is_minimized = window
@@ -56,7 +123,10 @@ fn restore_if_minimized(window: &Window) -> Result<(), AppError> {
     Ok(())
 }
 
-async fn compute_target_position(window: &Window) -> Result<tauri::PhysicalPosition<i32>, AppError> {
+async fn compute_target_position(
+    window: &Window,
+    config: &WindowPlacementConfig,
+) -> Result<tauri::PhysicalPosition<i32>, AppError> {
     let started = Instant::now();
 
     let t0 = Instant::now();
@@ -79,11 +149,75 @@ async fn compute_target_position(window: &Window) -> Result<tauri::PhysicalPosit
     let monitors_cost = t3.elapsed();
 
     let t4 = Instant::now();
-    let target = monitor::calculate_window_position_multi_monitor(
-        cursor_pos,
-        window_size,
-        &monitors,
-    );
+    let fallback_monitor = current_monitor
+        .as_ref()
+        .or_else(|| monitors.first());
+
+    let target = match config.mode {
+        WindowPlacementMode::SmartNearCursor => {
+            monitor::calculate_smart_position_multi_monitor(cursor_pos, window_size, &monitors)
+        }
+        WindowPlacementMode::CursorTopLeft => {
+            let monitor = monitor::detect_cursor_monitor(cursor_pos, &monitors)
+                .or(fallback_monitor)
+                .ok_or_else(|| AppError::Window("No monitor available".to_string()))?;
+
+            clamp_position_to_monitor(cursor_pos, window_size, monitor)
+        }
+        WindowPlacementMode::CursorCenter => {
+            let monitor = monitor::detect_cursor_monitor(cursor_pos, &monitors)
+                .or(fallback_monitor)
+                .ok_or_else(|| AppError::Window("No monitor available".to_string()))?;
+
+            let ideal = tauri::PhysicalPosition::new(
+                cursor_pos.x - window_size.width as i32 / 2,
+                cursor_pos.y - window_size.height as i32 / 2,
+            );
+            clamp_position_to_monitor(ideal, window_size, monitor)
+        }
+        WindowPlacementMode::CustomAnchor => {
+            let anchor_x = config.custom_x.unwrap_or(0);
+            let anchor_y = config.custom_y.unwrap_or(0);
+            let monitor = monitor::detect_cursor_monitor(cursor_pos, &monitors)
+                .or(fallback_monitor)
+                .ok_or_else(|| AppError::Window("No monitor available".to_string()))?;
+
+            let ideal = tauri::PhysicalPosition::new(
+                cursor_pos.x - anchor_x,
+                cursor_pos.y - anchor_y,
+            );
+            clamp_position_to_monitor(ideal, window_size, monitor)
+        }
+        WindowPlacementMode::MonitorCenter => {
+            let monitor = monitor::detect_cursor_monitor(cursor_pos, &monitors)
+                .or(fallback_monitor)
+                .ok_or_else(|| AppError::Window("No monitor available".to_string()))?;
+
+            calculate_monitor_center_position(monitor, window_size)
+        }
+        WindowPlacementMode::ScreenCenter => {
+            let monitor = monitors.first().or(fallback_monitor)
+                .ok_or_else(|| AppError::Window("No monitor available".to_string()))?;
+
+            calculate_monitor_center_position(monitor, window_size)
+        }
+        WindowPlacementMode::Custom => {
+            let custom_x = config.custom_x.unwrap_or(120);
+            let custom_y = config.custom_y.unwrap_or(120);
+            let custom_pos = tauri::PhysicalPosition::new(custom_x, custom_y);
+
+            let monitor = detect_monitor_from_point(custom_pos, &monitors)
+                .or(fallback_monitor)
+                .ok_or_else(|| AppError::Window("No monitor available".to_string()))?;
+
+            clamp_position_to_monitor(custom_pos, window_size, monitor)
+        }
+        WindowPlacementMode::LastPosition => {
+            window
+                .outer_position()
+                .map_err(|e| AppError::Window(format!("Failed to get current window position: {}", e)))?
+        }
+    };
     let calc_cost = t4.elapsed();
 
     let total_cost = started.elapsed();
@@ -127,7 +261,7 @@ async fn compute_target_position(window: &Window) -> Result<tauri::PhysicalPosit
 pub async fn show_window_at_cursor(window: Window) -> Result<(), AppError> {
     restore_if_minimized(&window)?;
 
-    let target_position = compute_target_position(&window).await?;
+    let target_position = compute_target_position(&window, &default_placement_config()).await?;
 
     window.set_position(target_position)
         .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
@@ -160,7 +294,7 @@ pub async fn show_window_at_cursor(window: Window) -> Result<(), AppError> {
 pub async fn reposition_and_focus(window: Window) -> Result<(), AppError> {
     restore_if_minimized(&window)?;
 
-    let target_position = compute_target_position(&window).await?;
+    let target_position = compute_target_position(&window, &default_placement_config()).await?;
 
     window.set_position(target_position)
         .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
@@ -190,6 +324,13 @@ pub async fn reposition_and_focus(window: Window) -> Result<(), AppError> {
 /// - `Err(String)`：任一步骤失败
 #[tauri::command]
 pub async fn toggle_window(window: Window) -> Result<(), AppError> {
+    toggle_window_with_config(window, default_placement_config()).await
+}
+
+async fn toggle_window_with_config(
+    window: Window,
+    config: WindowPlacementConfig,
+) -> Result<(), AppError> {
     restore_if_minimized(&window)?;
 
     let state = window_state::get_window_state(&window)?;
@@ -197,11 +338,21 @@ pub async fn toggle_window(window: Window) -> Result<(), AppError> {
     match (state.is_visible, state.is_focused) {
         (false, _) => {
             log::debug!("窗口处于隐藏状态，正在显示到光标附近");
-            show_window_at_cursor(window).await
+            let target_position = compute_target_position(&window, &config).await?;
+            window.set_position(target_position)
+                .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
+            window.show()
+                .map_err(|e| AppError::Window(format!("Failed to show window: {}", e)))?;
+            window.set_focus()
+                .map_err(|e| AppError::Window(format!("Failed to set window focus: {}", e)))
         }
         (true, false) => {
             log::debug!("窗口可见但未聚焦，正在重定位并恢复焦点");
-            reposition_and_focus(window).await
+            let target_position = compute_target_position(&window, &config).await?;
+            window.set_position(target_position)
+                .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
+            window.set_focus()
+                .map_err(|e| AppError::Window(format!("Failed to set window focus: {}", e)))
         }
         (true, true) => {
             log::debug!("窗口可见且已聚焦，正在隐藏");
@@ -225,9 +376,13 @@ pub async fn toggle_window(window: Window) -> Result<(), AppError> {
 /// - `Ok(())`：窗口状态切换成功
 /// - `Err(String)`：切换失败的错误信息
 #[tauri::command]
-pub async fn handle_global_shortcut(window: Window) -> Result<(), AppError> {
+pub async fn handle_global_shortcut(
+    window: Window,
+    placement: Option<WindowPlacementConfig>,
+) -> Result<(), AppError> {
     log::debug!("全局快捷键触发，开始切换窗口状态");
-    toggle_window(window).await
+    let config = placement.unwrap_or_else(default_placement_config);
+    toggle_window_with_config(window, config).await
 }
 
 // 重新导出 Monitor 类型，方便上层统一引用

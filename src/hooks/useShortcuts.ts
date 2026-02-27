@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { TauriService, isTauri } from '../services/tauri';
+import type { WindowPlacementSettings } from '../types';
+
 
 // Vite 热更新兜底：在模块替换前/销毁时强制清理全局快捷键
 if (import.meta.hot) {
@@ -24,13 +26,18 @@ function formatShortcutError(shortcut: string, err: unknown): string {
   return msg;
 }
 
-export function useShortcuts(globalShortcut: string) {
+export function useShortcuts(globalShortcut: string, windowPlacement: WindowPlacementSettings) {
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   // 并发防护：快速连续变更快捷键时，只以最后一次为准
   const versionRef = useRef(0);
   const pendingRef = useRef<Promise<void> | null>(null);
   const registeredShortcutRef = useRef<string>('');
+
+  // 始终保持 windowPlacement 最新值的引用，
+  // 避免快捷键回调闭包捕获过期的配置（快捷键不变时 effect 不会重新注册回调）
+  const windowPlacementRef = useRef(windowPlacement);
+  windowPlacementRef.current = windowPlacement;
 
   const cleanupShortcuts = useCallback(() => {
     if (!isTauri) return;
@@ -77,7 +84,7 @@ export function useShortcuts(globalShortcut: string) {
           }
 
           await TauriService.registerShortcut(globalShortcut, () => {
-            void TauriService.handleGlobalShortcut();
+            void TauriService.handleGlobalShortcut(windowPlacementRef.current);
           });
 
           if (disposed || versionRef.current !== thisVersion) {
@@ -114,6 +121,9 @@ export function useShortcuts(globalShortcut: string) {
     return () => {
       disposed = true;
     };
+  // windowPlacement 通过 ref 传递，无需加入依赖——
+  // 避免仅改位置模式就重新注销/注册快捷键
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalShortcut]);
 
   // 组件卸载时清理快捷键
