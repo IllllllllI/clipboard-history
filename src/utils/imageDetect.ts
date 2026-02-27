@@ -8,6 +8,15 @@
 import { ImageType } from '../types';
 import { IMAGE_EXTENSIONS } from './imageUrl';
 
+const FILES_PREFIX = '[FILES]\n';
+const HTTP_PREFIX = 'http://';
+const HTTPS_PREFIX = 'https://';
+const DATA_IMAGE_PREFIX = 'data:image/';
+const FILE_PROTOCOL = 'file://';
+const URL_TEXT_REGEX = /^https?:\/\/[^\s$.?#].[^\s]*$/i;
+const HEX_COLOR_REGEX = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+const IMAGE_PARAM_HINT_REGEX = /(format=|type=image)/i;
+
 // ============================================================================
 // 私有辅助
 // ============================================================================
@@ -57,7 +66,7 @@ function convertAssetUrlToPath(url: string): string {
  * 用于防止代码片段被误判为文件路径。
  */
 function hasCodePatterns(text: string): boolean {
-  if (text.startsWith('file://')) return false;
+  if (text.startsWith(FILE_PROTOCOL)) return false;
 
   const patterns: RegExp[] = [
     /\{[^}]*\}/,                    // 花括号包裹内容
@@ -85,7 +94,7 @@ function hasCodePatterns(text: string): boolean {
 
 /** 判断文本是否为本地文件路径（Unix / Windows / file URI） */
 function isFilePath(text: string): boolean {
-  return text.startsWith('/') || /^[a-zA-Z]:\\/.test(text) || text.startsWith('file://');
+  return text.startsWith('/') || /^[a-zA-Z]:\\/.test(text) || text.startsWith(FILE_PROTOCOL);
 }
 
 /** 判断扩展名是否为支持的图片格式 */
@@ -147,8 +156,8 @@ function isKnownImageCdnUrl(url: string): boolean {
  * @returns 'files' | 'image' | 'image-url' | 'multi-image' | 'url' | 'color' | 'text'
  */
 export function detectType(text: string): string {
-  if (text.startsWith('[FILES]\n')) return 'files';
-  if (text.startsWith('data:image/')) return 'image';
+  if (text.startsWith(FILES_PREFIX)) return 'files';
+  if (text.startsWith(DATA_IMAGE_PREFIX)) return 'image';
 
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   if (lines.length > 0) {
@@ -158,8 +167,8 @@ export function detectType(text: string): string {
     }
   }
 
-  if (/^https?:\/\/[^\s$.?#].[^\s]*$/i.test(text)) return 'url';
-  if (/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(text)) return 'color';
+  if (URL_TEXT_REGEX.test(text)) return 'url';
+  if (HEX_COLOR_REGEX.test(text)) return 'color';
   return 'text';
 }
 
@@ -177,7 +186,7 @@ export function detectImageType(text: string): ImageType {
   if (!text || text.length === 0) return ImageType.None;
 
   // Base64
-  if (text.startsWith('data:image/') && text.includes(';base64,')) {
+  if (text.startsWith(DATA_IMAGE_PREFIX) && text.includes(';base64,')) {
     return ImageType.Base64;
   }
 
@@ -188,11 +197,11 @@ export function detectImageType(text: string): ImageType {
   }
 
   // HTTP / HTTPS
-  if (text.startsWith('http://') || text.startsWith('https://')) {
+  if (text.startsWith(HTTP_PREFIX) || text.startsWith(HTTPS_PREFIX)) {
     const urlPath = extractUrlPath(text);
     if (isImageExtension(extractExtension(urlPath))) return ImageType.HttpUrl;
     if (hasImageExtensionFragment(urlPath)) return ImageType.HttpUrl;
-    if (urlPath.includes('format=') || urlPath.includes('type=image')) return ImageType.HttpUrl;
+    if (IMAGE_PARAM_HINT_REGEX.test(urlPath)) return ImageType.HttpUrl;
     if (isKnownImageCdnUrl(text)) return ImageType.HttpUrl;
     return ImageType.None;
   }
