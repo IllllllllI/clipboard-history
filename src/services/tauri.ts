@@ -5,7 +5,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { open as openPath } from '@tauri-apps/plugin-shell';
 import type { ImageAdvancedConfig, ImagePerformanceProfile } from '../types';
 
-export const isTauri = !!(window as any).__TAURI_INTERNALS__;
+export const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 
 // ============================================================================
 // 工具函数
@@ -242,7 +242,10 @@ export const TauriService = {
   async selectDirectory(): Promise<string | null> {
     if (!isTauri) return null;
     const selected = await open({ directory: true, multiple: false });
-    return selected as string | null;
+    if (Array.isArray(selected)) {
+      return selected[0] ?? null;
+    }
+    return selected;
   },
 
   // ── 存储 & 数据库信息 ──
