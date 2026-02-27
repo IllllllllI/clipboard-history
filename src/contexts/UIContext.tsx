@@ -7,7 +7,7 @@
  * 设计原则：UIContext 不依赖 ClipboardContext，通过参数注入解耦。
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { PhysicalPosition } from '@tauri-apps/api/window';
 import { ClipItem, AppSettings, DownloadState, ImageType } from '../types';
 import { TauriService, isTauri } from '../services/tauri';
@@ -18,6 +18,18 @@ import { detectType, detectImageType, detectContentType, normalizeFilePath, isFi
 // ============================================================================
 
 export type FilterType = 'all' | 'pinned' | 'favorite' | 'url' | 'color' | 'snippet' | 'image' | 'file';
+
+// 过滤谓词映射表 — 新增 filter 类型只需加一行
+const FILTER_PREDICATES: Record<FilterType, (item: ClipItem, type: string) => boolean> = {
+  all:      () => true,
+  pinned:   (item) => !!item.is_pinned,
+  favorite: (item) => !!item.is_favorite,
+  url:      (_item, type) => type === 'url',
+  color:    (_item, type) => type === 'color',
+  snippet:  (item) => !!item.is_snippet,
+  image:    (_item, type) => type === 'image' || type === 'image-url' || type === 'multi-image',
+  file:     (_item, type) => type === 'files',
+};
 
 // ============================================================================
 // 拖拽策略
@@ -186,28 +198,26 @@ export function UIProvider({
     isDownloading: false, progress: 0, error: null,
   });
   const originalPosition = useRef<PhysicalPosition | null>(null);
+  const dragStateResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lowerSearchQuery = useMemo(() => searchQuery.toLowerCase(), [searchQuery]);
 
-  // 过滤谓词映射表 — 新增 filter 类型只需加一行
-  const FILTER_PREDICATES: Record<FilterType, (item: ClipItem, type: string) => boolean> = {
-    all:      () => true,
-    pinned:   (item) => !!item.is_pinned,
-    favorite: (item) => !!item.is_favorite,
-    url:      (_item, type) => type === 'url',
-    color:    (_item, type) => type === 'color',
-    snippet:  (item) => !!item.is_snippet,
-    image:    (_item, type) => type === 'image' || type === 'image-url' || type === 'multi-image',
-    file:     (_item, type) => type === 'files',
-  };
+  useEffect(() => {
+    return () => {
+      if (dragStateResetTimerRef.current) clearTimeout(dragStateResetTimerRef.current);
+      if (dragRestoreTimerRef.current) clearTimeout(dragRestoreTimerRef.current);
+    };
+  }, []);
 
   // 过滤历史
   const filterHistory = useCallback((history: ClipItem[]) => {
     const predicate = FILTER_PREDICATES[activeFilter];
     return history.filter(item => {
       const isBase64Image = item.text.startsWith('data:image/');
-      const matchesSearch = isBase64Image || item.text.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = isBase64Image || item.text.toLowerCase().includes(lowerSearchQuery);
       return matchesSearch && predicate(item, detectType(item.text));
     });
-  }, [searchQuery, activeFilter]);
+  }, [lowerSearchQuery, activeFilter]);
 
   // 双击粘贴 — copyFn 由调用者注入
   const handleDoubleClick = useCallback(async (item: ClipItem, copyFn: (item: ClipItem) => Promise<void>) => {
@@ -240,8 +250,12 @@ export function UIProvider({
       setDownloadState({ isDownloading: false, progress: 0, error: `拖拽操作失败: ${toMsg(err)}` });
       try { await copyFallback(text); } catch { /* 忽略 */ }
     } finally {
-      setTimeout(() => {
+      if (dragStateResetTimerRef.current) {
+        clearTimeout(dragStateResetTimerRef.current);
+      }
+      dragStateResetTimerRef.current = setTimeout(() => {
         setDownloadState(prev => prev.isDownloading ? { isDownloading: false, progress: 0, error: null } : prev);
+        dragStateResetTimerRef.current = null;
       }, 100);
     }
   }, [settings.hideOnDrag]);
@@ -268,7 +282,13 @@ export function UIProvider({
       if (settings.hideAfterDrag) {
         try { await TauriService.hideWindow(); } catch { /* 忽略 */ }
         // 延迟恢复位置，确保隐藏动画完成
-        setTimeout(() => restorePosition(), 100);
+        if (dragRestoreTimerRef.current) {
+          clearTimeout(dragRestoreTimerRef.current);
+        }
+        dragRestoreTimerRef.current = setTimeout(() => {
+          void restorePosition();
+          dragRestoreTimerRef.current = null;
+        }, 100);
       } else {
         await restorePosition();
         try { await TauriService.showWindow(); } catch { /* 忽略 */ }
