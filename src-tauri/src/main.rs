@@ -34,6 +34,10 @@ fn main() {
             let conn = db::init_db(&handle)
                 .expect("数据库初始化失败");
             app.manage(db::DbState(std::sync::Mutex::new(conn)));
+            app.manage(
+                image_handler::ImageServiceState::new()
+                    .expect("图片服务初始化失败"),
+            );
 
             // 显式设置主窗口图标，避免平台默认图标与配置不一致
             if let Some(main_window) = app.get_webview_window("main") {
@@ -103,9 +107,13 @@ fn main() {
             clipboard::save::read_clipboard_files,
             clipboard::save::write_text_to_clipboard,
             // 图片处理
-            image_handler::download_and_copy_image,
-            image_handler::copy_base64_image_to_clipboard,
-            image_handler::copy_image_to_clipboard,
+            image_handler::commands::download_and_copy_image,
+            image_handler::commands::copy_base64_image_to_clipboard,
+            image_handler::commands::copy_image_to_clipboard,
+            image_handler::commands::set_image_performance_profile,
+            image_handler::commands::get_image_performance_profile,
+            image_handler::commands::set_image_advanced_config,
+            image_handler::commands::get_image_advanced_config,
             // 输入模拟 & 文件操作
             input::paste_text,
             input::click_and_paste,

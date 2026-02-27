@@ -4,6 +4,20 @@ import { ClipList } from './ClipList';
 import { ClipItem } from '../types';
 import { useAppContext } from '../contexts/AppContext';
 
+// Mock virtualizer to render all rows deterministically in tests
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getTotalSize: () => count * 64,
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({
+        index,
+        start: index * 64,
+      })),
+    measureElement: vi.fn(),
+    scrollToIndex: vi.fn(),
+  }),
+}));
+
 // Mock motion/react
 vi.mock('motion/react', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -68,7 +82,7 @@ describe('ClipList', () => {
 
     render(<ClipList />);
 
-    expect(screen.getByText('未找到相关记录')).toBeTruthy();
+    expect(screen.getByText('剪贴板空空如也 ✨')).toBeTruthy();
   });
 
   it('renders all items in the list', () => {

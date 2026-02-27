@@ -25,5 +25,16 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "src",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "test-image-detection.ts"
+  ],
+  "exclude": [
+    "src-tauri/target",
+    "src-tauri/target-test",
+    "node_modules"
+  ]
 }

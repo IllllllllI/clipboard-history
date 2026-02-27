@@ -4,6 +4,14 @@ export interface Tag {
   color: string | null;
 }
 
+export type ImagePerformanceProfile = 'quality' | 'balanced' | 'speed';
+
+export interface ImageAdvancedConfig {
+  allow_private_network: boolean;
+  resolve_dns_for_url_safety: boolean;
+  max_decoded_bytes: number;
+}
+
 export interface ClipItem {
   id: number;
   text: string;
@@ -29,6 +37,10 @@ export interface AppSettings {
   hideAfterDrag: boolean; // For hiding after drag
   showImagePreview: boolean;
   imagesDir: string; // Directory to save images, empty string for default
+  imagePerformanceProfile: ImagePerformanceProfile;
+  allowPrivateNetwork: boolean;
+  resolveDnsForUrlSafety: boolean;
+  maxDecodedBytes: number;
 }
 
 export interface AppStats {

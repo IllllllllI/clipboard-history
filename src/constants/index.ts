@@ -12,5 +12,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hideOnDrag: true,
   hideAfterDrag: true,
   showImagePreview: true,
-  imagesDir: ''
+  imagesDir: '',
+  imagePerformanceProfile: 'balanced',
+  allowPrivateNetwork: false,
+  resolveDnsForUrlSafety: true,
+  maxDecodedBytes: 160 * 1024 * 1024,
 };

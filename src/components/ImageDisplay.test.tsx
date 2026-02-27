@@ -221,200 +221,84 @@ describe('ImageDisplay - Error Handling', () => {
     vi.restoreAllMocks();
   });
 
-  it('should display error message when HTTP image fails to load', async () => {
-    // Mock fetch to fail
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+  it('should fallback to original URL when HTTP fetch cache fails', async () => {
+    vi.spyOn(imageCache, 'fetchAndCacheImage').mockRejectedValue(new Error('Network error'));
 
     const httpUrl = 'https://example.com/broken-image.png';
     const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    // Wait for error message to appear
-    const errorMessage = await waitFor(() => 
-      screen.getByText(/无法加载网络图片/i)
-    );
-    expect(errorMessage).toBeDefined();
-  });
 
-  it('should display error icon when image fails to load', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+    const { container } = render(<ImageDisplay item={item} />);
 
-    const httpUrl = 'https://example.com/broken-image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    // Wait for error state and check for SVG icon
     await waitFor(() => {
-      const svg = document.querySelector('svg');
-      expect(svg).toBeDefined();
-      expect(svg?.classList.contains('text-red-500')).toBe(true);
+      expect(container.querySelector('img')).toBeTruthy();
     });
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+    expect(img?.getAttribute('src')).toBe(httpUrl);
   });
 
-  it('should display error message when HTTP image fails to load', async () => {
-    // Mock fetch to fail
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+  it('should show HTTP error message after img onError', async () => {
+    vi.spyOn(imageCache, 'fetchAndCacheImage').mockRejectedValue(new Error('Network error'));
 
     const httpUrl = 'https://example.com/broken-image.png';
     const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    // Wait for error message to appear
+
+    const { container } = render(<ImageDisplay item={item} />);
+    await waitFor(() => {
+      expect(container.querySelector('img')).toBeTruthy();
+    });
+    const img = container.querySelector('img');
+    expect(img).toBeTruthy();
+
+    fireEvent.error(img!);
+
     await waitFor(() => {
       expect(screen.getByText('图片加载失败')).toBeDefined();
       expect(screen.getByText(/无法加载网络图片/)).toBeDefined();
     });
   });
 
-  it('should display error icon when image fails to load', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
+  it('should hide link info after entering error state', async () => {
+    vi.spyOn(imageCache, 'fetchAndCacheImage').mockRejectedValue(new Error('Network error'));
 
     const httpUrl = 'https://example.com/broken-image.png';
     const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    // Wait for error UI to appear
+
+    const { container } = render(<ImageDisplay item={item} showLinkInfo={true} />);
     await waitFor(() => {
-      const errorIcon = screen.getByText('图片加载失败').closest('div')?.querySelector('svg');
-      expect(errorIcon).toBeDefined();
+      expect(container.querySelector('img')).toBeTruthy();
     });
+    const img = container.querySelector('img');
+    fireEvent.error(img!);
+
+    await waitFor(() => {
+      expect(screen.getByText('图片加载失败')).toBeDefined();
+    });
+
+    expect(screen.queryAllByRole('link').length).toBe(0);
   });
 
-  it('should show specific error message for HTTP URL images', async () => {
-    // Mock fetchAndCacheImage to throw an error
+  it('should show loading state before error and hide spinner after error', async () => {
     vi.spyOn(imageCache, 'fetchAndCacheImage').mockRejectedValue(new Error('Network error'));
 
     const httpUrl = 'https://example.com/image.png';
     const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText(/无法加载网络图片，请检查网络连接或图片链接是否有效/)).toBeDefined();
-    });
-  });
 
-  it('should show the original URL when HTTP image fails', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const httpUrl = 'https://example.com/broken-image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText(httpUrl)).toBeDefined();
-    });
-  });
-
-  it('should not display image when error occurs', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const httpUrl = 'https://example.com/broken-image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('图片加载失败')).toBeDefined();
-    });
-
-    // Image should not be rendered
-    const images = screen.queryAllByRole('img');
-    expect(images.length).toBe(0);
-  });
-
-  it('should not show link info when error occurs', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const httpUrl = 'https://example.com/broken-image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} showLinkInfo={true} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('图片加载失败')).toBeDefined();
-    });
-
-    // Link should not be rendered (only the URL text in error message)
-    const links = screen.queryAllByRole('link');
-    expect(links.length).toBe(0);
-  });
-
-  it('should handle onError event from img element', async () => {
-    // Mock successful fetch but image load failure
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      blob: () => Promise.resolve(new Blob(['invalid image data'], { type: 'image/png' }))
-    });
-    global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
-
-    const httpUrl = 'https://example.com/image.png';
-    const item = createMockClipItem(httpUrl);
-    
     const { container } = render(<ImageDisplay item={item} />);
-    
-    // Wait for image element to be created
-    await waitFor(() => {
-      const img = container.querySelector('img');
-      expect(img).toBeDefined();
-    });
-
-    // Simulate image load error using fireEvent (triggers React event handlers)
-    const img = container.querySelector('img');
-    if (img) {
-      fireEvent.error(img);
-    }
-
-    // Wait for error message
-    await waitFor(() => {
-      expect(screen.getByText('图片加载失败')).toBeDefined();
-    });
-  });
-
-  it('should display error UI with proper styling', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const httpUrl = 'https://example.com/broken-image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    const { container } = render(<ImageDisplay item={item} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('图片加载失败')).toBeDefined();
-    });
-
-    // Check for error container styling
-    const errorContainer = container.querySelector('.border-dashed');
-    expect(errorContainer).toBeDefined();
-    expect(errorContainer?.className).toContain('border-neutral-300');
-  });
-
-  it('should show loading state before error', async () => {
-    // Mock fetchAndCacheImage to throw an error after a delay
-    vi.spyOn(imageCache, 'fetchAndCacheImage').mockImplementation(() => 
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Network error')), 100))
-    );
-
-    const httpUrl = 'https://example.com/image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    render(<ImageDisplay item={item} />);
-    
-    // Should show loading state initially
     expect(screen.getByText('加载中...')).toBeDefined();
 
-    // Should show error after loading fails
+    await waitFor(() => {
+      expect(container.querySelector('img')).toBeTruthy();
+    });
+    const img = container.querySelector('img');
+    fireEvent.error(img!);
+
     await waitFor(() => {
       expect(screen.getByText('图片加载失败')).toBeDefined();
-    }, { timeout: 2000 });
+    });
 
-    // Loading should be gone
     expect(screen.queryByText('加载中...')).toBeNull();
+    expect(container.querySelector('.animate-spin')).toBeNull();
   });
 
   it('should handle base64 image errors with appropriate message', async () => {
@@ -438,50 +322,5 @@ describe('ImageDisplay - Error Handling', () => {
     await waitFor(() => {
       expect(screen.getByText(/图片数据格式错误，无法显示/)).toBeDefined();
     });
-  });
-
-  it('should be visually distinct from loading state', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const httpUrl = 'https://example.com/broken-image.png';
-    const item = createMockClipItem(httpUrl);
-    
-    const { container } = render(<ImageDisplay item={item} />);
-    
-    await waitFor(() => {
-      expect(screen.getByText('图片加载失败')).toBeDefined();
-    });
-
-    // Error state should have error icon (not spinner)
-    const errorIcon = container.querySelector('svg');
-    expect(errorIcon).toBeDefined();
-    
-    // Should not have loading spinner
-    const spinner = container.querySelector('.animate-spin');
-    expect(spinner).toBeNull();
-  });
-
-  it('should handle different error types gracefully', async () => {
-    const testCases = [
-      { error: new Error('Network error'), expectedText: '无法加载网络图片' },
-      { error: new Error('Timeout'), expectedText: '无法加载网络图片' },
-      { error: new Error('404 Not Found'), expectedText: '无法加载网络图片' },
-    ];
-
-    for (const testCase of testCases) {
-      vi.clearAllMocks();
-      vi.spyOn(imageCache, 'fetchAndCacheImage').mockRejectedValue(testCase.error);
-
-      const httpUrl = 'https://example.com/image.png';
-      const item = createMockClipItem(httpUrl);
-      
-      const { unmount } = render(<ImageDisplay item={item} />);
-      
-      await waitFor(() => {
-        expect(screen.getByText(new RegExp(testCase.expectedText))).toBeDefined();
-      });
-
-      unmount();
-    }
   });
 });

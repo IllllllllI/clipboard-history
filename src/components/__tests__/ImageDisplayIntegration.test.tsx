@@ -95,7 +95,7 @@ describe('Image Display Integration Tests', () => {
       );
 
       const itemElement = container.querySelector('.group');
-      expect(itemElement?.className).toContain('bg-indigo-500');
+      expect(itemElement?.className).toContain('border-indigo-500');
     });
   });
 
@@ -276,7 +276,7 @@ describe('Image Display Integration Tests', () => {
   });
 
   describe('Keyboard navigation with images', () => {
-    it('should show paste indicator when image item is selected', () => {
+    it('should apply selected style when image item is selected', () => {
       (useAppContext as any).mockReturnValue(createMockContext({ selectedIndex: 0 }));
 
       const imageItem = createMockItem('https://example.com/image.svg');
@@ -285,8 +285,8 @@ describe('Image Display Integration Tests', () => {
         <ClipItemComponent item={imageItem} index={0} />
       );
 
-      const pasteIndicator = screen.getByText('↵ 粘贴');
-      expect(pasteIndicator).toBeTruthy();
+      const selectedItem = container.querySelector('.group');
+      expect(selectedItem?.className).toContain('border-indigo-500');
     });
   });
 
@@ -347,7 +347,7 @@ describe('Image Display Integration Tests', () => {
       );
 
       // Color preview should exist
-      const colorPreview = colorContainer.querySelector('.rounded-full');
+      const colorPreview = colorContainer.querySelector('.w-5.h-5');
       expect(colorPreview).toBeTruthy();
       
       // Image display should exist
@@ -430,9 +430,9 @@ describe('Image Display Integration Tests', () => {
       expect(lightMode.querySelector('.group')).toBeTruthy();
       expect(darkMode.querySelector('.group')).toBeTruthy();
       
-      // Dark mode should have different text color
-      const darkModeIcon = darkMode.querySelector('.w-6.h-6');
-      expect(darkModeIcon?.className).toContain('text-neutral-500');
+      // Dark mode should apply dark surface styles
+      const darkModeItem = darkMode.querySelector('.group');
+      expect(darkModeItem?.className).toContain('bg-neutral-800');
     });
   });
 });

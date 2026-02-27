@@ -5,6 +5,7 @@ import { register, unregister, unregisterAll } from '@tauri-apps/plugin-global-s
 import { Image } from '@tauri-apps/api/image';
 import { open } from '@tauri-apps/plugin-dialog';
 import { open as openPath } from '@tauri-apps/plugin-shell';
+import type { ImageAdvancedConfig, ImagePerformanceProfile } from '../types';
 
 export const isTauri = !!(window as any).__TAURI_INTERNALS__;
 
@@ -179,6 +180,30 @@ export const TauriService = {
   async copyLocalImage(path: string): Promise<void> {
     if (!isTauri) return;
     await invoke<void>('copy_image_to_clipboard', { path });
+  },
+
+  /** 设置图片处理性能档位 */
+  async setImagePerformanceProfile(profile: ImagePerformanceProfile): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('set_image_performance_profile', { profile });
+  },
+
+  /** 获取后端当前图片处理性能档位 */
+  async getImagePerformanceProfile(): Promise<ImagePerformanceProfile | null> {
+    if (!isTauri) return null;
+    return await invoke<ImagePerformanceProfile>('get_image_performance_profile');
+  },
+
+  /** 设置图片处理高级配置 */
+  async setImageAdvancedConfig(config: ImageAdvancedConfig): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('set_image_advanced_config', { config });
+  },
+
+  /** 获取后端当前图片处理高级配置 */
+  async getImageAdvancedConfig(): Promise<ImageAdvancedConfig | null> {
+    if (!isTauri) return null;
+    return await invoke<ImageAdvancedConfig>('get_image_advanced_config');
   },
 
   /** 将文件路径以 CF_HDROP 格式复制到剪贴板 */

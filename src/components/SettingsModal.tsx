@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, FolderOpen } from 'lucide-react';
+import { X, FolderOpen, Loader2 } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { TauriService } from '../services/tauri';
 import { getGlobalShortcutConflict, getImmersiveShortcutConflict } from '../utils';
@@ -31,6 +31,14 @@ const AUTO_CLEAR_OPTIONS = [
   { value: 30, label: '30 天' },
   { value: 90, label: '90 天' },
 ] as const;
+
+const IMAGE_PERFORMANCE_OPTIONS = [
+  { value: 'quality', label: '质量优先', desc: '尽量保留原图，适合清晰度要求高的场景' },
+  { value: 'balanced', label: '平衡', desc: '默认推荐，兼顾清晰度与写入速度' },
+  { value: 'speed', label: '速度优先', desc: '优先降低写入耗时，可能牺牲部分清晰度' },
+] as const;
+
+const MIN_DECODED_MB = 8;
 
 // ============================================================================
 // 样式工具
@@ -456,6 +464,12 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
   const [dbInfo, setDbInfo] = useState<{ path: string; size: number } | null>(null);
   // 数据库操作加载状态
   const [dbMoving, setDbMoving] = useState(false);
+  // 后端实际生效的图片性能档位
+  const [backendImageProfile, setBackendImageProfile] = useState<typeof settings.imagePerformanceProfile | null>(null);
+  const [backendProfileSyncState, setBackendProfileSyncState] = useState<'syncing' | 'synced' | 'failed'>('syncing');
+  const [backendProfileError, setBackendProfileError] = useState<string | null>(null);
+  const [backendProfileRetryToken, setBackendProfileRetryToken] = useState(0);
+  const decodedMb = Math.max(MIN_DECODED_MB, Math.round(settings.maxDecodedBytes / 1024 / 1024));
 
   const fetchImagesInfo = useCallback(async () => {
     const info = await TauriService.getImagesDirInfo(settings.imagesDir || undefined);
@@ -473,6 +487,69 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
       fetchDbInfo();
     }
   }, [show, fetchImagesInfo, fetchDbInfo]);
+
+  useEffect(() => {
+    if (!show) return;
+
+    let cancelled = false;
+    const MAX_ATTEMPTS = 6;
+    const RETRY_DELAY_MS = 220;
+
+    const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const syncBackendProfile = async () => {
+      setBackendProfileSyncState('syncing');
+      setBackendProfileError(null);
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          const profile = await TauriService.getImagePerformanceProfile();
+          if (cancelled) return;
+
+          if (!profile) {
+            setBackendProfileSyncState('failed');
+            setBackendProfileError('后端未返回档位');
+            return;
+          }
+
+          setBackendImageProfile(profile);
+
+          if (profile === settings.imagePerformanceProfile) {
+            setBackendProfileSyncState('synced');
+            return;
+          }
+
+          if (attempt < MAX_ATTEMPTS) {
+            await wait(RETRY_DELAY_MS);
+            if (cancelled) return;
+            continue;
+          }
+
+          setBackendProfileSyncState('failed');
+          setBackendProfileError('后端未在预期时间内应用新档位');
+          return;
+        } catch (error) {
+          if (cancelled) return;
+
+          if (attempt < MAX_ATTEMPTS) {
+            await wait(RETRY_DELAY_MS);
+            if (cancelled) return;
+            continue;
+          }
+
+          setBackendProfileSyncState('failed');
+          setBackendProfileError(error instanceof Error ? error.message : String(error));
+          return;
+        }
+      }
+    };
+
+    syncBackendProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [show, settings.imagePerformanceProfile, backendProfileRetryToken]);
 
   // ── 图片路径操作 ──
 
@@ -621,6 +698,90 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
                   <ToggleSwitch dark={dark} on={!!settings[key]} onToggle={() => updateSettings({ [key]: !settings[key] })} />
                 </SettingRow>
               ))}
+
+              {/* 图片性能档位 */}
+              <div className="space-y-2">
+                <p className="font-medium text-sm">图片处理性能档位</p>
+                <select
+                  value={settings.imagePerformanceProfile}
+                  onChange={(e) => updateSettings({ imagePerformanceProfile: e.target.value as typeof settings.imagePerformanceProfile })}
+                  className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-50 border-neutral-200'}`}
+                >
+                  {IMAGE_PERFORMANCE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-neutral-500">
+                  {IMAGE_PERFORMANCE_OPTIONS.find(opt => opt.value === settings.imagePerformanceProfile)?.desc}
+                </p>
+                {backendProfileSyncState === 'failed' ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-red-500">
+                      后端已生效：获取失败（{backendProfileError ?? '未知错误'}）
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setBackendProfileRetryToken((token) => token + 1)}
+                      className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${dark ? 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'}`}
+                    >
+                      重试
+                    </button>
+                  </div>
+                ) : (
+                  <div className={`text-xs flex items-center gap-1.5 ${backendProfileSyncState === 'synced' ? 'text-emerald-500' : 'text-amber-500'}`}>
+                    {backendProfileSyncState === 'syncing' && <Loader2 className="w-3 h-3 animate-spin" />}
+                    <span>
+                      后端已生效：
+                      {IMAGE_PERFORMANCE_OPTIONS.find(opt => opt.value === (backendImageProfile ?? settings.imagePerformanceProfile))?.label ?? '未知'}
+                      {backendProfileSyncState === 'synced' ? '（已同步）' : '（同步中）'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 图片处理高级配置 */}
+              <div className="space-y-3">
+                <p className="font-medium text-sm">图片处理高级配置</p>
+
+                <SettingRow
+                  title="允许内网地址"
+                  desc="开启后允许访问 127.0.0.1/内网网段图片链接（存在 SSRF 风险）"
+                >
+                  <ToggleSwitch
+                    dark={dark}
+                    on={settings.allowPrivateNetwork}
+                    onToggle={() => updateSettings({ allowPrivateNetwork: !settings.allowPrivateNetwork })}
+                  />
+                </SettingRow>
+
+                <SettingRow
+                  title="DNS 解析安全校验"
+                  desc="校验域名解析结果是否落入内网/本地地址，建议保持开启"
+                >
+                  <ToggleSwitch
+                    dark={dark}
+                    on={settings.resolveDnsForUrlSafety}
+                    onToggle={() => updateSettings({ resolveDnsForUrlSafety: !settings.resolveDnsForUrlSafety })}
+                  />
+                </SettingRow>
+
+                <div className="space-y-2">
+                  <p className="font-medium text-sm">解码内存上限（MB）</p>
+                  <input
+                    type="number"
+                    min={MIN_DECODED_MB}
+                    step={8}
+                    value={decodedMb}
+                    onChange={(e) => {
+                      const parsed = Number.parseInt(e.target.value || `${MIN_DECODED_MB}`, 10);
+                      const nextMb = Number.isFinite(parsed) ? Math.max(MIN_DECODED_MB, parsed) : MIN_DECODED_MB;
+                      updateSettings({ maxDecodedBytes: nextMb * 1024 * 1024 });
+                    }}
+                    className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-50 border-neutral-200'}`}
+                  />
+                  <p className="text-xs text-neutral-500">最小 {MIN_DECODED_MB}MB；值越大可处理更大图片，但峰值内存也会增加</p>
+                </div>
+              </div>
 
               {/* 图片保存路径 */}
               <PathSelector

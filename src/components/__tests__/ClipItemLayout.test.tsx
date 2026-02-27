@@ -87,7 +87,7 @@ describe('ClipItemComponent Layout', () => {
     // Check that the content area has proper flex properties
     const contentArea = container.querySelector('.flex-1');
     expect(contentArea?.className).toContain('min-w-0');
-    expect(contentArea?.className).toContain('items-start');
+    expect(contentArea?.className).toContain('flex-col');
   });
 
   it('should handle text-only items correctly', () => {
@@ -112,6 +112,6 @@ describe('ClipItemComponent Layout', () => {
 
     // Color items should have proper spacing
     const contentArea = container.querySelector('.flex-1');
-    expect(contentArea?.className).toContain('gap-3');
+    expect(contentArea?.className).toContain('gap-1.5');
   });
 });
