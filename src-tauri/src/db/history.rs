@@ -112,10 +112,55 @@ fn get_history(conn: &Connection, limit: i64) -> Result<Vec<ClipItem>, AppError>
     Ok(items)
 }
 
-fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<(), AppError> {
+fn get_clip_by_id(conn: &Connection, id: i64) -> Result<Option<ClipItem>, AppError> {
+    let mut stmt = conn
+        .prepare(
+            "
+            SELECT h.id, h.text, h.timestamp, h.is_pinned, h.is_snippet, h.is_favorite,
+                   COALESCE((
+                       SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
+                       FROM item_tags it
+                       JOIN tags t ON it.tag_id = t.id
+                       WHERE it.item_id = h.id
+                   ), '[]') as tags,
+                   h.picked_color
+            FROM history h
+            WHERE h.id = ?1
+            LIMIT 1
+            ",
+        )
+        .map_err(|e| AppError::Database(format!("准备按 ID 查询失败: {}", e)))?;
+
+    let mut rows = stmt
+        .query(params![id])
+        .map_err(|e| AppError::Database(format!("按 ID 查询历史失败: {}", e)))?;
+
+    if let Some(row) = rows
+        .next()
+        .map_err(|e| AppError::Database(format!("读取按 ID 查询结果失败: {}", e)))?
+    {
+        let tags_json: String = row.get(6).map_err(|e| AppError::Database(format!("读取标签 JSON 失败: {}", e)))?;
+        let tags: Vec<Tag> = serde_json::from_str(&tags_json).unwrap_or_default();
+        let item = ClipItem {
+            id: row.get(0).map_err(|e| AppError::Database(format!("读取 id 失败: {}", e)))?,
+            text: row.get(1).map_err(|e| AppError::Database(format!("读取 text 失败: {}", e)))?,
+            timestamp: row.get(2).map_err(|e| AppError::Database(format!("读取 timestamp 失败: {}", e)))?,
+            is_pinned: row.get(3).map_err(|e| AppError::Database(format!("读取 is_pinned 失败: {}", e)))?,
+            is_snippet: row.get(4).map_err(|e| AppError::Database(format!("读取 is_snippet 失败: {}", e)))?,
+            is_favorite: row.get(5).map_err(|e| AppError::Database(format!("读取 is_favorite 失败: {}", e)))?,
+            tags,
+            picked_color: row.get(7).map_err(|e| AppError::Database(format!("读取 picked_color 失败: {}", e)))?,
+        };
+        Ok(Some(item))
+    } else {
+        Ok(None)
+    }
+}
+
+fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<Option<i64>, AppError> {
     let text = text.trim().to_string();
     if text.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
     if is_snippet == 0 {
@@ -127,7 +172,7 @@ fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<(), AppE
             )
             .ok();
         if last_text.as_deref() == Some(&text) {
-            return Ok(());
+            return Ok(None);
         }
     }
 
@@ -137,7 +182,7 @@ fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<(), AppE
         params![text, now, is_snippet],
     ).map_err(|e| AppError::Database(format!("插入记录失败: {}", e)))?;
 
-    Ok(())
+    Ok(Some(conn.last_insert_rowid()))
 }
 
 fn toggle_pin(conn: &Connection, id: i64, current_pinned: i32) -> Result<(), AppError> {
@@ -240,7 +285,25 @@ pub fn db_add_clip(
     text: String,
     is_snippet: i32,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| add_clip(conn, text, is_snippet))
+    super::with_conn(&state, |conn| {
+        let _ = add_clip(conn, text, is_snippet)?;
+        Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn db_add_clip_and_get(
+    state: State<'_, DbState>,
+    text: String,
+    is_snippet: i32,
+) -> Result<Option<ClipItem>, AppError> {
+    super::with_conn(&state, |conn| {
+        let inserted_id = add_clip(conn, text, is_snippet)?;
+        match inserted_id {
+            Some(id) => get_clip_by_id(conn, id),
+            None => Ok(None),
+        }
+    })
 }
 
 #[tauri::command]
@@ -357,6 +420,16 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0))
             .expect("query count");
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn add_clip_returns_inserted_id() {
+        let conn = setup_conn();
+        let inserted = add_clip(&conn, "first".to_string(), 0).expect("insert should succeed");
+        assert!(inserted.is_some());
+
+        let duplicated = add_clip(&conn, "first".to_string(), 0).expect("dedupe should succeed");
+        assert!(duplicated.is_none());
     }
 
     #[test]

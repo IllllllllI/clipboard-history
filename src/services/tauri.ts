@@ -1,30 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
-import { readText, readImage } from '@tauri-apps/plugin-clipboard-manager';
 import { register, unregister, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
-import { Image } from '@tauri-apps/api/image';
 import { open } from '@tauri-apps/plugin-dialog';
 import { open as openPath } from '@tauri-apps/plugin-shell';
 import type { ImageAdvancedConfig, ImagePerformanceProfile } from '../types';
 
 export const isTauri = !!(window as any).__TAURI_INTERNALS__;
-
-// ============================================================================
-// 错误处理 — 服务层只打印日志，不做 toast 等 UI 操作
-// ============================================================================
-
-/** 格式化错误消息 */
-const toMsg = (err: unknown): string =>
-  err instanceof Error ? err.message : String(err);
-
-/**
- * 记录错误日志并重新抛出。
- * 调用方（Context / Hook）决定如何向用户呈现错误。
- */
-function logAndThrow(context: string, error: unknown): never {
-  console.error(`[TauriService] ${context}:`, error);
-  throw error;
-}
 
 // ============================================================================
 // 工具函数
@@ -89,25 +70,6 @@ export const TauriService = {
 
   // ── 剪贴板读写 ──
 
-  async readClipboard(): Promise<string | null> {
-    if (!isTauri) return null;
-    try {
-      return await readText();
-    } catch {
-      // 读取失败是常见情况（如剪贴板中只有图片），静默返回 null
-      return null;
-    }
-  },
-
-  async readImage(): Promise<Image | null> {
-    if (!isTauri) return null;
-    try {
-      return await readImage();
-    } catch {
-      return null;
-    }
-  },
-
   /** 将文本写入剪贴板（统一由后端处理，自带 IgnoreGuard） */
   async writeClipboard(text: string): Promise<void> {
     if (isTauri) {
@@ -123,17 +85,6 @@ export const TauriService = {
     await invoke<void>('copy_base64_image_to_clipboard', { data: base64DataUrl });
   },
 
-  /** 从剪贴板读取文件列表 (CF_HDROP on Windows) */
-  async readClipboardFiles(): Promise<string[] | null> {
-    if (!isTauri) return null;
-    try {
-      return await invoke<string[]>('read_clipboard_files');
-    } catch {
-      // 无文件列表是常见情况，静默返回 null
-      return null;
-    }
-  },
-
   // ── 剪贴板图片/文件操作 ──
 
   async saveClipboardImage(saveDir?: string): Promise<string | null> {
@@ -145,10 +96,11 @@ export const TauriService = {
     }
   },
 
-  async saveClipboardSvg(saveDir?: string): Promise<string | null> {
+  /** 单次抓取剪贴板快照：文件列表 / 图片 / SVG / 文本（后端按优先级处理） */
+  async captureClipboardSnapshot(saveDir?: string): Promise<string | null> {
     if (!isTauri) return null;
     try {
-      return await invoke<string | null>('save_clipboard_svg', { customDir: saveDir || null });
+      return await invoke<string | null>('capture_clipboard_snapshot', { customDir: saveDir || null });
     } catch {
       return null;
     }

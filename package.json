@@ -10,6 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "vitest",
+    "audit:service-usage": "node scripts/audit-service-usage.mjs",
     "test:settings": "vitest run src/hooks/useSettings.test.ts",
     "test:ui": "vitest --ui",
     "tauri": "tauri",

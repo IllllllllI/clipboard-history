@@ -69,6 +69,26 @@ export function useClipboardContext(): ClipboardContextValue {
 const toMsg = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
 
+function insertCapturedItem(prev: ClipItem[], item: ClipItem, maxItems: number): ClipItem[] {
+  const deduped = prev.filter(existing => existing.id !== item.id);
+
+  if (item.is_pinned) {
+    return [item, ...deduped].slice(0, maxItems);
+  }
+
+  const firstUnpinnedIndex = deduped.findIndex(existing => existing.is_pinned === 0);
+  if (firstUnpinnedIndex === -1) {
+    return [...deduped, item].slice(0, maxItems);
+  }
+
+  const next = [
+    ...deduped.slice(0, firstUnpinnedIndex),
+    item,
+    ...deduped.slice(firstUnpinnedIndex),
+  ];
+  return next.slice(0, maxItems);
+}
+
 /** 包装 async handler，统一捕获错误并写入 setError */
 function makeHandler<Args extends unknown[]>(
   fn: (...args: Args) => Promise<void>,
@@ -124,7 +144,11 @@ export function ClipboardProvider({
 
   // 剪贴板监听 & 复制（注入 setError 实现错误上报）
   const handleClipboardError = useCallback((msg: string) => setError(msg), []);
-  const { copyToClipboard, copyText, copiedId } = useClipboard(settings, loadHistory, handleClipboardError);
+  const handleCapturedItem = useCallback(async (item: ClipItem) => {
+    setHistory(prev => insertCapturedItem(prev, item, settings.maxItems));
+    await updateStats();
+  }, [settings.maxItems, updateStats]);
+  const { copyToClipboard, copyText, copiedId } = useClipboard(settings, handleCapturedItem, handleClipboardError);
 
   // --- 带错误处理的 handlers ---
 

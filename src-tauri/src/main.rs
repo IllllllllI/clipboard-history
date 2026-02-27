@@ -102,6 +102,7 @@ fn main() {
             // 剪贴板保存
             clipboard::save::save_clipboard_image,
             clipboard::save::save_clipboard_svg,
+            clipboard::save::capture_clipboard_snapshot,
             clipboard::save::copy_image_from_file,
             clipboard::save::copy_svg_from_file,
             clipboard::save::read_clipboard_files,
@@ -131,6 +132,7 @@ fn main() {
             db::db_get_stats,
             db::db_get_history,
             db::db_add_clip,
+            db::db_add_clip_and_get,
             db::db_toggle_pin,
             db::db_toggle_favorite,
             db::db_delete_clip,

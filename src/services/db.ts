@@ -50,6 +50,11 @@ export const ClipboardDB = {
     return ipcVoid('db_add_clip', { text, isSnippet });
   },
 
+  addClipAndGet: (text: string, isSnippet = 0) => {
+    if (!text.trim()) return Promise.resolve<ClipItem | null>(null);
+    return ipc<ClipItem | null>('db_add_clip_and_get', { text, isSnippet });
+  },
+
   togglePin: (id: number, currentPinned: number) =>
     ipcVoid('db_toggle_pin', { id, currentPinned }),
 
@@ -67,16 +72,6 @@ export const ClipboardDB = {
 
   clearAll: () =>
     ipcVoid('db_clear_all'),
-
-  bulkDelete: (ids: number[]) => {
-    if (ids.length === 0) return Promise.resolve();
-    return ipcVoid('db_bulk_delete', { ids });
-  },
-
-  bulkPin: (ids: number[]) => {
-    if (ids.length === 0) return Promise.resolve();
-    return ipcVoid('db_bulk_pin', { ids });
-  },
 
   importData: (items: unknown[]) =>
     ipcVoid('db_import_data', { items }),

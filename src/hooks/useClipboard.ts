@@ -3,37 +3,11 @@ import { listen } from '@tauri-apps/api/event';
 import { ClipboardDB } from '../services/db';
 import { TauriService, isTauri } from '../services/tauri';
 import { ClipItem, AppSettings, ImageType } from '../types';
-import { encodeFileList, isFileList, detectImageType, normalizeFilePath } from '../utils';
+import { isFileList, detectImageType, normalizeFilePath } from '../utils';
 
 /** 后端发送的剪贴板变化事件负载 */
 interface ClipboardEventPayload {
   source: 'external' | 'internal';
-}
-
-// ============================================================================
-// 剪贴板内容读取管道（扁平化，消除深层嵌套）
-// ============================================================================
-
-/** 按优先级依次尝试读取剪贴板内容，首个成功即返回 */
-async function readClipboardContent(imagesDir?: string): Promise<string | null> {
-  // 1) 文件列表 (CF_HDROP on Windows)
-  const files = await TauriService.readClipboardFiles();
-  if (files && files.length > 0) return encodeFileList(files);
-
-  // 2) 图片
-  const imagePath = await TauriService.saveClipboardImage(imagesDir);
-  if (imagePath) return imagePath;
-
-  // 3) SVG
-  const svgPath = await TauriService.saveClipboardSvg(imagesDir);
-  if (svgPath) return svgPath;
-
-  // 4) 纯文本
-  try {
-    return await TauriService.readClipboard();
-  } catch {
-    return null;
-  }
 }
 
 // ============================================================================
@@ -92,12 +66,49 @@ const toMsg = (err: unknown): string =>
 
 export function useClipboard(
   settings: AppSettings,
-  onUpdate: () => void,
+  onCaptured: (item: ClipItem) => void | Promise<void>,
   onError: (msg: string) => void,
 ) {
   const lastCopiedRef = useRef<string | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isProcessingRef = useRef(false);
+  const hasPendingRef = useRef(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const processClipboardSnapshot = useCallback(async () => {
+    if (isProcessingRef.current) {
+      hasPendingRef.current = true;
+      return;
+    }
+
+    isProcessingRef.current = true;
+
+    try {
+      do {
+        hasPendingRef.current = false;
+
+        const text = await TauriService.captureClipboardSnapshot(settings.imagesDir);
+        if (text && text !== lastCopiedRef.current) {
+          const inserted = await ClipboardDB.addClipAndGet(text);
+          if (inserted) {
+            await onCaptured(inserted);
+          }
+        }
+
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(() => {
+          if (lastCopiedRef.current === text) {
+            lastCopiedRef.current = null;
+          }
+        }, 1000);
+      } while (hasPendingRef.current);
+    } catch (err) {
+      onError(`读取剪贴板失败: ${toMsg(err)}`);
+    } finally {
+      isProcessingRef.current = false;
+    }
+  }, [settings.imagesDir, onCaptured, onError]);
 
   // ---- 剪贴板监听 ----
 
@@ -107,30 +118,18 @@ export function useClipboard(
     const unlisten = listen<ClipboardEventPayload>('clipboard-changed', async (event) => {
       if (event.payload?.source !== 'external') return;
 
-      try {
-        const text = await readClipboardContent(settings.imagesDir);
-        if (text && text !== lastCopiedRef.current) {
-          await ClipboardDB.addClip(text);
-          onUpdate();
-        }
-
-        // 清除前一个定时器，避免竞态
-        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-        resetTimerRef.current = setTimeout(() => {
-          if (lastCopiedRef.current === text) {
-            lastCopiedRef.current = null;
-          }
-        }, 1000);
-      } catch (err) {
-        onError(`读取剪贴板失败: ${toMsg(err)}`);
-      }
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        void processClipboardSnapshot();
+      }, 120);
     });
 
     return () => {
       unlisten.then(f => f());
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
-  }, [settings.autoCapture, settings.imagesDir, onUpdate]);
+  }, [settings.autoCapture, processClipboardSnapshot]);
 
   // ---- 复制操作（useCallback 稳定引用）----
 

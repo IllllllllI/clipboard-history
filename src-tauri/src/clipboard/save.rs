@@ -22,26 +22,88 @@ use crate::storage::get_images_dir;
 use super::code_detection::is_likely_code;
 use super::IgnoreGuard;
 
-// ============================================================================
-// 读取剪贴板文件列表
-// ============================================================================
+const FILES_PREFIX: &str = "[FILES]\n";
 
-/// 从剪贴板读取文件列表（CF_HDROP 格式，Windows 专用）
-///
-/// 当用户在资源管理器中复制文件时，剪贴板中包含 CF_HDROP 数据。
-/// 此命令读取这些文件路径并返回。
-///
-/// # 返回
-/// - `Ok(Some(Vec<String>))`：包含一个或多个文件路径
-/// - `Ok(None)`：剪贴板中没有文件
-/// - `Err(msg)`：操作失败
+fn encode_file_list(files: &[String]) -> Option<String> {
+    if files.is_empty() {
+        return None;
+    }
+    Some(format!("{}{}", FILES_PREFIX, files.join("\n")))
+}
+
+fn should_skip_image_by_text(text: &str) -> bool {
+    if text.contains('\n') {
+        if is_likely_code(text) {
+            log::debug!("🚫 检测到代码内容（多行），跳过保存图片");
+            return true;
+        }
+        if text.len() > 500 {
+            log::debug!(
+                "🚫 多行长文本（{} 字符）带图片，可能是网页复制，跳过保存",
+                text.len()
+            );
+            return true;
+        }
+    }
+
+    if is_likely_code(text) {
+        log::debug!("🚫 检测到代码内容（单行），跳过保存图片");
+        return true;
+    }
+
+    false
+}
+
+fn save_image_data(
+    app: &tauri::AppHandle,
+    custom_dir: Option<String>,
+    image_data: arboard::ImageData<'_>,
+) -> Result<Option<String>, AppError> {
+    if image_data.width < 64 || image_data.height < 64 {
+        log::debug!(
+            "🚫 图片太小 ({}x{})，可能是图标，跳过保存",
+            image_data.width,
+            image_data.height
+        );
+        return Ok(None);
+    }
+
+    let width = image_data.width as u32;
+    let height = image_data.height as u32;
+    let image = image::RgbaImage::from_raw(width, height, image_data.bytes.into_owned())
+        .ok_or_else(|| AppError::Clipboard("创建图像缓冲区失败".to_string()))?;
+
+    let timestamp = Local::now().format("%Y%m%d%H%M%S%f");
+    let file_name = format!("img_{}.png", timestamp);
+    let file_path = get_images_dir(app, custom_dir)?.join(&file_name);
+
+    image
+        .save_with_format(&file_path, ImageFormat::Png)
+        .map_err(|e| AppError::Clipboard(format!("保存图片失败: {}", e)))?;
+
+    Ok(Some(file_path.to_string_lossy().to_string()))
+}
+
+fn save_svg_text(app: &tauri::AppHandle, custom_dir: Option<String>, text: &str) -> Result<Option<String>, AppError> {
+    let trimmed = text.trim();
+    if (trimmed.contains("<svg") && trimmed.contains("</svg>"))
+        || (trimmed.starts_with("<?xml") && trimmed.contains("<svg"))
+    {
+        let timestamp = Local::now().format("%Y%m%d%H%M%S%f");
+        let file_name = format!("svg_{}.svg", timestamp);
+        let file_path = get_images_dir(app, custom_dir)?.join(&file_name);
+        fs::write(&file_path, text)?;
+        return Ok(Some(file_path.to_string_lossy().to_string()));
+    }
+    Ok(None)
+}
+
 #[cfg(target_os = "windows")]
-#[tauri::command]
-pub async fn read_clipboard_files() -> Result<Option<Vec<String>>, AppError> {
+fn read_clipboard_files_sync() -> Result<Option<Vec<String>>, AppError> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::System::DataExchange::{CloseClipboard, OpenClipboard, GetClipboardData};
+    use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
     use windows::Win32::System::Ole::CF_HDROP;
     use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
@@ -58,34 +120,26 @@ pub async fn read_clipboard_files() -> Result<Option<Vec<String>>, AppError> {
             };
 
             let hdrop = HDROP(handle.0);
-
-            // 获取文件数量
             let count = DragQueryFileW(hdrop, 0xFFFFFFFF, None);
             if count == 0 {
                 return Ok(None);
             }
 
             let mut files = Vec::with_capacity(count as usize);
-
             for i in 0..count {
-                // 获取文件名长度
                 let len = DragQueryFileW(hdrop, i, None);
                 if len == 0 {
                     continue;
                 }
 
-                // 读取文件名
                 let mut buf = vec![0u16; (len + 1) as usize];
                 DragQueryFileW(hdrop, i, Some(&mut buf));
 
-                // 去掉末尾的 null terminator
                 if let Some(pos) = buf.iter().position(|&c| c == 0) {
                     buf.truncate(pos);
                 }
 
-                let path = OsString::from_wide(&buf)
-                    .to_string_lossy()
-                    .to_string();
+                let path = OsString::from_wide(&buf).to_string_lossy().to_string();
                 files.push(path);
             }
 
@@ -100,6 +154,30 @@ pub async fn read_clipboard_files() -> Result<Option<Vec<String>>, AppError> {
         let _ = CloseClipboard();
         result
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_clipboard_files_sync() -> Result<Option<Vec<String>>, AppError> {
+    Ok(None)
+}
+
+// ============================================================================
+// 读取剪贴板文件列表
+// ============================================================================
+
+/// 从剪贴板读取文件列表（CF_HDROP 格式，Windows 专用）
+///
+/// 当用户在资源管理器中复制文件时，剪贴板中包含 CF_HDROP 数据。
+/// 此命令读取这些文件路径并返回。
+///
+/// # 返回
+/// - `Ok(Some(Vec<String>))`：包含一个或多个文件路径
+/// - `Ok(None)`：剪贴板中没有文件
+/// - `Err(msg)`：操作失败
+#[cfg(target_os = "windows")]
+#[tauri::command]
+pub async fn read_clipboard_files() -> Result<Option<Vec<String>>, AppError> {
+    read_clipboard_files_sync()
 }
 
 /// 非 Windows 平台的占位实现
@@ -136,53 +214,14 @@ pub async fn save_clipboard_image(
     let mut clipboard = arboard::Clipboard::new()
         .map_err(|e| AppError::Clipboard(e.to_string()))?;
 
+    let maybe_text = clipboard.get_text().ok();
     if let Ok(image_data) = clipboard.get_image() {
-        // 防护层 1：检查图片大小
-        if image_data.width < 64 || image_data.height < 64 {
-            log::debug!(
-                "🚫 图片太小 ({}x{})，可能是图标，跳过保存",
-                image_data.width, image_data.height
-            );
-            return Ok(None);
-        }
-
-        // 防护层 2 & 3：检查文本内容
-        if let Ok(text) = clipboard.get_text() {
-            if text.contains('\n') {
-                if is_likely_code(&text) {
-                    log::debug!("🚫 检测到代码内容（多行），跳过保存图片");
-                    return Ok(None);
-                }
-                if text.len() > 500 {
-                    log::debug!(
-                        "🚫 多行长文本（{} 字符）带图片，可能是网页复制，跳过保存",
-                        text.len()
-                    );
-                    return Ok(None);
-                }
-            }
-            if is_likely_code(&text) {
-                log::debug!("🚫 检测到代码内容（单行），跳过保存图片");
+        if let Some(text) = maybe_text.as_deref() {
+            if should_skip_image_by_text(text) {
                 return Ok(None);
             }
         }
-
-        // 通过所有检查，保存图片
-        let width = image_data.width as u32;
-        let height = image_data.height as u32;
-        let image =
-            image::RgbaImage::from_raw(width, height, image_data.bytes.into_owned())
-                .ok_or_else(|| AppError::Clipboard("创建图像缓冲区失败".to_string()))?;
-
-        let timestamp = Local::now().format("%Y%m%d%H%M%S%f");
-        let file_name = format!("img_{}.png", timestamp);
-        let file_path = get_images_dir(&app, custom_dir)?.join(&file_name);
-
-        image
-            .save_with_format(&file_path, ImageFormat::Png)
-            .map_err(|e| AppError::Clipboard(format!("保存图片失败: {}", e)))?;
-
-        return Ok(Some(file_path.to_string_lossy().to_string()));
+        return save_image_data(&app, custom_dir, image_data);
     }
 
     Ok(None)
@@ -202,17 +241,52 @@ pub async fn save_clipboard_svg(
         .map_err(|e| AppError::Clipboard(e.to_string()))?;
 
     if let Ok(text) = clipboard.get_text() {
-        let trimmed = text.trim();
-        if (trimmed.contains("<svg") && trimmed.contains("</svg>"))
-            || (trimmed.starts_with("<?xml") && trimmed.contains("<svg"))
-        {
-            let timestamp = Local::now().format("%Y%m%d%H%M%S%f");
-            let file_name = format!("svg_{}.svg", timestamp);
-            let file_path = get_images_dir(&app, custom_dir)?.join(&file_name);
+        return save_svg_text(&app, custom_dir, &text);
+    }
 
-            fs::write(&file_path, text)?;
+    Ok(None)
+}
 
-            return Ok(Some(file_path.to_string_lossy().to_string()));
+// ============================================================================
+// 单次快照（文件 / 图片 / SVG / 文本）
+// ============================================================================
+
+/// 单次抓取当前剪贴板内容，按优先级返回首个可保存内容
+///
+/// 优先级：文件列表 > 图片 > SVG > 纯文本。
+/// 该命令用于监听链路，避免前端在一次事件里多次 IPC 读取剪贴板。
+#[tauri::command]
+pub async fn capture_clipboard_snapshot(
+    app: tauri::AppHandle,
+    custom_dir: Option<String>,
+) -> Result<Option<String>, AppError> {
+    if let Some(files) = read_clipboard_files_sync()? {
+        if let Some(encoded) = encode_file_list(&files) {
+            return Ok(Some(encoded));
+        }
+    }
+
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+
+    let maybe_text = clipboard.get_text().ok();
+
+    if let Ok(image_data) = clipboard.get_image() {
+        if let Some(text) = maybe_text.as_deref() {
+            if should_skip_image_by_text(text) {
+                return Ok(None);
+            }
+        }
+        return save_image_data(&app, custom_dir, image_data);
+    }
+
+    if let Some(text) = maybe_text {
+        if let Some(svg_path) = save_svg_text(&app, custom_dir.clone(), &text)? {
+            return Ok(Some(svg_path));
+        }
+
+        if !text.trim().is_empty() {
+            return Ok(Some(text));
         }
     }
 
@@ -279,4 +353,43 @@ pub async fn write_text_to_clipboard(text: String) -> Result<(), AppError> {
     clipboard.set_text(text)
         .map_err(|e| AppError::Clipboard(e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{encode_file_list, should_skip_image_by_text, FILES_PREFIX};
+
+    #[test]
+    fn encode_file_list_returns_none_for_empty() {
+        let files: Vec<String> = Vec::new();
+        assert!(encode_file_list(&files).is_none());
+    }
+
+    #[test]
+    fn encode_file_list_uses_files_prefix_and_newlines() {
+        let files = vec![
+            String::from("C:\\tmp\\a.txt"),
+            String::from("C:\\tmp\\b.png"),
+        ];
+        let encoded = encode_file_list(&files).expect("encoding should produce payload");
+        assert!(encoded.starts_with(FILES_PREFIX));
+        assert_eq!(encoded, "[FILES]\nC:\\tmp\\a.txt\nC:\\tmp\\b.png");
+    }
+
+    #[test]
+    fn should_skip_image_by_text_detects_code_snippet() {
+        assert!(should_skip_image_by_text("fn main() { println!(\"ok\"); }"));
+    }
+
+    #[test]
+    fn should_skip_image_by_text_detects_long_multiline_text() {
+        let long_line = "a".repeat(501);
+        let text = format!("title\n{}", long_line);
+        assert!(should_skip_image_by_text(&text));
+    }
+
+    #[test]
+    fn should_skip_image_by_text_allows_normal_text() {
+        assert!(!should_skip_image_by_text("hello world, clipboard history"));
+    }
 }

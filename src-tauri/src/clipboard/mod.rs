@@ -21,7 +21,7 @@
 pub mod code_detection;
 pub mod save;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use once_cell::sync::Lazy;
 use tauri::{AppHandle, Emitter, Wry};
@@ -31,19 +31,22 @@ use clipboard_master::{ClipboardHandler, CallbackResult, Master};
 // 剪贴板忽略标志
 // ============================================================================
 
-/// 全局标志：忽略下一次剪贴板变化事件
+/// 全局计数：忽略后续 N 次剪贴板变化事件
 ///
 /// 当应用主动写入剪贴板（如用户点击"复制"按钮）时设置此标志，
 /// 防止该次变化被保存到历史记录中。
-static IGNORE_NEXT_CLIPBOARD_CHANGE: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+static IGNORE_CLIPBOARD_CHANGE_BUDGET: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
 
 /// 设置忽略下一次剪贴板变化事件的标志
 ///
 /// 在任何主动修改剪贴板内容的操作之前调用。
 /// **推荐使用 `IgnoreGuard::new()` 替代直接调用**，以确保标志自动恢复。
 pub fn set_ignore_flag() {
-    IGNORE_NEXT_CLIPBOARD_CHANGE.store(true, Ordering::SeqCst);
-    log::debug!("🚫 已设置剪贴板忽略标志 - 下一次剪贴板变化将被忽略");
+    let previous = IGNORE_CLIPBOARD_CHANGE_BUDGET.fetch_add(1, Ordering::SeqCst);
+    log::debug!(
+        "🚫 已设置剪贴板忽略预算 - 当前预算: {}",
+        previous.saturating_add(1)
+    );
 }
 
 // ============================================================================
@@ -100,10 +103,24 @@ struct ClipboardEventPayload {
 
 impl ClipboardHandler for Handler {
     fn on_clipboard_change(&mut self) -> CallbackResult {
-        if IGNORE_NEXT_CLIPBOARD_CHANGE.swap(false, Ordering::SeqCst) {
-            log::debug!("⏭️  忽略应用主动触发的剪贴板变化");
-            return CallbackResult::Next;
+        let mut current_budget = IGNORE_CLIPBOARD_CHANGE_BUDGET.load(Ordering::SeqCst);
+        while current_budget > 0 {
+            match IGNORE_CLIPBOARD_CHANGE_BUDGET.compare_exchange(
+                current_budget,
+                current_budget - 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    log::debug!("⏭️  忽略应用主动触发的剪贴板变化，剩余预算: {}", current_budget - 1);
+                    return CallbackResult::Next;
+                }
+                Err(actual) => {
+                    current_budget = actual;
+                }
+            }
         }
+
         let _ = self.app.emit("clipboard-changed", ClipboardEventPayload { source: "external" });
         CallbackResult::Next
     }
