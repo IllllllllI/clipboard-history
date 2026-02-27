@@ -1,5 +1,6 @@
 import React, { useMemo, useCallback, useState, useRef } from 'react';
-import { Globe, HardDrive, FileCode2, Images, ExternalLink } from 'lucide-react';
+import { Globe, HardDrive, FileCode2, Images, ExternalLink, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ClipItem, ImageType } from '../../types';
 import { decodeFileList, findDateTimesInText, normalizeFilePath } from '../../utils';
 import { expandHex } from '../../utils/colorConvert';
@@ -58,6 +59,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   // localPickedColor 仅在调色板打开期间作为临时 draft
   const [localPickedColor, setLocalPickedColor] = useState<string | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [copiedColor, setCopiedColor] = useState<string | null>(null);
   const colorBtnRef = useRef<HTMLDivElement>(null);
 
   const handleColorConfirm = useCallback(async (color: string) => {
@@ -155,29 +157,63 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         )}
 
         {/* 文字：原始色值 + 调色后色值 */}
-        <p 
-          className="text-sm truncate font-medium font-mono cursor-pointer hover:text-indigo-500 transition-colors"
+        <div 
+          className="flex items-center gap-1 cursor-pointer group"
           onClick={(e) => {
             e.stopPropagation();
-            copyText(item.text);
+            copyText(item.text).then(() => {
+              setCopiedColor(item.text);
+              setTimeout(() => setCopiedColor(null), 2000);
+            });
           }}
           title="点击复制原始颜色"
         >
-          {item.text}
-        </p>
+          <p className="text-sm truncate font-medium font-mono group-hover:text-indigo-500 transition-colors">
+            {item.text}
+          </p>
+          <AnimatePresence>
+            {copiedColor === item.text && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.5 }}
+                transition={{ duration: 0.15 }}
+              >
+                <Check className="w-3.5 h-3.5 text-green-500" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
         {hasPickedDiff && (
-          <span 
-            className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono truncate cursor-pointer hover:text-indigo-500 transition-colors"
+          <div 
+            className="flex items-center gap-1 cursor-pointer group"
             onClick={(e) => {
               e.stopPropagation();
               if (item.picked_color) {
-                copyText(item.picked_color);
+                copyText(item.picked_color).then(() => {
+                  setCopiedColor(item.picked_color);
+                  setTimeout(() => setCopiedColor(null), 2000);
+                });
               }
             }}
             title="点击复制新颜色"
           >
-            → {item.picked_color}
-          </span>
+            <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono truncate group-hover:text-indigo-500 transition-colors">
+              → {item.picked_color}
+            </span>
+            <AnimatePresence>
+              {copiedColor === item.picked_color && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.5 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.5 }}
+                  transition={{ duration: 0.15 }}
+                >
+                  <Check className="w-3 h-3 text-green-500" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         )}
 
         <ColorPickerPopover
