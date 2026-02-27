@@ -14,6 +14,7 @@
 
 - `src/`: 前端 React 代码。
 - `src-tauri/`: 后端 Rust 代码及配置。
+  - `docs/input-module-architecture.md`: input 模块分层架构与调用链说明。
   - `capabilities/`: **Tauri 2.0 权限配置**（数据库和剪切板访问）。
   - `src/main.rs`: 应用入口与命令注册。
   - `src/image_handler/`: 图片处理模块（下载 / 解码 / 复制）。

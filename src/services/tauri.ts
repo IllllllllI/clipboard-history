@@ -232,7 +232,7 @@ export const TauriService = {
   async getFileIcon(pathOrExt: string): Promise<string | null> {
     if (!isTauri) return null;
     try {
-      return await invoke<string>('get_file_icon', { input: pathOrExt });
+      return await invoke<string | null>('get_file_icon', { input: pathOrExt });
     } catch {
       return null;
     }

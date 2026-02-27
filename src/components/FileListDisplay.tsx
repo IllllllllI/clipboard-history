@@ -15,8 +15,36 @@ import { TauriService } from '../services/tauri';
  * 模块级图标缓存（KEY: 可能是扩展名，也可能是特定文件路径） 
  */
 const iconCache = new Map<string, string | null>();
+const ICON_CACHE_LIMIT = 400;
 /** 去重正在进行中的请求 */
 const pendingRequests = new Map<string, Promise<string | null>>();
+
+function getCachedIcon(cacheKey: string): { hit: boolean; value: string | null } {
+  if (!iconCache.has(cacheKey)) {
+    return { hit: false, value: null };
+  }
+
+  const value = iconCache.get(cacheKey) ?? null;
+  iconCache.delete(cacheKey);
+  iconCache.set(cacheKey, value);
+  return { hit: true, value };
+}
+
+function setCachedIcon(cacheKey: string, value: string | null): void {
+  if (iconCache.has(cacheKey)) {
+    iconCache.delete(cacheKey);
+  }
+
+  iconCache.set(cacheKey, value);
+
+  while (iconCache.size > ICON_CACHE_LIMIT) {
+    const oldestKey = iconCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    iconCache.delete(oldestKey);
+  }
+}
 
 /**
  * 获取系统文件图标（base64 PNG）
@@ -33,12 +61,16 @@ function useSystemFileIcon(filePath: string): string | null {
   // 如果是特殊文件，Key就是完整路径；如果是通用文件，Key就是扩展名
   const cacheKey = isSpecial ? filePath : (ext || 'folder'); 
   
-  const [icon, setIcon] = useState<string | null>(iconCache.get(cacheKey) ?? null);
+  const [icon, setIcon] = useState<string | null>(() => {
+    const cached = getCachedIcon(cacheKey);
+    return cached.hit ? cached.value : null;
+  });
 
   useEffect(() => {
     // 检查缓存
-    if (iconCache.has(cacheKey)) {
-      setIcon(iconCache.get(cacheKey) ?? null);
+    const cached = getCachedIcon(cacheKey);
+    if (cached.hit) {
+      setIcon(cached.value);
       return;
     }
 
@@ -52,13 +84,13 @@ function useSystemFileIcon(filePath: string): string | null {
     }
 
     promise.then((result) => {
-      iconCache.set(cacheKey, result);
+      setCachedIcon(cacheKey, result);
       pendingRequests.delete(cacheKey);
       setIcon(result);
     }).catch(err => {
       console.warn("Failed to load icon:", cacheKey, err);
       // 失败后缓存 null 防止反复请求（例如文件不存在）
-      iconCache.set(cacheKey, null); 
+      setCachedIcon(cacheKey, null);
       pendingRequests.delete(cacheKey);
       setIcon(null);
     });
