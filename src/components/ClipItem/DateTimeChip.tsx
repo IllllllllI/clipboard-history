@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Copy, Check } from 'lucide-react';
 import type { DateTimeMatch } from '../../utils';
@@ -26,6 +26,7 @@ export const DateTimeChip = React.memo(function DateTimeChip({
   const [showPopover, setShowPopover] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chipRef = useRef<HTMLSpanElement>(null);
 
   const formats = useMemo(() => getDateTimeFormats(match.info), [match.info]);
@@ -40,7 +41,21 @@ export const DateTimeChip = React.memo(function DateTimeChip({
   }, []);
 
   const handleMouseLeave = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
     hideTimerRef.current = setTimeout(() => setShowPopover(false), 200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current);
+      }
+    };
   }, []);
 
   const handleCopy = useCallback(
@@ -49,7 +64,13 @@ export const DateTimeChip = React.memo(function DateTimeChip({
       try {
         await copyText(value);
         setCopiedKey(key);
-        setTimeout(() => setCopiedKey(null), 1200);
+        if (copiedTimerRef.current) {
+          clearTimeout(copiedTimerRef.current);
+        }
+        copiedTimerRef.current = setTimeout(() => {
+          setCopiedKey(null);
+          copiedTimerRef.current = null;
+        }, 1200);
       } catch (err) {
         console.error('Failed to copy datetime format', err);
       }
@@ -80,7 +101,7 @@ export const DateTimeChip = React.memo(function DateTimeChip({
           <div
             ref={popoverRef}
             style={style}
-            className="flex flex-col gap-0.5 p-1.5 rounded-lg shadow-xl border backdrop-blur-sm bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 min-w-[150px] max-w-[300px]"
+            className="flex flex-col gap-0.5 p-1.5 rounded-xl shadow-xl border backdrop-blur-sm bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 min-w-[150px] max-w-[300px]"
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             onClick={(e) => e.stopPropagation()}
@@ -95,7 +116,7 @@ export const DateTimeChip = React.memo(function DateTimeChip({
                 <button
                   key={key}
                   onClick={(e) => handleCopy(fmt.value, key, e)}
-                  className={`flex items-center gap-1.5 text-[11px] px-1.5 py-1 rounded-md transition-all text-left whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 text-[11px] px-1.5 py-1 rounded-lg transition-all duration-150 text-left whitespace-nowrap ${
                     isCopied
                       ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                       : 'hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300'
@@ -141,19 +162,22 @@ export const HighlightDateTimeText = React.memo(function HighlightDateTimeText({
     return <HighlightText text={text} highlight={searchQuery} />;
   }
 
-  const segments: { text: string; isDateTime: boolean; matchIdx: number }[] = [];
-  let lastEnd = 0;
-  for (let mi = 0; mi < matches.length; mi++) {
-    const m = matches[mi];
-    if (m.start > lastEnd) {
-      segments.push({ text: text.slice(lastEnd, m.start), isDateTime: false, matchIdx: -1 });
+  const segments = useMemo(() => {
+    const computed: { text: string; isDateTime: boolean; matchIdx: number }[] = [];
+    let lastEnd = 0;
+    for (let mi = 0; mi < matches.length; mi++) {
+      const match = matches[mi];
+      if (match.start > lastEnd) {
+        computed.push({ text: text.slice(lastEnd, match.start), isDateTime: false, matchIdx: -1 });
+      }
+      computed.push({ text: text.slice(match.start, match.end), isDateTime: true, matchIdx: mi });
+      lastEnd = match.end;
     }
-    segments.push({ text: text.slice(m.start, m.end), isDateTime: true, matchIdx: mi });
-    lastEnd = m.end;
-  }
-  if (lastEnd < text.length) {
-    segments.push({ text: text.slice(lastEnd), isDateTime: false, matchIdx: -1 });
-  }
+    if (lastEnd < text.length) {
+      computed.push({ text: text.slice(lastEnd), isDateTime: false, matchIdx: -1 });
+    }
+    return computed;
+  }, [text, matches]);
 
   return (
     <>
