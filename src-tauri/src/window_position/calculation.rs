@@ -74,13 +74,13 @@ pub fn calculate_window_position(
     // 边界场景 1：窗口或屏幕任一维度为 0，无法进行有效定位，直接回退到原点
     if window_size.width == 0 || window_size.height == 0 ||
        screen_bounds.width == 0 || screen_bounds.height == 0 {
-        eprintln!("Warning: Zero-sized window or screen detected. Returning (0, 0).");
+        log::warn!("Zero-sized window or screen detected. Returning (0, 0).");
         return PhysicalPosition::new(0, 0);
     }
 
     // 边界场景 2：窗口大于屏幕，无法完全显示，固定放置在左上角
     if window_size.width > screen_bounds.width || window_size.height > screen_bounds.height {
-        eprintln!(
+        log::warn!(
             "Warning: Window size ({}x{}) exceeds screen bounds ({}x{}). Positioning at (0, 0).",
             window_size.width, window_size.height, screen_bounds.width, screen_bounds.height
         );

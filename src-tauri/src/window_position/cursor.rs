@@ -63,12 +63,12 @@ pub async fn get_cursor_position_with_retry(monitor: Option<&Monitor>) -> Physic
         match get_cursor_position().await {
             Ok(pos) => {
                 if attempt > 0 {
-                    eprintln!("Successfully retrieved cursor position on attempt {}", attempt + 1);
+                    log::debug!("Successfully retrieved cursor position on attempt {}", attempt + 1);
                 }
                 return pos;
             }
             Err(e) => {
-                eprintln!("Failed to get cursor position (attempt {}): {}", attempt + 1, e);
+                log::warn!("Failed to get cursor position (attempt {}): {}", attempt + 1, e);
 
                 if attempt < MAX_RETRIES - 1 {
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
@@ -78,7 +78,7 @@ pub async fn get_cursor_position_with_retry(monitor: Option<&Monitor>) -> Physic
         }
     }
 
-    eprintln!("所有获取光标位置的尝试均失败，回退到屏幕中心。");
+    log::warn!("所有获取光标位置的尝试均失败，回退到屏幕中心。");
 
     if let Some(monitor) = monitor {
         let size = monitor.size();
@@ -89,7 +89,7 @@ pub async fn get_cursor_position_with_retry(monitor: Option<&Monitor>) -> Physic
 
         PhysicalPosition::new(center_x, center_y)
     } else {
-        eprintln!("没有可用的显示器信息，使用原点 (0, 0) 作为回退。");
+        log::warn!("没有可用的显示器信息，使用原点 (0, 0) 作为回退。");
         PhysicalPosition::new(0, 0)
     }
 }

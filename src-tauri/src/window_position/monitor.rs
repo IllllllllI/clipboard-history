@@ -185,13 +185,13 @@ pub fn calculate_window_position_multi_monitor(
     monitors: &[Monitor]
 ) -> PhysicalPosition<i32> {
     if monitors.is_empty() {
-        eprintln!("Warning: No monitors available. Returning (0, 0).");
+        log::warn!("No monitors available. Returning (0, 0).");
         return PhysicalPosition::new(0, 0);
     }
 
     let monitor = detect_cursor_monitor(cursor_pos, monitors)
         .unwrap_or_else(|| {
-            eprintln!("Warning: Cursor not on any monitor. Using first monitor.");
+            log::warn!("Cursor not on any monitor. Using first monitor.");
             &monitors[0]
         });
 

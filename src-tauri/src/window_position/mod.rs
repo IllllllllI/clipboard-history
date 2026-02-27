@@ -55,6 +55,27 @@ fn restore_if_minimized(window: &Window) -> Result<(), AppError> {
     Ok(())
 }
 
+async fn compute_target_position(window: &Window) -> Result<tauri::PhysicalPosition<i32>, AppError> {
+    let current_monitor = window.current_monitor()
+        .map_err(|e| AppError::Window(format!("Failed to get current monitor: {}", e)))?;
+
+    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
+
+    let window_size = window.outer_size()
+        .map_err(|e| AppError::Window(format!("Failed to get window size: {}", e)))?;
+
+    let monitors = window.available_monitors()
+        .map_err(|e| AppError::Window(format!("Failed to get available monitors: {}", e)))?;
+
+    let monitors_vec: Vec<Monitor> = monitors.into_iter().collect();
+
+    Ok(monitor::calculate_window_position_multi_monitor(
+        cursor_pos,
+        window_size,
+        &monitors_vec,
+    ))
+}
+
 /// 在光标附近显示窗口（支持多显示器）
 ///
 /// 该函数是窗口定位流程的主编排入口：
@@ -82,24 +103,7 @@ fn restore_if_minimized(window: &Window) -> Result<(), AppError> {
 pub async fn show_window_at_cursor(window: Window) -> Result<(), AppError> {
     restore_if_minimized(&window)?;
 
-    let current_monitor = window.current_monitor()
-        .map_err(|e| AppError::Window(format!("Failed to get current monitor: {}", e)))?;
-
-    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
-
-    let window_size = window.outer_size()
-        .map_err(|e| AppError::Window(format!("Failed to get window size: {}", e)))?;
-
-    let monitors = window.available_monitors()
-        .map_err(|e| AppError::Window(format!("Failed to get available monitors: {}", e)))?;
-
-    let monitors_vec: Vec<Monitor> = monitors.into_iter().collect();
-
-    let target_position = monitor::calculate_window_position_multi_monitor(
-        cursor_pos,
-        window_size,
-        &monitors_vec
-    );
+    let target_position = compute_target_position(&window).await?;
 
     window.set_position(target_position)
         .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
@@ -132,24 +136,7 @@ pub async fn show_window_at_cursor(window: Window) -> Result<(), AppError> {
 pub async fn reposition_and_focus(window: Window) -> Result<(), AppError> {
     restore_if_minimized(&window)?;
 
-    let current_monitor = window.current_monitor()
-        .map_err(|e| AppError::Window(format!("Failed to get current monitor: {}", e)))?;
-
-    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
-
-    let window_size = window.outer_size()
-        .map_err(|e| AppError::Window(format!("Failed to get window size: {}", e)))?;
-
-    let monitors = window.available_monitors()
-        .map_err(|e| AppError::Window(format!("Failed to get available monitors: {}", e)))?;
-
-    let monitors_vec: Vec<Monitor> = monitors.into_iter().collect();
-
-    let target_position = monitor::calculate_window_position_multi_monitor(
-        cursor_pos,
-        window_size,
-        &monitors_vec
-    );
+    let target_position = compute_target_position(&window).await?;
 
     window.set_position(target_position)
         .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
