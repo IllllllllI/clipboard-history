@@ -94,10 +94,10 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
         transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
         ref={popoverRef}
         style={style}
-        className={`z-50 w-[260px] rounded-2xl shadow-2xl border flex flex-col overflow-hidden backdrop-blur-xl ${
+        className={`z-50 w-[260px] rounded-2xl shadow-xl border flex flex-col overflow-hidden backdrop-blur-md ring-1 ring-white/40 dark:ring-white/5 ${
           darkMode
-            ? 'bg-neutral-900/95 border-neutral-700/50 shadow-black/50'
-            : 'bg-white/95 border-neutral-200/50 shadow-neutral-300/40'
+            ? 'bg-neutral-900/95 border-neutral-700/50 shadow-black/40'
+            : 'bg-white/95 border-neutral-200/50 shadow-neutral-300/30'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -126,11 +126,11 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
                 e.stopPropagation();
                 setShowHistory((v) => !v);
               }}
-              className={`flex-1 flex items-center justify-center h-8 rounded-lg border transition-colors
-                bg-neutral-100/50 dark:bg-neutral-800/50 border-neutral-200/50 dark:border-neutral-700/50
-                text-neutral-500 dark:text-neutral-400
-                hover:bg-neutral-100 dark:hover:bg-neutral-800
-                hover:text-neutral-700 dark:hover:text-neutral-200
+              className={`flex-1 flex items-center justify-center h-8 rounded-xl border transition-colors
+                bg-neutral-100/50 dark:bg-neutral-800/50 border-neutral-200/50 dark:border-neutral-600/60
+                text-neutral-500 dark:text-neutral-300
+                hover:bg-neutral-100 dark:hover:bg-neutral-700/80
+                hover:text-neutral-700 dark:hover:text-neutral-100
                 ${showHistory ? '!bg-neutral-200 dark:!bg-neutral-800 !text-neutral-800 dark:!text-neutral-200' : ''}`}
               title="历史颜色"
             >

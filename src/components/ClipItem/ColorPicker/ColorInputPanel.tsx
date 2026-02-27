@@ -12,14 +12,14 @@ export function ColorInputPanel({ state }: ColorInputPanelProps) {
 
   if (mode === 'HEX') {
     return (
-      <div className="flex items-center rounded-lg px-2.5 py-1.5 border transition-colors bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200/50 dark:border-neutral-700/50 focus-within:border-indigo-500/50 focus-within:bg-white dark:focus-within:bg-neutral-900">
-        <Hash className="w-3.5 h-3.5 shrink-0 mr-1.5 text-neutral-400 dark:text-neutral-500" />
+      <div className="flex items-center rounded-xl px-2.5 py-1.5 border transition-all duration-150 bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200/50 dark:border-neutral-600/60 focus-within:border-indigo-500/50 focus-within:bg-white dark:focus-within:bg-neutral-900">
+        <Hash className="w-3.5 h-3.5 shrink-0 mr-1.5 text-neutral-400 dark:text-neutral-400" />
         <input
           type="text"
           value={displayColor.replace('#', '').toUpperCase()}
           onChange={(e) => setHexFromInput(e.target.value)}
           onClick={(e) => e.stopPropagation()}
-          className="flex-1 w-full bg-transparent text-xs font-mono outline-none tracking-wider text-neutral-800 dark:text-neutral-200"
+          className="flex-1 w-full bg-transparent text-xs font-mono outline-none tracking-wider text-neutral-800 dark:text-neutral-100"
           spellCheck={false}
           placeholder="FFFFFFFF"
         />

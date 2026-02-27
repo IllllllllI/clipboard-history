@@ -30,7 +30,7 @@ export function HistoryColors({ visible, onSelect }: HistoryColorsProps) {
                   e.stopPropagation();
                   onSelect(c);
                 }}
-                className="w-6 h-6 rounded-md border border-black/10 dark:border-white/10 shadow-sm hover:scale-110 transition-transform"
+                className="w-6 h-6 rounded-md border border-black/10 dark:border-white/10 shadow-sm hover:scale-105 transition-transform duration-150"
                 style={{ backgroundColor: c }}
                 title={c}
               />
