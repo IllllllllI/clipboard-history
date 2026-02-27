@@ -1,5 +1,17 @@
 *
 !/.gitignore
+
+# Safety guards: build outputs and local caches should never be committed
+node_modules/
+dist/
+build/
+coverage/
+src-tauri/target/
+src-tauri/target-test/
+.idea/
+.vscode/
+*.log
+
 !/.github/
 !/.github/workflows/
 !/.github/workflows/**
