@@ -50,6 +50,13 @@ function convertAssetUrlToPath(url: string): string {
   }
 }
 
+/** 移除 file:// 前缀并做 URI 解码 */
+function stripFileProtocol(path: string): string {
+  if (!path.startsWith('file://')) return path;
+  const stripped = path.replace(/^file:\/\//, '');
+  return decodeURIComponent(stripped);
+}
+
 /**
  * 规范化文件路径：移除 file:// 前缀、处理 asset.localhost、转换斜杠
  */
@@ -62,8 +69,11 @@ export function normalizeFilePath(text: string): string {
   }
 
   // Remove file:// prefix
-  if (path.startsWith('file://')) {
-    path = path.substring(7);
+  path = stripFileProtocol(path);
+
+  // Handle /C:/... style file URL paths on Windows
+  if (/^\/[a-zA-Z]:\//.test(path)) {
+    path = path.slice(1);
   }
 
   // Convert forward slashes to backslashes on Windows paths
@@ -98,7 +108,7 @@ export type FileCategory =
   | 'font' | 'pdf' | 'text' | 'folder' | 'unknown';
 
 /** 扩展名 → 分类映射 */
-const EXT_CATEGORY: Record<string, FileCategory> = {
+const EXT_CATEGORY = {
   // 图片
   png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', bmp: 'image',
   webp: 'image', svg: 'image', ico: 'image', tiff: 'image', tif: 'image',
@@ -133,7 +143,7 @@ const EXT_CATEGORY: Record<string, FileCategory> = {
   ttf: 'font', otf: 'font', woff: 'font', woff2: 'font', eot: 'font',
   // 纯文本
   txt: 'text', log: 'text', ini: 'text', cfg: 'text', conf: 'text',
-};
+} as const satisfies Record<string, FileCategory>;
 
 /** 获取文件类型分类，用于图标映射 */
 export function getFileCategory(filePath: string): FileCategory {
