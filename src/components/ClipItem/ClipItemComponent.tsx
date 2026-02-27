@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { ClipItem, ImageType } from '../../types';
@@ -47,33 +47,50 @@ export const ClipItemComponent = React.memo(
     } = useAppContext();
 
     const isSelected = selectedIndex === index;
-    const itemRef = useRef<HTMLDivElement>(null);
 
     // --- 衍生状态 ---
-    const type = detectType(item.text);
+    const type = useMemo(() => detectType(item.text), [item.text]);
     const isFiles = type === 'files';
-    const imageType = isFiles ? ImageType.None : detectImageType(item.text);
+    const imageType = useMemo(
+      () => (isFiles ? ImageType.None : detectImageType(item.text)),
+      [isFiles, item.text],
+    );
     const isImage = imageType !== ImageType.None;
-    const imageUrls =
-      type === 'multi-image'
-        ? item.text
-            .split('\n')
-            .map((l) => l.trim())
-            .filter(Boolean)
-        : [item.text];
+    const imageUrls = useMemo(
+      () =>
+        type === 'multi-image'
+          ? item.text
+              .split('\n')
+              .map((line) => line.trim())
+              .filter(Boolean)
+          : [item.text],
+      [type, item.text],
+    );
 
     // --- 图标 ---
-    const IconComponent = getItemIcon(item, type, imageType);
+    const IconComponent = useMemo(
+      () => getItemIcon(item, type, imageType),
+      [item, type, imageType],
+    );
 
     // --- 语义化颜色指示器 ---
-    const getSemanticColor = () => {
+    const semanticColorClass = useMemo(() => {
       if (type === 'code') return 'bg-emerald-500';
       if (type === 'url') return 'bg-blue-500';
       if (isImage || type === 'multi-image') return 'bg-purple-500';
       if (isFiles) return 'bg-amber-500';
       if (type === 'color') return 'bg-pink-500';
       return 'bg-transparent';
-    };
+    }, [type, isImage, isFiles]);
+
+    const handleCopyAsNewColor = useCallback(
+      async (color: string) => {
+        await copyText(color);
+        await ClipboardDB.addClip(color);
+        await loadHistory();
+      },
+      [copyText, loadHistory],
+    );
 
     // --- 事件 ---
     const handleClick = useCallback(() => setSelectedIndex(index), [setSelectedIndex, index]);
@@ -91,9 +108,30 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
+    const containerClass = `group relative flex items-start gap-2.5 px-3 py-2.5 mb-1.5 rounded-xl border-2 cursor-pointer transition-all duration-150 overflow-hidden active:scale-[0.99] ${
+      isSelected
+        ? settings.darkMode
+          ? 'bg-neutral-800 border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)] text-neutral-200'
+          : 'bg-white border-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.15)] text-neutral-800'
+        : settings.darkMode
+          ? 'bg-neutral-800/60 border-transparent hover:bg-neutral-800 hover:border-neutral-700 text-neutral-300'
+          : 'bg-white border-transparent hover:border-neutral-200 shadow-sm hover:shadow text-neutral-700'
+    }`;
+
+    const iconClass = `w-8 h-8 shrink-0 flex items-center justify-center rounded-xl mt-0.5 transition-colors z-10 ${
+      isSelected
+        ? 'bg-indigo-500 text-white shadow-sm'
+        : settings.darkMode
+          ? 'bg-neutral-800 text-neutral-400 group-hover:text-neutral-300'
+          : 'bg-neutral-100 text-neutral-500 group-hover:text-neutral-700'
+    }`;
+
+    const sideMetaClass = `flex flex-col items-end justify-between shrink-0 text-xs pt-1 self-stretch z-10 ${
+      settings.darkMode ? 'text-neutral-500' : 'text-neutral-400'
+    }`;
+
     return (
       <motion.div
-        ref={itemRef}
         initial={{ opacity: 0, y: 10, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
@@ -103,29 +141,13 @@ export const ClipItemComponent = React.memo(
         onDragEnd={handleDragEnd}
         onDoubleClick={handleDblClick}
         onClick={handleClick}
-        className={`group relative flex items-start gap-2.5 px-3 py-2.5 mb-1.5 rounded-lg border-2 cursor-pointer transition-all duration-200 overflow-hidden active:scale-[0.99] ${
-          isSelected
-            ? settings.darkMode
-              ? 'bg-neutral-800 border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)] text-neutral-200'
-              : 'bg-white border-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.15)] text-neutral-800'
-            : settings.darkMode
-              ? 'bg-neutral-800/60 border-transparent hover:bg-neutral-800 hover:border-neutral-700 text-neutral-300'
-              : 'bg-white border-transparent hover:border-neutral-200 shadow-sm hover:shadow text-neutral-700'
-        }`}
+        className={containerClass}
       >
         {/* 语义化颜色指示线 */}
-        <div className={`absolute left-0 top-0 bottom-0 w-1 opacity-70 transition-colors ${getSemanticColor()}`} />
+        <div className={`absolute left-0 top-0 bottom-0 w-1 opacity-70 transition-colors ${semanticColorClass}`} />
 
         {/* 左侧图标 */}
-        <div
-          className={`w-8 h-8 shrink-0 flex items-center justify-center rounded-lg mt-0.5 transition-colors z-10 ${
-            isSelected
-              ? 'bg-indigo-500 text-white shadow-sm'
-              : settings.darkMode
-                ? 'bg-neutral-800 text-neutral-400 group-hover:text-neutral-300'
-                : 'bg-neutral-100 text-neutral-500 group-hover:text-neutral-700'
-          }`}
-        >
+        <div className={iconClass}>
           <IconComponent className="w-4 h-4" />
         </div>
 
@@ -143,11 +165,7 @@ export const ClipItemComponent = React.memo(
             isSelected={isSelected}
             darkMode={settings.darkMode}
             onUpdatePickedColor={handleUpdatePickedColor}
-            onCopyAsNewColor={async (color) => {
-              await copyText(color);
-              await ClipboardDB.addClip(color);
-              await loadHistory();
-            }}
+            onCopyAsNewColor={handleCopyAsNewColor}
             copyText={copyText}
           />
 
@@ -185,11 +203,7 @@ export const ClipItemComponent = React.memo(
         </div>
 
         {/* 右侧：时间 + 操作 */}
-        <div
-          className={`flex flex-col items-end justify-between shrink-0 text-xs pt-1 self-stretch z-10 ${
-            settings.darkMode ? 'text-neutral-500' : 'text-neutral-400'
-          }`}
-        >
+        <div className={sideMetaClass}>
           <span
             className={`font-mono mt-1 transition-opacity whitespace-nowrap ${
               isSelected ? 'text-indigo-500 dark:text-indigo-400 font-medium' : ''
