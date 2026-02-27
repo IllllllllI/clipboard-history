@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trash2, Copy, Check, Pin, ExternalLink, FolderOpen, Edit3, Star } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
 import { ClipItem, Tag } from '../../types';
 import { decodeFileList } from '../../utils';
 import { TauriService } from '../../services/tauri';
@@ -43,7 +44,7 @@ export const ActionButtons = React.memo(function ActionButtons({
     <div
       className={`flex items-center gap-0.5 mt-auto ${
         isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-      } transition-opacity`}
+      } transition-opacity duration-150`}
     >
       {/* 文件列表专属操作 */}
       {isFiles && (
@@ -54,7 +55,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               const files = decodeFileList(item.text);
               if (files.length > 0) TauriService.openFile(files[0]);
             }}
-            className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-90"
+            className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
             title="打开文件"
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -65,7 +66,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               const files = decodeFileList(item.text);
               if (files.length > 0) TauriService.openFileLocation(files[0]);
             }}
-            className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-90"
+            className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
             title="打开文件位置"
           >
             <FolderOpen className="w-3.5 h-3.5" />
@@ -80,7 +81,7 @@ export const ActionButtons = React.memo(function ActionButtons({
             e.stopPropagation();
             onEdit(item);
           }}
-          className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-90"
+          className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
           title="编辑内容"
         >
           <Edit3 className="w-3.5 h-3.5" />
@@ -102,7 +103,7 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onToggleFavorite(item);
         }}
-        className={`p-1.5 rounded-md transition-all active:scale-90 ${
+        className={`p-1.5 rounded-xl transition-all duration-150 active:scale-95 ${
           item.is_favorite
             ? 'text-amber-500 bg-amber-50 dark:bg-amber-500/10'
             : 'hover:bg-black/10 dark:hover:bg-white/10'
@@ -118,7 +119,7 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onTogglePin(item);
         }}
-        className={`p-1.5 rounded-md transition-all active:scale-90 ${
+        className={`p-1.5 rounded-xl transition-all duration-150 active:scale-95 ${
           item.is_pinned
             ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
             : 'hover:bg-black/10 dark:hover:bg-white/10'
@@ -134,14 +135,32 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onCopy(item);
         }}
-        className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-90"
+        className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
         title="复制"
       >
-        {copiedId === item.id ? (
-          <Check className="w-3.5 h-3.5 text-emerald-400" />
-        ) : (
-          <Copy className="w-3.5 h-3.5" />
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          {copiedId === item.id ? (
+            <motion.div
+              key="copied"
+              initial={{ opacity: 0, scale: 0.6, y: 2 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.6, y: -2 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-300" />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="copy"
+              initial={{ opacity: 0, scale: 0.6, y: 2 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.6, y: -2 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </button>
 
       {/* 删除 */}
@@ -150,7 +169,7 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onRemove(item.id);
         }}
-        className="p-1.5 rounded-md hover:bg-red-500/10 hover:text-red-500 transition-all active:scale-90"
+        className="p-1.5 rounded-xl hover:bg-red-500/10 hover:text-red-500 transition-all duration-150 active:scale-95"
         title="删除"
       >
         <Trash2 className="w-3.5 h-3.5" />
