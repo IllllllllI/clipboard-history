@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import CodeMirror from '@uiw/react-codemirror';
 import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { EditorView } from '@codemirror/view';
+import type { Extension } from '@codemirror/state';
 import { useAppContext } from '../../contexts/AppContext';
-import { detectLanguage, getAvailableLanguages, type LanguageId } from '../../utils/languageDetect';
+import { detectLanguage, loadLanguageExtension, type LanguageId } from '../../utils/languageDetect';
 import { EditorHeader } from './EditorHeader';
 import { EditorFooter } from './EditorFooter';
 
@@ -46,6 +47,7 @@ export function CodeEditorModal() {
   const [content, setContent] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const [langId, setLangId] = useState<LanguageId>('plaintext');
+  const [languageExtension, setLanguageExtension] = useState<Extension | null>(null);
   const [fontSize, setFontSize] = useState(14);
   const [lineWrapping, setLineWrapping] = useState(false);
 
@@ -60,6 +62,23 @@ export function CodeEditorModal() {
       setLangId(detectLanguage(editingClip.text).id);
     }
   }, [editingClip]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadExtension = async () => {
+      const extension = await loadLanguageExtension(langId);
+      if (!cancelled) {
+        setLanguageExtension(extension);
+      }
+    };
+
+    loadExtension();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [langId]);
 
   // ── 操作回调 ──
   const handleClose = useCallback(() => {
@@ -92,10 +111,8 @@ export function CodeEditorModal() {
 
   // ── CodeMirror 扩展 ──
   const extensions = useMemo(() => {
-    const exts: ReturnType<typeof EditorView.theme>[] = [];
-    const langs = getAvailableLanguages();
-    const langExt = langs.find((l) => l.id === langId)?.extension();
-    if (langExt) exts.push(langExt);
+    const exts: Extension[] = [];
+    if (languageExtension) exts.push(languageExtension);
     if (lineWrapping) exts.push(EditorView.lineWrapping);
     exts.push(
       EditorView.theme({
@@ -104,7 +121,7 @@ export function CodeEditorModal() {
       }),
     );
     return exts;
-  }, [langId, lineWrapping, fontSize]);
+  }, [languageExtension, lineWrapping, fontSize]);
 
   // ── 快捷键 ──
   useEffect(() => {

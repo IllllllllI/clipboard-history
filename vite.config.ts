@@ -17,10 +17,6 @@ export default defineConfig(({mode}) => {
       return 'vendor-react';
     }
 
-    if (id.includes('@uiw/react-codemirror') || id.includes('@uiw/codemirror-theme-vscode') || id.includes('@codemirror/') || id.includes('@lezer/')) {
-      return 'vendor-codemirror';
-    }
-
     return undefined;
   };
 

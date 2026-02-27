@@ -1,23 +1,10 @@
 /**
  * 代码语言自动检测工具
  *
- * 通过特征模式匹配，根据剪贴板内容自动推断编程语言，
- * 返回对应的 CodeMirror 语言扩展。
+ * 通过特征模式匹配，根据剪贴板内容自动推断编程语言。
+ * 语言高亮扩展按需动态加载，避免首包静态引入全部 @codemirror/lang-*。
  */
 
-import { javascript } from '@codemirror/lang-javascript';
-import { python } from '@codemirror/lang-python';
-import { html } from '@codemirror/lang-html';
-import { css } from '@codemirror/lang-css';
-import { json } from '@codemirror/lang-json';
-import { markdown } from '@codemirror/lang-markdown';
-import { rust } from '@codemirror/lang-rust';
-import { sql } from '@codemirror/lang-sql';
-import { xml } from '@codemirror/lang-xml';
-import { java } from '@codemirror/lang-java';
-import { cpp } from '@codemirror/lang-cpp';
-import { php } from '@codemirror/lang-php';
-import { yaml } from '@codemirror/lang-yaml';
 import type { Extension } from '@codemirror/state';
 
 // ============================================================================
@@ -36,7 +23,6 @@ export type LanguageId =
 interface LanguageDef {
   id: LanguageId;
   label: string;
-  extension: () => Extension;
   /** 匹配模式（正则数组），按优先级顺序排列 */
   patterns: RegExp[];
 }
@@ -49,7 +35,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'tsx',
     label: 'TSX',
-    extension: () => javascript({ jsx: true, typescript: true }),
     patterns: [
       /:\s*(React\.FC|JSX\.Element|ReactNode)/,          // : React.FC
       /\bconst\s+\w+\s*:\s*\w+.*=.*</,                  // const Foo: Type = <
@@ -60,7 +45,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'typescript',
     label: 'TypeScript',
-    extension: () => javascript({ typescript: true }),
     patterns: [
       /\binterface\s+\w+\s*\{/,
       /\btype\s+\w+\s*=\s*/,
@@ -73,7 +57,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'jsx',
     label: 'JSX',
-    extension: () => javascript({ jsx: true }),
     patterns: [
       /\breturn\s*\(\s*</,                               // return (<
       /<\w+[^>]*\s(className|onClick|onChange)\s*=/,
@@ -83,7 +66,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'javascript',
     label: 'JavaScript',
-    extension: () => javascript(),
     patterns: [
       /\b(const|let|var)\s+\w+\s*=\s*(function|\(|async|\[|\{|require\()/,
       /\bfunction\s+\w+\s*\(/,
@@ -98,7 +80,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'rust',
     label: 'Rust',
-    extension: () => rust(),
     patterns: [
       /\bfn\s+\w+\s*(<.*>)?\s*\(/,
       /\b(pub\s+)?(fn|struct|enum|trait|impl|mod|use|crate)\b/,
@@ -115,7 +96,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'python',
     label: 'Python',
-    extension: () => python(),
     patterns: [
       /\bdef\s+\w+\s*\(/,
       /\bclass\s+\w+\s*(\(.*\))?:\s*$/m,
@@ -130,7 +110,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'java',
     label: 'Java',
-    extension: () => java(),
     patterns: [
       /\bpublic\s+(static\s+)?class\s+\w+/,
       /\bpublic\s+static\s+void\s+main\s*\(/,
@@ -145,7 +124,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'cpp',
     label: 'C++',
-    extension: () => cpp(),
     patterns: [
       /\b#include\s*<\w+>/,
       /\bstd::\w+/,
@@ -158,7 +136,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'c',
     label: 'C',
-    extension: () => cpp(),
     patterns: [
       /\b#include\s*<(stdio|stdlib|string|math)\.h>/,
       /\bprintf\s*\(/,
@@ -170,7 +147,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'go',
     label: 'Go',
-    extension: () => javascript(),  // fallback, no official Go lang pack
     patterns: [
       /\bfunc\s+((\(\w+\s+\*?\w+\)\s+)?\w+)?\s*\(/,
       /\bpackage\s+\w+/,
@@ -182,7 +158,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'php',
     label: 'PHP',
-    extension: () => php(),
     patterns: [
       /<\?php\b/,
       /\$\w+\s*=/,
@@ -194,7 +169,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'shell',
     label: 'Shell',
-    extension: () => javascript(),  // fallback
     patterns: [
       /^#!\s*\/bin\/(bash|sh|zsh)/m,
       /\becho\s+["'$]/,
@@ -207,7 +181,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'html',
     label: 'HTML',
-    extension: () => html(),
     patterns: [
       /<!DOCTYPE\s+html>/i,
       /<html[\s>]/i,
@@ -217,7 +190,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'svg',
     label: 'SVG',
-    extension: () => xml(),
     patterns: [
       /<svg[\s>]/i,
       /\bxmlns="http:\/\/www\.w3\.org\/2000\/svg"/,
@@ -226,7 +198,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'xml',
     label: 'XML',
-    extension: () => xml(),
     patterns: [
       /<\?xml\s+version\s*=/i,
       /xmlns[:=]/,
@@ -235,7 +206,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'css',
     label: 'CSS',
-    extension: () => css(),
     patterns: [
       /\b[\w.#-]+\s*\{[^}]*\b(color|margin|padding|display|font|background|border|width|height)\s*:/,
       /@(media|keyframes|import|font-face)\b/,
@@ -245,7 +215,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'scss',
     label: 'SCSS',
-    extension: () => css(),
     patterns: [
       /\$\w+\s*:\s*/,          // $variable: value
       /&\.\w+/,                 // &.class
@@ -256,7 +225,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'json',
     label: 'JSON',
-    extension: () => json(),
     patterns: [
       /^\s*\{[\s\S]*"[\w-]+":\s*/,    // starts with { ... "key":
       /^\s*\[[\s\S]*\{[\s\S]*"[\w-]+":/,  // starts with [ ... { "key":
@@ -265,7 +233,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'yaml',
     label: 'YAML',
-    extension: () => yaml(),
     patterns: [
       /^---\s*$/m,
       /^\w[\w-]*:\s+\S/m,      // key: value
@@ -275,7 +242,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'sql',
     label: 'SQL',
-    extension: () => sql(),
     patterns: [
       /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|FROM|WHERE|JOIN|GROUP BY|ORDER BY)\b/i,
       /\b(TABLE|INDEX|VIEW|DATABASE|COLUMN|PRIMARY KEY|FOREIGN KEY)\b/i,
@@ -284,7 +250,6 @@ const LANGUAGES: LanguageDef[] = [
   {
     id: 'markdown',
     label: 'Markdown',
-    extension: () => markdown(),
     patterns: [
       /^#{1,6}\s+\S/m,                          // # heading
       /^\s*[-*+]\s+\S/m,                         // - list item
@@ -302,7 +267,61 @@ const LANGUAGES: LanguageDef[] = [
 interface DetectResult {
   id: LanguageId;
   label: string;
-  extension: Extension;
+}
+
+const extensionLoaderMap: Record<LanguageId, () => Promise<Extension>> = {
+  tsx: async () => {
+    const mod = await import('@codemirror/lang-javascript');
+    return mod.javascript({ jsx: true, typescript: true });
+  },
+  typescript: async () => {
+    const mod = await import('@codemirror/lang-javascript');
+    return mod.javascript({ typescript: true });
+  },
+  jsx: async () => {
+    const mod = await import('@codemirror/lang-javascript');
+    return mod.javascript({ jsx: true });
+  },
+  javascript: async () => {
+    const mod = await import('@codemirror/lang-javascript');
+    return mod.javascript();
+  },
+  python: async () => (await import('@codemirror/lang-python')).python(),
+  rust: async () => (await import('@codemirror/lang-rust')).rust(),
+  java: async () => (await import('@codemirror/lang-java')).java(),
+  cpp: async () => (await import('@codemirror/lang-cpp')).cpp(),
+  c: async () => (await import('@codemirror/lang-cpp')).cpp(),
+  html: async () => (await import('@codemirror/lang-html')).html(),
+  css: async () => (await import('@codemirror/lang-css')).css(),
+  scss: async () => (await import('@codemirror/lang-css')).css(),
+  json: async () => (await import('@codemirror/lang-json')).json(),
+  yaml: async () => (await import('@codemirror/lang-yaml')).yaml(),
+  xml: async () => (await import('@codemirror/lang-xml')).xml(),
+  svg: async () => (await import('@codemirror/lang-xml')).xml(),
+  sql: async () => (await import('@codemirror/lang-sql')).sql(),
+  markdown: async () => (await import('@codemirror/lang-markdown')).markdown(),
+  php: async () => (await import('@codemirror/lang-php')).php(),
+  go: async () => {
+    const mod = await import('@codemirror/lang-javascript');
+    return mod.javascript();
+  },
+  shell: async () => {
+    const mod = await import('@codemirror/lang-javascript');
+    return mod.javascript();
+  },
+  plaintext: async () => [],
+};
+
+const extensionCache = new Map<LanguageId, Promise<Extension>>();
+
+export async function loadLanguageExtension(id: LanguageId): Promise<Extension> {
+  const cached = extensionCache.get(id);
+  if (cached) return cached;
+
+  const loader = extensionLoaderMap[id] ?? extensionLoaderMap.plaintext;
+  const loading = loader().catch(() => [] as Extension);
+  extensionCache.set(id, loading);
+  return loading;
 }
 
 /**
@@ -319,7 +338,7 @@ export function detectLanguage(code: string): DetectResult {
     try {
       JSON.parse(trimmed);
       const lang = LANGUAGES.find(l => l.id === 'json')!;
-      return { id: lang.id, label: lang.label, extension: lang.extension() };
+      return { id: lang.id, label: lang.label };
     } catch {
       // not valid JSON, continue detection
     }
@@ -343,19 +362,19 @@ export function detectLanguage(code: string): DetectResult {
 
   // 至少匹配 1 个特征才认为有效
   if (bestLang && bestScore >= 1) {
-    return { id: bestLang.id, label: bestLang.label, extension: bestLang.extension() };
+    return { id: bestLang.id, label: bestLang.label };
   }
 
-  // 无法检测时返回纯文本（使用 markdown 作为 fallback，提供基本高亮）
-  return { id: 'plaintext', label: '纯文本', extension: markdown() };
+  // 无法检测时返回纯文本
+  return { id: 'plaintext', label: '纯文本' };
 }
 
 /**
  * 获取所有可用语言列表（用于语言选择器下拉框）
  */
-export function getAvailableLanguages(): { id: LanguageId; label: string; extension: () => Extension }[] {
+export function getAvailableLanguages(): { id: LanguageId; label: string }[] {
   return [
-    ...LANGUAGES.map(l => ({ id: l.id, label: l.label, extension: l.extension })),
-    { id: 'plaintext' as LanguageId, label: '纯文本', extension: () => markdown() },
+    ...LANGUAGES.map(l => ({ id: l.id, label: l.label })),
+    { id: 'plaintext' as LanguageId, label: '纯文本' },
   ];
 }
