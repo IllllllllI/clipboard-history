@@ -196,9 +196,12 @@ export function ClipboardProvider({
 
   const handleUpdatePickedColor = useMemo(
     () => makeHandler(
-      async (id: number, color: string | null) => { await ClipboardDB.updatePickedColor(id, color); await loadHistory(); },
+      async (id: number, color: string | null) => {
+        await ClipboardDB.updatePickedColor(id, color);
+        setHistory(prev => prev.map(item => (item.id === id ? { ...item, picked_color: color } : item)));
+      },
       setError, '更新调色板颜色失败',
-    ), [loadHistory],
+    ), [],
   );
 
   const handleCreateTag = useMemo(

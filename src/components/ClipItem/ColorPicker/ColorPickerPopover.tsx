@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { HexAlphaColorPicker } from 'react-colorful';
@@ -21,6 +21,12 @@ function useClickOutside(
   isOpen: boolean,
   onClickOutside: () => void,
 ) {
+  const onClickOutsideRef = useRef(onClickOutside);
+
+  useEffect(() => {
+    onClickOutsideRef.current = onClickOutside;
+  }, [onClickOutside]);
+
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
@@ -28,12 +34,12 @@ function useClickOutside(
         popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
         anchorRef.current && !anchorRef.current.contains(e.target as Node)
       ) {
-        onClickOutside();
+        onClickOutsideRef.current();
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [isOpen, popoverRef, anchorRef, onClickOutside]);
+  }, [isOpen, popoverRef, anchorRef]);
 }
 
 // ============================================================================

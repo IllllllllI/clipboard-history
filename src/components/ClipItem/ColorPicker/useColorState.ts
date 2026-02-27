@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   expandHex,
   hexToRGBA,
@@ -47,6 +47,8 @@ export function useColorState(
   onColorChange: (color: string) => void,
 ): ColorState {
   const [mode, setMode] = useState<ColorMode>('HEX');
+  const pickerFrameRef = useRef<number | null>(null);
+  const pendingPickerColorRef = useRef<string | null>(null);
 
   const displayColor = pickedColor || originalColor;
   const hex = useMemo(() => expandHex(displayColor), [displayColor]);
@@ -54,20 +56,25 @@ export function useColorState(
   const hsla = useMemo(() => hexToHSLA(hex), [hex]);
 
   // HSL 本地 draft 状态 + 编辑标记
-  const [hslDraft, setHslDraft] = useState<HSLA>(hsla);
+  const [hslDraft, setHslDraft] = useState<HSLA>(() => hsla);
   const hslEditingRef = useRef(false);
 
   // 当非 HSL 编辑导致颜色变化时，同步 hslDraft
-  // 使用 ref 来追踪上次 hex，避免 useEffect
-  const prevHexRef = useRef(hex);
-  if (hex !== prevHexRef.current) {
-    prevHexRef.current = hex;
-    if (!hslEditingRef.current) {
-      // 仅在非 HSL 输入引起的变化时，才用外部 hex 覆盖 draft
-      setHslDraft(hsla);
+  useEffect(() => {
+    if (hslEditingRef.current) {
+      hslEditingRef.current = false;
+      return;
     }
-    hslEditingRef.current = false;
-  }
+    setHslDraft(hsla);
+  }, [hsla]);
+
+  useEffect(() => {
+    return () => {
+      if (pickerFrameRef.current !== null) {
+        cancelAnimationFrame(pickerFrameRef.current);
+      }
+    };
+  }, []);
 
   const isChanged = pickedColor !== null && pickedColor !== originalColor;
 
@@ -80,13 +87,17 @@ export function useColorState(
   }, []);
 
   const setHexValue = useCallback(
-    (newHex: string) => onColorChange(newHex),
+    (newHex: string) => {
+      hslEditingRef.current = false;
+      onColorChange(newHex);
+    },
     [onColorChange],
   );
 
   const setHexFromInput = useCallback(
     (raw: string) => {
       const hexOnly = raw.replace(/[^0-9A-Fa-f]/g, '').slice(0, 8);
+      hslEditingRef.current = false;
       onColorChange(`#${hexOnly}`);
     },
     [onColorChange],
@@ -95,6 +106,7 @@ export function useColorState(
   const setRgbaChannel = useCallback(
     (ch: 'r' | 'g' | 'b' | 'a', value: number) => {
       const newRgba = { ...rgba, [ch]: value };
+      hslEditingRef.current = false;
       onColorChange(rgbaToHex(newRgba.r, newRgba.g, newRgba.b, newRgba.a));
     },
     [rgba, onColorChange],
@@ -116,8 +128,19 @@ export function useColorState(
 
   const setFromPicker = useCallback(
     (color: string) => {
-      onColorChange(color);
-      setHslDraft(hexToHSLA(expandHex(color)));
+      hslEditingRef.current = false;
+      pendingPickerColorRef.current = color;
+
+      if (pickerFrameRef.current !== null) return;
+
+      pickerFrameRef.current = requestAnimationFrame(() => {
+        const nextColor = pendingPickerColorRef.current;
+        pickerFrameRef.current = null;
+        if (!nextColor) return;
+
+        onColorChange(nextColor);
+        setHslDraft(hexToHSLA(expandHex(nextColor)));
+      });
     },
     [onColorChange],
   );

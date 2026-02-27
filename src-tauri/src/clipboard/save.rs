@@ -272,12 +272,12 @@ pub async fn capture_clipboard_snapshot(
     let maybe_text = clipboard.get_text().ok();
 
     if let Ok(image_data) = clipboard.get_image() {
-        if let Some(text) = maybe_text.as_deref() {
-            if should_skip_image_by_text(text) {
-                return Ok(None);
-            }
+        let skip_image = maybe_text.as_deref().is_some_and(|t| should_skip_image_by_text(t));
+        if !skip_image {
+            return save_image_data(&app, custom_dir, image_data);
         }
-        return save_image_data(&app, custom_dir, image_data);
+        // 跳过图片后，继续处理文本（浏览器/IDE 复制时常同时携带图片和文本）
+        log::debug!("⏭️ 跳过图片，回退到文本处理");
     }
 
     if let Some(text) = maybe_text {
