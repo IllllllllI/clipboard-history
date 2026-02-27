@@ -6,6 +6,8 @@
 
 import { convertFileSrc } from '@tauri-apps/api/core';
 
+const DATA_IMAGE_PREFIX = 'data:image/';
+
 /** 支持的图片扩展名 */
 export const IMAGE_EXTENSIONS = [
   '.jpg', '.jpeg', '.png', '.gif', '.bmp',
@@ -18,6 +20,7 @@ export const IMAGE_EXTENSIONS = [
 export function isLocalFilePath(text: string): boolean {
   return (
     text.startsWith('file://') ||
+    text.startsWith('\\\\') ||
     text.startsWith('/') ||
     /^[a-zA-Z]:\\/.test(text)
   );
@@ -27,7 +30,7 @@ export function isLocalFilePath(text: string): boolean {
  * 将任意图片来源（data URL / 本地路径 / HTTP URL）转为可渲染的 src
  */
 export function resolveImageSrc(url: string): string {
-  if (url.startsWith('data:image/')) {
+  if (url.startsWith(DATA_IMAGE_PREFIX)) {
     return url;
   }
   if (isLocalFilePath(url)) {
@@ -49,11 +52,11 @@ const KNOWN_IMAGE_EXTS = new Set([
  */
 export function extractFormatLabel(url: string): string | null {
   // Base64: 从 MIME 类型中提取
-  if (url.startsWith('data:image/')) {
+  if (url.startsWith(DATA_IMAGE_PREFIX)) {
     const match = url.match(/^data:image\/([\w+]+);/);
     if (match) {
       const fmt = match[1].toUpperCase().replace('SVG+XML', 'SVG');
-      return KNOWN_IMAGE_EXTS.has(fmt) ? fmt : fmt; // MIME 类型本身可信
+      return fmt; // MIME 类型本身可信
     }
     return null;
   }
@@ -70,7 +73,8 @@ export function extractFormatLabel(url: string): string | null {
     }
   } catch {
     // URL 解析失败时直接用简单逻辑
-    const ext = url.split('.').pop()?.split('?')[0]?.toUpperCase();
+    const normalized = url.split('#')[0].split('?')[0];
+    const ext = normalized.split('.').pop()?.toUpperCase();
     if (ext && KNOWN_IMAGE_EXTS.has(ext)) return ext;
   }
 
@@ -81,7 +85,7 @@ export function extractFormatLabel(url: string): string | null {
  * 格式化字节数为可读字符串（如 "1.5 MB"）
  */
 export function formatBytes(bytes: number, decimals = 2): string {
-  if (bytes === 0) return '0 Bytes';
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 Bytes';
   const k = 1024;
   const dm = Math.max(0, decimals);
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
