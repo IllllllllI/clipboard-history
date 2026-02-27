@@ -20,6 +20,9 @@ import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '../services/tauri';
 
+const toMsg = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 // Re-export for backward compatibility
 export type { FilterType } from './UIContext';
 
@@ -185,19 +188,27 @@ function AppBridge({ children }: { children: React.ReactNode }) {
 
   // 包装 handleClearAll：在桥接层添加 confirm（数据层保持纯净）
   const handleClearAll = useCallback(async () => {
-    const confirmed = isTauri 
-      ? await confirm('确定要清空所有历史记录吗？', { title: '清空确认', kind: 'warning' })
-      : window.confirm('确定要清空所有历史记录吗？');
-      
-    if (confirmed) {
-      await clearAllRaw();
+    try {
+      const confirmed = isTauri
+        ? await confirm('确定要清空所有历史记录吗？', { title: '清空确认', kind: 'warning' })
+        : window.confirm('确定要清空所有历史记录吗？');
+
+      if (confirmed) {
+        await clearAllRaw();
+      }
+    } catch (err) {
+      alert(`清空失败：${toMsg(err)}`);
     }
   }, [clearAllRaw]);
 
   // 包装 importData：在桥接层添加 alert 反馈（数据层只返回结果，不做 UI 交互）
   const importData = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const err = await importDataRaw(e);
-    alert(err ? `导入失败：${err}` : '导入成功！');
+    try {
+      const err = await importDataRaw(e);
+      alert(err ? `导入失败：${err}` : '导入成功！');
+    } catch (err) {
+      alert(`导入失败：${toMsg(err)}`);
+    }
   }, [importDataRaw]);
 
   // 键盘导航 — 从桥接层提取到专用 hook
