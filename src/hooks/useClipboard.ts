@@ -72,6 +72,7 @@ export function useClipboard(
   const lastCopiedRef = useRef<string | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedIdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isProcessingRef = useRef(false);
   const hasPendingRef = useRef(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -114,8 +115,10 @@ export function useClipboard(
 
   useEffect(() => {
     if (!isTauri || !settings.autoCapture) return;
+    let disposed = false;
+    let unlistenFn: (() => void) | null = null;
 
-    const unlisten = listen<ClipboardEventPayload>('clipboard-changed', async (event) => {
+    const unlistenPromise = listen<ClipboardEventPayload>('clipboard-changed', async (event) => {
       if (event.payload?.source !== 'external') return;
 
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
@@ -124,12 +127,31 @@ export function useClipboard(
       }, 120);
     });
 
+    void unlistenPromise.then((fn) => {
+      if (disposed) {
+        fn();
+        return;
+      }
+      unlistenFn = fn;
+    });
+
     return () => {
-      unlisten.then(f => f());
+      disposed = true;
+      if (unlistenFn) {
+        unlistenFn();
+      }
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
     };
   }, [settings.autoCapture, processClipboardSnapshot]);
+
+  useEffect(() => {
+    return () => {
+      if (copiedIdTimerRef.current) {
+        clearTimeout(copiedIdTimerRef.current);
+      }
+    };
+  }, []);
 
   // ---- 复制操作（useCallback 稳定引用）----
 
@@ -140,7 +162,13 @@ export function useClipboard(
       lastCopiedRef.current = textToCopy;
       await dispatchCopy(textToCopy);
       setCopiedId(item.id);
-      setTimeout(() => setCopiedId(null), 2000);
+      if (copiedIdTimerRef.current) {
+        clearTimeout(copiedIdTimerRef.current);
+      }
+      copiedIdTimerRef.current = setTimeout(() => {
+        setCopiedId(null);
+        copiedIdTimerRef.current = null;
+      }, 2000);
     } catch (err) {
       onError(`复制失败: ${toMsg(err)}`);
     }
