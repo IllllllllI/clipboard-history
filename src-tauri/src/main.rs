@@ -31,9 +31,9 @@ fn main() {
 
             // 初始化数据库并注册为托管状态
             let handle = app.handle().clone();
-            let conn = db::init_db(&handle)
+            let db_state = db::init_db(&handle)
                 .expect("数据库初始化失败");
-            app.manage(db::DbState(std::sync::Mutex::new(conn)));
+            app.manage(db_state);
             app.manage(
                 image_handler::ImageServiceState::new()
                     .expect("图片服务初始化失败"),

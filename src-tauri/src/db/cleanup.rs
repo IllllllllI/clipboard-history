@@ -1,3 +1,18 @@
+//! 数据清理子模块
+//!
+//! ## 职责
+//! - 解析历史文本中的受管资源路径（图片/SVG）
+//! - 维护 `history_assets` 映射并执行删除后的孤儿文件清理
+//! - 提供单条、批量、清空等删除流程的复用逻辑
+//!
+//! ## 输入/输出
+//! - 输入：`Connection`、条目 ID 集合或文本
+//! - 输出：候选路径集合或 `Result<(), AppError>`
+//!
+//! ## 错误语义
+//! - SQL 操作失败返回 `AppError::Database`
+//! - 文件删除失败返回 `AppError::Storage`
+
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -61,21 +76,131 @@ pub(crate) fn extract_generated_asset_paths(text: &str) -> HashSet<PathBuf> {
     paths
 }
 
+pub(crate) fn sync_item_assets_for_text(conn: &Connection, item_id: i64, text: &str) -> Result<(), AppError> {
+    conn.execute(
+        "DELETE FROM history_assets WHERE item_id = ?1",
+        params![item_id],
+    )
+    .map_err(|e| AppError::Database(format!("清理历史资源映射失败: {}", e)))?;
+
+    let paths = extract_generated_asset_paths(text);
+    if paths.is_empty() {
+        return Ok(());
+    }
+
+    let mut stmt = conn
+        .prepare("INSERT OR IGNORE INTO history_assets (item_id, path) VALUES (?1, ?2)")
+        .map_err(|e| AppError::Database(format!("准备插入历史资源映射失败: {}", e)))?;
+
+    for path in paths {
+        let path_str = path.to_string_lossy().to_string();
+        stmt.execute(params![item_id, path_str])
+            .map_err(|e| AppError::Database(format!("写入历史资源映射失败: {}", e)))?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn sync_item_assets_from_history_text(conn: &Connection, item_id: i64) -> Result<HashSet<PathBuf>, AppError> {
+    let text: Option<String> = conn
+        .query_row("SELECT text FROM history WHERE id = ?1", params![item_id], |row| row.get(0))
+        .optional()
+        .map_err(|e| AppError::Database(format!("读取条目文本失败: {}", e)))?;
+
+    let Some(text) = text else {
+        return Ok(HashSet::new());
+    };
+
+    let paths = extract_generated_asset_paths(&text);
+    sync_item_assets_for_text(conn, item_id, &text)?;
+    Ok(paths)
+}
+
+fn collect_paths_from_history_assets(conn: &Connection, ids: &[i64]) -> Result<HashSet<PathBuf>, AppError> {
+    if ids.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+    let sql = format!(
+        "SELECT DISTINCT path FROM history_assets WHERE item_id IN ({})",
+        placeholders.join(",")
+    );
+
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| AppError::Database(format!("准备查询资源映射失败: {}", e)))?;
+
+    let rows = stmt
+        .query_map(params_from_iter(ids.iter()), |row| row.get::<_, String>(0))
+        .map_err(|e| AppError::Database(format!("查询资源映射失败: {}", e)))?;
+
+    let mut result = HashSet::new();
+    for row in rows {
+        let path_str = row.map_err(|e| AppError::Database(format!("读取资源映射失败: {}", e)))?;
+        if let Some(path) = normalize_local_path(&path_str) {
+            result.insert(path);
+        }
+    }
+    Ok(result)
+}
+
+pub(crate) fn delete_history_assets_for_ids(conn: &Connection, ids: &[i64]) -> Result<(), AppError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
+    let sql = format!(
+        "DELETE FROM history_assets WHERE item_id IN ({})",
+        placeholders.join(",")
+    );
+
+    conn.execute(&sql, params_from_iter(ids.iter()))
+        .map_err(|e| AppError::Database(format!("删除历史资源映射失败: {}", e)))?;
+
+    Ok(())
+}
+
 fn remove_orphan_generated_asset(conn: &Connection, path: &std::path::Path) -> Result<(), AppError> {
     let path_str = path.to_string_lossy().to_string();
 
-    let count: i64 = conn
+    let mut count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM history WHERE text = ?1 OR text LIKE ?2 OR text LIKE ?3 OR text LIKE ?4",
-            params![
-                path_str,
-                format!("{}\n%", path.to_string_lossy()),
-                format!("%\n{}\n%", path.to_string_lossy()),
-                format!("%\n{}", path.to_string_lossy()),
-            ],
+            "SELECT COUNT(*) FROM history_assets WHERE path = ?1",
+            params![path_str.clone()],
             |row| row.get(0),
         )
-        .map_err(|e| AppError::Database(format!("检查图片引用失败: {}", e)))?;
+        .map_err(|e| AppError::Database(format!("检查资源映射引用失败: {}", e)))?;
+
+    if count == 0 {
+        let mut stmt = conn
+            .prepare("SELECT id, text FROM history")
+            .map_err(|e| AppError::Database(format!("准备回退引用扫描失败: {}", e)))?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| AppError::Database(format!("执行回退引用扫描失败: {}", e)))?;
+
+        let mut matched_ids = Vec::new();
+        for row in rows {
+            let (item_id, text) = row.map_err(|e| AppError::Database(format!("读取回退引用扫描数据失败: {}", e)))?;
+            if extract_generated_asset_paths(&text).contains(path) {
+                matched_ids.push(item_id);
+            }
+        }
+
+        if !matched_ids.is_empty() {
+            let mut insert_stmt = conn
+                .prepare("INSERT OR IGNORE INTO history_assets (item_id, path) VALUES (?1, ?2)")
+                .map_err(|e| AppError::Database(format!("准备回退写入资源映射失败: {}", e)))?;
+            for item_id in matched_ids {
+                insert_stmt
+                    .execute(params![item_id, path_str.clone()])
+                    .map_err(|e| AppError::Database(format!("回退写入资源映射失败: {}", e)))?;
+                count += 1;
+            }
+        }
+    }
 
     if count == 0 {
         match fs::remove_file(path) {
@@ -90,10 +215,57 @@ fn remove_orphan_generated_asset(conn: &Connection, path: &std::path::Path) -> R
     Ok(())
 }
 
-fn collect_generated_asset_paths_from_ids(conn: &Connection, ids: &[i64]) -> Result<HashSet<PathBuf>, AppError> {
+pub(crate) fn backfill_missing_history_assets(conn: &Connection, batch_size: usize) -> Result<(), AppError> {
+    let batch_size = batch_size.clamp(100, 5_000);
+
+    loop {
+        let mut select_stmt = conn
+            .prepare(
+                "SELECT h.id, h.text
+                 FROM history h
+                 LEFT JOIN history_assets ha ON ha.item_id = h.id
+                 WHERE ha.item_id IS NULL
+                 LIMIT ?1",
+            )
+            .map_err(|e| AppError::Database(format!("准备增量回填查询失败: {}", e)))?;
+
+        let rows = select_stmt
+            .query_map([batch_size as i64], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| AppError::Database(format!("查询增量回填数据失败: {}", e)))?;
+
+        let mut pending = Vec::new();
+        for row in rows {
+            pending.push(
+                row.map_err(|e| AppError::Database(format!("读取增量回填数据失败: {}", e)))?
+            );
+        }
+
+        if pending.is_empty() {
+            break;
+        }
+
+        let mut insert_stmt = conn
+            .prepare("INSERT OR IGNORE INTO history_assets (item_id, path) VALUES (?1, ?2)")
+            .map_err(|e| AppError::Database(format!("准备增量回填插入失败: {}", e)))?;
+
+        for (item_id, text) in pending {
+            for path in extract_generated_asset_paths(&text) {
+                insert_stmt
+                    .execute(params![item_id, path.to_string_lossy().to_string()])
+                    .map_err(|e| AppError::Database(format!("写入增量回填映射失败: {}", e)))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn collect_generated_asset_paths_from_ids(conn: &Connection, ids: &[i64]) -> Result<HashSet<PathBuf>, AppError> {
     if ids.is_empty() {
         return Ok(HashSet::new());
     }
+
+    let mut result = collect_paths_from_history_assets(conn, ids)?;
 
     let placeholders: Vec<&str> = ids.iter().map(|_| "?").collect();
     let sql = format!("SELECT text FROM history WHERE id IN ({})", placeholders.join(","));
@@ -106,7 +278,6 @@ fn collect_generated_asset_paths_from_ids(conn: &Connection, ids: &[i64]) -> Res
         .query_map(params_from_iter(ids.iter()), |row| row.get::<_, String>(0))
         .map_err(|e| AppError::Database(format!("查询待删条目失败: {}", e)))?;
 
-    let mut result = HashSet::new();
     for row in rows {
         let text = row.map_err(|e| AppError::Database(format!("读取待删条目失败: {}", e)))?;
         result.extend(extract_generated_asset_paths(&text));
@@ -122,45 +293,69 @@ pub(crate) fn cleanup_generated_assets(conn: &Connection, candidates: HashSet<Pa
     Ok(())
 }
 
-pub(crate) fn delete_clip_with_cleanup(conn: &Connection, id: i64) -> Result<(), AppError> {
-    let text: Option<String> = conn
-        .query_row("SELECT text FROM history WHERE id = ?1", params![id], |row| row.get(0))
-        .optional()
-        .map_err(|e| AppError::Database(format!("查询待删除记录失败: {}", e)))?;
+pub(crate) fn delete_clip_with_cleanup(conn: &mut Connection, id: i64) -> Result<(), AppError> {
+    let mut candidates = collect_paths_from_history_assets(conn, &[id])?;
+    if candidates.is_empty() {
+        candidates = sync_item_assets_from_history_text(conn, id)?;
+    }
 
-    let candidates = text
-        .map(|value| extract_generated_asset_paths(&value))
-        .unwrap_or_default();
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Database(format!("开始删除事务失败: {}", e)))?;
 
-    conn.execute("DELETE FROM history WHERE id = ?1", params![id])
+    tx.execute("DELETE FROM history WHERE id = ?1", params![id])
         .map_err(|e| AppError::Database(format!("删除记录失败: {}", e)))?;
+    delete_history_assets_for_ids(&tx, &[id])?;
+    tx.commit()
+        .map_err(|e| AppError::Database(format!("提交删除事务失败: {}", e)))?;
 
     cleanup_generated_assets(conn, candidates)?;
     Ok(())
 }
 
-pub(crate) fn clear_all_with_cleanup(conn: &Connection) -> Result<(), AppError> {
+pub(crate) fn clear_all_with_cleanup(conn: &mut Connection) -> Result<(), AppError> {
+    let mut candidates = HashSet::new();
+
+    let mut asset_stmt = conn
+        .prepare("SELECT DISTINCT path FROM history_assets")
+        .map_err(|e| AppError::Database(format!("准备查询历史资源映射失败: {}", e)))?;
+    let asset_rows = asset_stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| AppError::Database(format!("查询历史资源映射失败: {}", e)))?;
+    for row in asset_rows {
+        let path_str = row.map_err(|e| AppError::Database(format!("读取历史资源映射失败: {}", e)))?;
+        if let Some(path) = normalize_local_path(&path_str) {
+            candidates.insert(path);
+        }
+    }
+
     let mut stmt = conn
         .prepare("SELECT text FROM history")
         .map_err(|e| AppError::Database(format!("准备清空查询失败: {}", e)))?;
     let rows = stmt
         .query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| AppError::Database(format!("查询清空条目失败: {}", e)))?;
-
-    let mut candidates = HashSet::new();
     for row in rows {
         let text = row.map_err(|e| AppError::Database(format!("读取清空条目失败: {}", e)))?;
         candidates.extend(extract_generated_asset_paths(&text));
     }
 
-    conn.execute("DELETE FROM history", [])
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Database(format!("开始清空事务失败: {}", e)))?;
+
+    tx.execute("DELETE FROM history", [])
         .map_err(|e| AppError::Database(format!("清空记录失败: {}", e)))?;
+    tx.execute("DELETE FROM history_assets", [])
+        .map_err(|e| AppError::Database(format!("清空历史资源映射失败: {}", e)))?;
+    tx.commit()
+        .map_err(|e| AppError::Database(format!("提交清空事务失败: {}", e)))?;
 
     cleanup_generated_assets(conn, candidates)?;
     Ok(())
 }
 
-pub(crate) fn bulk_delete_with_cleanup(conn: &Connection, ids: &[i64]) -> Result<(), AppError> {
+pub(crate) fn bulk_delete_with_cleanup(conn: &mut Connection, ids: &[i64]) -> Result<(), AppError> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -170,8 +365,15 @@ pub(crate) fn bulk_delete_with_cleanup(conn: &Connection, ids: &[i64]) -> Result
     let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
     let sql = format!("DELETE FROM history WHERE id IN ({})", placeholders.join(","));
     let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
-    conn.execute(&sql, params.as_slice())
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Database(format!("开始批量删除事务失败: {}", e)))?;
+
+    tx.execute(&sql, params.as_slice())
         .map_err(|e| AppError::Database(format!("批量删除失败: {}", e)))?;
+    delete_history_assets_for_ids(&tx, ids)?;
+    tx.commit()
+        .map_err(|e| AppError::Database(format!("提交批量删除事务失败: {}", e)))?;
 
     cleanup_generated_assets(conn, candidates)?;
     Ok(())
@@ -202,6 +404,15 @@ mod tests {
             [],
         )
         .expect("create history table failed");
+        conn.execute(
+            "CREATE TABLE history_assets (
+                item_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                PRIMARY KEY (item_id, path)
+            )",
+            [],
+        )
+        .expect("create history_assets table failed");
         conn
     }
 
@@ -253,6 +464,12 @@ mod tests {
             params![file_path.to_string_lossy().to_string()],
         )
         .expect("insert history row failed");
+        let item_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO history_assets (item_id, path) VALUES (?1, ?2)",
+            params![item_id, file_path.to_string_lossy().to_string()],
+        )
+        .expect("insert history_assets row failed");
 
         remove_orphan_generated_asset(&conn, &file_path).expect("cleanup should succeed");
 
@@ -270,6 +487,12 @@ mod tests {
         let value = format!("line1\n{}\nline3", file_path.to_string_lossy());
         conn.execute("INSERT INTO history (text) VALUES (?1)", params![value])
             .expect("insert multiline history row failed");
+        let item_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO history_assets (item_id, path) VALUES (?1, ?2)",
+            params![item_id, file_path.to_string_lossy().to_string()],
+        )
+        .expect("insert history_assets row failed");
 
         remove_orphan_generated_asset(&conn, &file_path).expect("cleanup should succeed");
 
@@ -283,7 +506,7 @@ mod tests {
         let file_path = dir.join("img_20260101010101000.png");
         fs::write(&file_path, b"test").expect("create temp file failed");
 
-        let conn = setup_history_conn();
+        let mut conn = setup_history_conn();
         conn.execute(
             "INSERT INTO history (text) VALUES (?1)",
             params![file_path.to_string_lossy().to_string()],
@@ -291,7 +514,7 @@ mod tests {
         .expect("insert history row failed");
         let id = conn.last_insert_rowid();
 
-        delete_clip_with_cleanup(&conn, id).expect("delete flow should succeed");
+        delete_clip_with_cleanup(&mut conn, id).expect("delete flow should succeed");
 
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM history WHERE id = ?1", params![id], |row| row.get(0))
@@ -310,7 +533,7 @@ mod tests {
         fs::write(&shared, b"shared").expect("create shared file failed");
         fs::write(&unique, b"unique").expect("create unique file failed");
 
-        let conn = setup_history_conn();
+        let mut conn = setup_history_conn();
         conn.execute(
             "INSERT INTO history (text) VALUES (?1)",
             params![shared.to_string_lossy().to_string()],
@@ -332,7 +555,7 @@ mod tests {
         .expect("insert unique row failed");
         let id3 = conn.last_insert_rowid();
 
-        bulk_delete_with_cleanup(&conn, &[id1, id3]).expect("bulk delete flow should succeed");
+        bulk_delete_with_cleanup(&mut conn, &[id1, id3]).expect("bulk delete flow should succeed");
 
         assert!(shared.exists(), "shared file should be kept because id2 still references it");
         assert!(!unique.exists(), "unique file should be removed as orphan");
@@ -356,7 +579,7 @@ mod tests {
         fs::write(&managed_svg, b"managed-svg").expect("create managed svg failed");
         fs::write(&user_png, b"user-png").expect("create user png failed");
 
-        let conn = setup_history_conn();
+        let mut conn = setup_history_conn();
         conn.execute(
             "INSERT INTO history (text) VALUES (?1)",
             params![managed_png.to_string_lossy().to_string()],
@@ -373,7 +596,7 @@ mod tests {
         )
         .expect("insert user png row failed");
 
-        clear_all_with_cleanup(&conn).expect("clear_all flow should succeed");
+        clear_all_with_cleanup(&mut conn).expect("clear_all flow should succeed");
 
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM history", [], |row| row.get(0))

@@ -1,16 +1,16 @@
-//! 数据库模块
+//! 数据库模块入口（Facade）
 //!
-//! # 设计思路
+//! ## 职责
+//! - 定义数据库共享数据模型（`ClipItem`、`Tag`、`AppStats`）
+//! - 管理读写分离连接状态（`DbState`）与访问 helper
+//! - 初始化数据库与 Schema，并导出各子模块命令
 //!
-//! 将所有 SQLite 数据库操作集中到 Rust 后端，前端通过 Tauri IPC 调用。
-//! 使用 `rusqlite` 直接操作 SQLite，替代前端的 `@tauri-apps/plugin-sql`。
+//! ## 输入/输出
+//! - 输入：`AppHandle`、`State<DbState>` 与调用参数
+//! - 输出：`Result<T, AppError>`
 //!
-//! # 优势
-//!
-//! - **类型安全**：Rust struct + serde，编译期保证数据结构正确
-//! - **一致性**：单一数据源，后端统一管控
-//! - **性能**：Rust 端可用事务批量写入
-//! - **可维护性**：SQL 逻辑集中在一个模块
+//! ## 错误语义
+//! - 数据库连接与锁相关错误统一映射为 `AppError::Database`
 
 use std::sync::Mutex;
 use std::fs;
@@ -71,14 +71,37 @@ pub struct AppStats {
 // 数据库状态（Tauri Managed State）
 // ============================================================================
 
-/// 数据库连接封装，由 Tauri 托管
-pub struct DbState(pub Mutex<Connection>);
+/// 数据库连接封装（读写分离），由 Tauri 托管
+pub struct DbState {
+    pub write_conn: Mutex<Connection>,
+    pub read_conn: Mutex<Connection>,
+}
 
-pub(crate) fn with_conn<T>(state: &State<'_, DbState>, op: impl FnOnce(&Connection) -> Result<T, AppError>) -> Result<T, AppError> {
-    let conn = state.0.lock().map_err(|e| {
+pub(crate) fn with_conn_mut<T>(state: &State<'_, DbState>, op: impl FnOnce(&mut Connection) -> Result<T, AppError>) -> Result<T, AppError> {
+    let mut conn = state.write_conn.lock().map_err(|e| {
         AppError::Database(format!("获取数据库锁失败: {}", e))
     })?;
+    op(&mut conn)
+}
+
+pub(crate) fn with_read_conn<T>(state: &State<'_, DbState>, op: impl FnOnce(&Connection) -> Result<T, AppError>) -> Result<T, AppError> {
+    let conn = state.read_conn.lock().map_err(|e| {
+        AppError::Database(format!("获取数据库读锁失败: {}", e))
+    })?;
     op(&conn)
+}
+
+pub(crate) fn with_conn_pair_mut<T>(
+    state: &State<'_, DbState>,
+    op: impl FnOnce(&mut Connection, &mut Connection) -> Result<T, AppError>,
+) -> Result<T, AppError> {
+    let mut write_conn = state.write_conn.lock().map_err(|e| {
+        AppError::Database(format!("获取数据库写锁失败: {}", e))
+    })?;
+    let mut read_conn = state.read_conn.lock().map_err(|e| {
+        AppError::Database(format!("获取数据库读锁失败: {}", e))
+    })?;
+    op(&mut write_conn, &mut read_conn)
 }
 
 // ============================================================================
@@ -92,8 +115,8 @@ pub(crate) fn with_conn<T>(state: &State<'_, DbState>, op: impl FnOnce(&Connecti
 /// 初始化数据库连接与 Schema
 ///
 /// 在 `main.rs` 的 `setup` 阶段调用，创建表结构并执行迁移。
-/// 返回的 `Connection` 将被包装为 `DbState` 注册到 Tauri 状态管理中。
-pub fn init_db(app: &AppHandle) -> Result<Connection, AppError> {
+/// 返回的 `DbState` 将注册到 Tauri 状态管理中。
+pub fn init_db(app: &AppHandle) -> Result<DbState, AppError> {
     let db_path = config::resolve_db_path(app)?;
     if let Some(parent) = db_path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -102,13 +125,19 @@ pub fn init_db(app: &AppHandle) -> Result<Connection, AppError> {
     }
     log::info!("数据库路径: {}", db_path.display());
 
-    let conn = Connection::open(&db_path).map_err(|e| {
+    let write_conn = Connection::open(&db_path).map_err(|e| {
         AppError::Database(format!("打开数据库失败: {}", e))
     })?;
+    let read_conn = Connection::open(&db_path).map_err(|e| {
+        AppError::Database(format!("打开数据库读连接失败: {}", e))
+    })?;
 
-    schema::initialize_schema(&conn)?;
+    schema::initialize_schema(&write_conn)?;
 
-    Ok(conn)
+    Ok(DbState {
+        write_conn: Mutex::new(write_conn),
+        read_conn: Mutex::new(read_conn),
+    })
 }
 
 // ============================================================================

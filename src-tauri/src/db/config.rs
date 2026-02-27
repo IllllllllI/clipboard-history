@@ -1,3 +1,16 @@
+//! 数据库路径配置子模块
+//!
+//! ## 职责
+//! - 读取/写入数据库目录配置（`config.json`）
+//! - 解析当前数据库文件路径（自定义目录优先，默认 app data 回退）
+//!
+//! ## 输入/输出
+//! - 输入：`AppHandle`、配置路径与可选目录字符串
+//! - 输出：解析后的 `PathBuf` 或 `Result<(), AppError>`
+//!
+//! ## 错误语义
+//! - 文件系统或配置序列化失败统一映射为 `AppError::Database`
+
 use std::fs;
 use std::path::{Path, PathBuf};
 

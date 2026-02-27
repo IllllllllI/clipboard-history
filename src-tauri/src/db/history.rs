@@ -1,4 +1,18 @@
-use std::collections::HashSet;
+//! 历史记录子模块
+//!
+//! ## 职责
+//! - 提供历史记录增删改查、置顶/收藏、统计与导入能力
+//! - 封装自动清理逻辑，并与资源清理子模块协同
+//! - 暴露对应的 Tauri command 给前端调用
+//!
+//! ## 输入/输出
+//! - 输入：`State<DbState>`、历史记录参数、导入数据集合
+//! - 输出：`Result<T, AppError>`，其中 `T` 包含 `Vec<ClipItem>`、`AppStats` 等
+//!
+//! ## 错误语义
+//! - 数据访问与 SQL 执行失败统一映射为 `AppError::Database`
+
+use std::collections::HashMap;
 
 use rusqlite::{params, Connection, ToSql};
 use serde::Deserialize;
@@ -17,24 +31,35 @@ pub struct ImportItem {
     pub is_snippet: Option<i32>,
 }
 
-fn auto_clear_before(conn: &Connection, cutoff: i64) -> Result<(), AppError> {
+fn normalize_flag(value: i32) -> i32 {
+    if value == 0 { 0 } else { 1 }
+}
+
+fn auto_clear_before(conn: &mut Connection, cutoff: i64) -> Result<(), AppError> {
     let mut stmt = conn
-        .prepare("SELECT text FROM history WHERE timestamp < ?1 AND is_pinned = 0 AND is_favorite = 0")
+        .prepare("SELECT id FROM history WHERE timestamp < ?1 AND is_pinned = 0 AND is_favorite = 0")
         .map_err(|e| AppError::Database(format!("准备自动清理查询失败: {}", e)))?;
     let rows = stmt
-        .query_map(params![cutoff], |row| row.get::<_, String>(0))
+        .query_map(params![cutoff], |row| row.get::<_, i64>(0))
         .map_err(|e| AppError::Database(format!("查询自动清理条目失败: {}", e)))?;
 
-    let mut candidates = HashSet::new();
+    let mut ids = Vec::new();
     for row in rows {
-        let text = row.map_err(|e| AppError::Database(format!("读取自动清理条目失败: {}", e)))?;
-        candidates.extend(super::cleanup::extract_generated_asset_paths(&text));
+        ids.push(row.map_err(|e| AppError::Database(format!("读取自动清理条目失败: {}", e)))?);
     }
 
-    conn.execute(
+    let candidates = super::cleanup::collect_generated_asset_paths_from_ids(conn, &ids)?;
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Database(format!("开始自动清理事务失败: {}", e)))?;
+    tx.execute(
         "DELETE FROM history WHERE timestamp < ?1 AND is_pinned = 0 AND is_favorite = 0",
         params![cutoff],
     ).map_err(|e| AppError::Database(format!("自动清理失败: {}", e)))?;
+    super::cleanup::delete_history_assets_for_ids(&tx, &ids)?;
+    tx.commit()
+        .map_err(|e| AppError::Database(format!("提交自动清理事务失败: {}", e)))?;
 
     super::cleanup::cleanup_generated_assets(conn, candidates)
 }
@@ -74,40 +99,96 @@ fn get_stats(conn: &Connection) -> Result<AppStats, AppError> {
 }
 
 fn get_history(conn: &Connection, limit: i64) -> Result<Vec<ClipItem>, AppError> {
+    let limit = limit.clamp(1, 5000);
+
+    #[derive(Debug)]
+    struct BaseItem {
+        id: i64,
+        text: String,
+        timestamp: i64,
+        is_pinned: i32,
+        is_snippet: i32,
+        is_favorite: i32,
+        picked_color: Option<String>,
+    }
+
     let mut stmt = conn
         .prepare(" 
-            SELECT h.id, h.text, h.timestamp, h.is_pinned, h.is_snippet, h.is_favorite,
-                   COALESCE((
-                       SELECT json_group_array(json_object('id', t.id, 'name', t.name, 'color', t.color))
-                       FROM item_tags it
-                       JOIN tags t ON it.tag_id = t.id
-                       WHERE it.item_id = h.id
-                   ), '[]') as tags,
-                   h.picked_color
+            SELECT h.id, h.text, h.timestamp, h.is_pinned, h.is_snippet, h.is_favorite, h.picked_color
             FROM history h
             ORDER BY h.is_pinned DESC, h.timestamp DESC
             LIMIT ?1
         ")
         .map_err(|e| AppError::Database(format!("准备查询失败: {}", e)))?;
 
-    let items = stmt
+    let base_items = stmt
         .query_map(params![limit], |row| {
-            let tags_json: String = row.get(6)?;
-            let tags: Vec<Tag> = serde_json::from_str(&tags_json).unwrap_or_default();
-            Ok(ClipItem {
+            Ok(BaseItem {
                 id: row.get(0)?,
                 text: row.get(1)?,
                 timestamp: row.get(2)?,
                 is_pinned: row.get(3)?,
                 is_snippet: row.get(4)?,
                 is_favorite: row.get(5)?,
-                tags,
-                picked_color: row.get(7)?,
+                picked_color: row.get(6)?,
             })
         })
         .map_err(|e| AppError::Database(format!("查询历史失败: {}", e)))?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| AppError::Database(format!("读取行失败: {}", e)))?;
+
+    if base_items.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ids: Vec<i64> = base_items.iter().map(|item| item.id).collect();
+    let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+    let sql = format!(
+        "SELECT it.item_id, t.id, t.name, t.color
+         FROM item_tags it
+         JOIN tags t ON it.tag_id = t.id
+         WHERE it.item_id IN ({})
+         ORDER BY t.name ASC",
+        placeholders.join(",")
+    );
+
+    let params: Vec<&dyn ToSql> = ids.iter().map(|id| id as &dyn ToSql).collect();
+    let mut tag_stmt = conn
+        .prepare(&sql)
+        .map_err(|e| AppError::Database(format!("准备标签批量查询失败: {}", e)))?;
+
+    let tag_rows = tag_stmt
+        .query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                Tag {
+                    id: row.get(1)?,
+                    name: row.get(2)?,
+                    color: row.get(3)?,
+                },
+            ))
+        })
+        .map_err(|e| AppError::Database(format!("查询标签失败: {}", e)))?;
+
+    let mut tags_by_item: HashMap<i64, Vec<Tag>> = HashMap::new();
+    for row in tag_rows {
+        let (item_id, tag) = row.map_err(|e| AppError::Database(format!("读取标签行失败: {}", e)))?;
+        tags_by_item.entry(item_id).or_default().push(tag);
+    }
+
+    let items = base_items
+        .into_iter()
+        .map(|item| ClipItem {
+            id: item.id,
+            text: item.text,
+            timestamp: item.timestamp,
+            is_pinned: item.is_pinned,
+            is_snippet: item.is_snippet,
+            is_favorite: item.is_favorite,
+            tags: tags_by_item.remove(&item.id).unwrap_or_default(),
+            picked_color: item.picked_color,
+        })
+        .collect();
 
     Ok(items)
 }
@@ -158,6 +239,8 @@ fn get_clip_by_id(conn: &Connection, id: i64) -> Result<Option<ClipItem>, AppErr
 }
 
 fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<Option<i64>, AppError> {
+        let is_snippet = normalize_flag(is_snippet);
+
     let text = text.trim().to_string();
     if text.is_empty() {
         return Ok(None);
@@ -182,7 +265,10 @@ fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<Option<i
         params![text, now, is_snippet],
     ).map_err(|e| AppError::Database(format!("插入记录失败: {}", e)))?;
 
-    Ok(Some(conn.last_insert_rowid()))
+    let inserted_id = conn.last_insert_rowid();
+    super::cleanup::sync_item_assets_for_text(conn, inserted_id, &text)?;
+
+    Ok(Some(inserted_id))
 }
 
 fn toggle_pin(conn: &Connection, id: i64, current_pinned: i32) -> Result<(), AppError> {
@@ -223,6 +309,7 @@ fn update_clip(conn: &Connection, id: i64, new_text: String) -> Result<(), AppEr
         "UPDATE history SET text = ?1 WHERE id = ?2",
         params![new_text, id],
     ).map_err(|e| AppError::Database(format!("更新记录失败: {}", e)))?;
+    super::cleanup::sync_item_assets_for_text(conn, id, &new_text)?;
     Ok(())
 }
 
@@ -250,8 +337,21 @@ fn import_data(conn: &mut Connection, items: &[ImportItem]) -> Result<(), AppErr
         };
         tx.execute(
             "INSERT INTO history (text, timestamp, is_pinned, is_snippet) VALUES (?1, ?2, ?3, ?4)",
-            params![item.text, timestamp, item.is_pinned.unwrap_or(0), item.is_snippet.unwrap_or(0)],
+            params![
+                item.text,
+                timestamp,
+                normalize_flag(item.is_pinned.unwrap_or(0)),
+                normalize_flag(item.is_snippet.unwrap_or(0)),
+            ],
         ).map_err(|e| AppError::Database(format!("导入记录失败: {}", e)))?;
+
+        let item_id = tx.last_insert_rowid();
+        for path in super::cleanup::extract_generated_asset_paths(&item.text) {
+            tx.execute(
+                "INSERT OR IGNORE INTO history_assets (item_id, path) VALUES (?1, ?2)",
+                params![item_id, path.to_string_lossy().to_string()],
+            ).map_err(|e| AppError::Database(format!("导入资源映射失败: {}", e)))?;
+        }
     }
 
     tx.commit().map_err(|e| AppError::Database(format!("提交事务失败: {}", e)))?;
@@ -263,7 +363,7 @@ pub fn db_auto_clear(state: State<'_, DbState>, auto_clear_days: i64) -> Result<
     if auto_clear_days <= 0 {
         return Ok(());
     }
-    super::with_conn(&state, |conn| {
+    super::with_conn_mut(&state, |conn| {
         let cutoff = chrono::Utc::now().timestamp_millis() - (auto_clear_days * 24 * 60 * 60 * 1000);
         auto_clear_before(conn, cutoff)
     })
@@ -271,12 +371,12 @@ pub fn db_auto_clear(state: State<'_, DbState>, auto_clear_days: i64) -> Result<
 
 #[tauri::command]
 pub fn db_get_stats(state: State<'_, DbState>) -> Result<AppStats, AppError> {
-    super::with_conn(&state, get_stats)
+    super::with_read_conn(&state, get_stats)
 }
 
 #[tauri::command]
 pub fn db_get_history(state: State<'_, DbState>, limit: i64) -> Result<Vec<ClipItem>, AppError> {
-    super::with_conn(&state, |conn| get_history(conn, limit))
+    super::with_read_conn(&state, |conn| get_history(conn, limit))
 }
 
 #[tauri::command]
@@ -285,7 +385,7 @@ pub fn db_add_clip(
     text: String,
     is_snippet: i32,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| {
+    super::with_conn_mut(&state, |conn| {
         let _ = add_clip(conn, text, is_snippet)?;
         Ok(())
     })
@@ -297,7 +397,7 @@ pub fn db_add_clip_and_get(
     text: String,
     is_snippet: i32,
 ) -> Result<Option<ClipItem>, AppError> {
-    super::with_conn(&state, |conn| {
+    super::with_conn_mut(&state, |conn| {
         let inserted_id = add_clip(conn, text, is_snippet)?;
         match inserted_id {
             Some(id) => get_clip_by_id(conn, id),
@@ -312,7 +412,7 @@ pub fn db_toggle_pin(
     id: i64,
     current_pinned: i32,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| toggle_pin(conn, id, current_pinned))
+    super::with_conn_mut(&state, |conn| toggle_pin(conn, id, current_pinned))
 }
 
 #[tauri::command]
@@ -321,27 +421,27 @@ pub fn db_toggle_favorite(
     id: i64,
     current_favorite: i32,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| toggle_favorite(conn, id, current_favorite))
+    super::with_conn_mut(&state, |conn| toggle_favorite(conn, id, current_favorite))
 }
 
 #[tauri::command]
 pub fn db_delete_clip(state: State<'_, DbState>, id: i64) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| super::cleanup::delete_clip_with_cleanup(conn, id))
+    super::with_conn_mut(&state, |conn| super::cleanup::delete_clip_with_cleanup(conn, id))
 }
 
 #[tauri::command]
 pub fn db_clear_all(state: State<'_, DbState>) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| super::cleanup::clear_all_with_cleanup(conn))
+    super::with_conn_mut(&state, |conn| super::cleanup::clear_all_with_cleanup(conn))
 }
 
 #[tauri::command]
 pub fn db_bulk_delete(state: State<'_, DbState>, ids: Vec<i64>) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| super::cleanup::bulk_delete_with_cleanup(conn, &ids))
+    super::with_conn_mut(&state, |conn| super::cleanup::bulk_delete_with_cleanup(conn, &ids))
 }
 
 #[tauri::command]
 pub fn db_bulk_pin(state: State<'_, DbState>, ids: Vec<i64>) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| bulk_pin(conn, &ids))
+    super::with_conn_mut(&state, |conn| bulk_pin(conn, &ids))
 }
 
 #[tauri::command]
@@ -350,7 +450,7 @@ pub fn db_update_clip(
     id: i64,
     new_text: String,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| update_clip(conn, id, new_text))
+    super::with_conn_mut(&state, |conn| update_clip(conn, id, new_text))
 }
 
 #[tauri::command]
@@ -359,7 +459,7 @@ pub fn db_update_picked_color(
     id: i64,
     color: Option<String>,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| update_picked_color(conn, id, color))
+    super::with_conn_mut(&state, |conn| update_picked_color(conn, id, color))
 }
 
 #[tauri::command]
@@ -367,11 +467,7 @@ pub fn db_import_data(
     state: State<'_, DbState>,
     items: Vec<ImportItem>,
 ) -> Result<(), AppError> {
-    let mut conn = state.0.lock().map_err(|e| {
-        AppError::Database(format!("获取数据库锁失败: {}", e))
-    })?;
-
-    import_data(&mut conn, &items)
+    super::with_conn_mut(&state, |conn| import_data(conn, &items))
 }
 
 #[cfg(test)]
@@ -404,6 +500,11 @@ mod tests {
                 item_id INTEGER NOT NULL,
                 tag_id INTEGER NOT NULL,
                 PRIMARY KEY (item_id, tag_id)
+            );
+            CREATE TABLE history_assets (
+                item_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                PRIMARY KEY (item_id, path)
             );"
         ).expect("create schema");
         conn
@@ -490,7 +591,7 @@ mod tests {
 
     #[test]
     fn auto_clear_before_removes_old_non_pinned_non_favorite() {
-        let conn = setup_conn();
+        let mut conn = setup_conn();
         conn.execute(
             "INSERT INTO history (text, timestamp, is_pinned, is_favorite) VALUES (?1, ?2, 0, 0)",
             params!["old", 100_i64],
@@ -508,7 +609,7 @@ mod tests {
             params!["new", 1000_i64],
         ).expect("insert new");
 
-        auto_clear_before(&conn, 200).expect("auto clear");
+        auto_clear_before(&mut conn, 200).expect("auto clear");
 
         let remaining: Vec<String> = conn
             .prepare("SELECT text FROM history ORDER BY id")

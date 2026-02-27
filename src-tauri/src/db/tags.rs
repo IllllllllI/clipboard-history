@@ -1,3 +1,17 @@
+//! 标签管理子模块
+//!
+//! ## 职责
+//! - 提供标签的增删改查能力
+//! - 管理历史条目与标签的关联关系（`item_tags`）
+//! - 暴露标签相关 Tauri command
+//!
+//! ## 输入/输出
+//! - 输入：`State<DbState>`、标签字段、条目/标签 ID
+//! - 输出：`Tag`、`Vec<Tag>` 或 `Result<(), AppError>`
+//!
+//! ## 错误语义
+//! - 标签查询与写入失败统一映射为 `AppError::Database`
+
 use rusqlite::{params, Connection};
 use tauri::State;
 
@@ -68,7 +82,7 @@ fn remove_tag_from_item(conn: &Connection, item_id: i64, tag_id: i64) -> Result<
 
 #[tauri::command]
 pub fn db_get_tags(state: State<'_, DbState>) -> Result<Vec<Tag>, AppError> {
-    super::with_conn(&state, get_tags)
+    super::with_read_conn(&state, get_tags)
 }
 
 #[tauri::command]
@@ -77,7 +91,7 @@ pub fn db_create_tag(
     name: String,
     color: Option<String>,
 ) -> Result<Tag, AppError> {
-    super::with_conn(&state, |conn| create_tag(conn, name, color))
+    super::with_conn_mut(&state, |conn| create_tag(conn, name, color))
 }
 
 #[tauri::command]
@@ -87,12 +101,12 @@ pub fn db_update_tag(
     name: String,
     color: Option<String>,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| update_tag(conn, id, name, color))
+    super::with_conn_mut(&state, |conn| update_tag(conn, id, name, color))
 }
 
 #[tauri::command]
 pub fn db_delete_tag(state: State<'_, DbState>, id: i64) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| delete_tag(conn, id))
+    super::with_conn_mut(&state, |conn| delete_tag(conn, id))
 }
 
 #[tauri::command]
@@ -101,7 +115,7 @@ pub fn db_add_tag_to_item(
     item_id: i64,
     tag_id: i64,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| add_tag_to_item(conn, item_id, tag_id))
+    super::with_conn_mut(&state, |conn| add_tag_to_item(conn, item_id, tag_id))
 }
 
 #[tauri::command]
@@ -110,7 +124,7 @@ pub fn db_remove_tag_from_item(
     item_id: i64,
     tag_id: i64,
 ) -> Result<(), AppError> {
-    super::with_conn(&state, |conn| remove_tag_from_item(conn, item_id, tag_id))
+    super::with_conn_mut(&state, |conn| remove_tag_from_item(conn, item_id, tag_id))
 }
 
 #[cfg(test)]

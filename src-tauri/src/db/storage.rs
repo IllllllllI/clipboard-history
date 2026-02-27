@@ -1,3 +1,17 @@
+//! 数据库文件管理子模块
+//!
+//! ## 职责
+//! - 查询当前数据库路径与文件大小
+//! - 执行数据库文件迁移（含 WAL/SHM）与连接切换
+//! - 持久化数据库目录配置
+//!
+//! ## 输入/输出
+//! - 输入：`AppHandle`、`State<DbState>`、目标目录
+//! - 输出：`DbInfo` 或 `Result<(), AppError>`
+//!
+//! ## 错误语义
+//! - 文件复制、连接切换、目录操作失败统一映射为 `AppError::Database`
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -102,12 +116,10 @@ fn replace_connection_to_new_db(
 
 #[tauri::command]
 pub fn db_get_info(state: State<'_, DbState>) -> Result<DbInfo, AppError> {
-    let conn = state.0.lock().map_err(|e| {
-        AppError::Database(format!("获取数据库锁失败: {}", e))
-    })?;
-
-    let path = get_current_db_path(&conn)?;
-    Ok(build_db_info(&path))
+    super::with_read_conn(&state, |conn| {
+        let path = get_current_db_path(conn)?;
+        Ok(build_db_info(&path))
+    })
 }
 
 #[tauri::command]
@@ -116,60 +128,71 @@ pub fn db_move_database(
     state: State<'_, DbState>,
     new_dir: String,
 ) -> Result<DbInfo, AppError> {
-    let mut conn = state.0.lock().map_err(|e| {
-        AppError::Database(format!("获取数据库锁失败: {}", e))
-    })?;
+    super::with_conn_pair_mut(&state, |write_conn, read_conn| {
+        let current_db_path = get_current_db_path(write_conn)?;
+        let new_dir_path = resolve_new_dir_path(&app, &new_dir)?;
 
-    let current_db_path = get_current_db_path(&conn)?;
-    let new_dir_path = resolve_new_dir_path(&app, &new_dir)?;
+        fs::create_dir_all(&new_dir_path).map_err(|e| {
+            AppError::Database(format!("创建目标目录失败: {}", e))
+        })?;
 
-    fs::create_dir_all(&new_dir_path).map_err(|e| {
-        AppError::Database(format!("创建目标目录失败: {}", e))
-    })?;
+        let new_db_path = new_dir_path.join("clipboard.db");
 
-    let new_db_path = new_dir_path.join("clipboard.db");
+        if current_db_path == new_db_path {
+            return Ok(build_db_info(&new_db_path));
+        }
 
-    if current_db_path == new_db_path {
-        return Ok(build_db_info(&new_db_path));
-    }
+        if new_db_path.exists() {
+            return Err(AppError::Database(
+                "目标位置已存在数据库文件 clipboard.db，请选择其他目录或先手动删除".to_string()
+            ));
+        }
 
-    if new_db_path.exists() {
-        return Err(AppError::Database(
-            "目标位置已存在数据库文件 clipboard.db，请选择其他目录或先手动删除".to_string()
-        ));
-    }
+        write_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(|e| AppError::Database(format!("WAL 检查点失败: {}", e)))?;
 
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-        .map_err(|e| AppError::Database(format!("WAL 检查点失败: {}", e)))?;
+        let temp_conn = Connection::open_in_memory()
+            .map_err(|e| AppError::Database(format!("创建临时连接失败: {}", e)))?;
+        let old_conn = std::mem::replace(write_conn, temp_conn);
+        drop(old_conn);
 
-    let temp_conn = Connection::open_in_memory()
-        .map_err(|e| AppError::Database(format!("创建临时连接失败: {}", e)))?;
-    let old_conn = std::mem::replace(&mut *conn, temp_conn);
-    drop(old_conn);
+        let copy_result = copy_database_files(&current_db_path, &new_db_path);
 
-    let copy_result = copy_database_files(&current_db_path, &new_db_path);
+        if let Err(e) = copy_result {
+            log::error!("复制数据库失败，尝试恢复旧连接: {}", e);
+            let _ = fs::remove_file(&new_db_path);
+            restore_connection(write_conn, &current_db_path);
+            return Err(e);
+        }
 
-    if let Err(e) = copy_result {
-        log::error!("复制数据库失败，尝试恢复旧连接: {}", e);
-        let _ = fs::remove_file(&new_db_path);
-        restore_connection(&mut conn, &current_db_path);
-        return Err(e);
-    }
+        replace_connection_to_new_db(write_conn, &current_db_path, &new_db_path)?;
 
-    replace_connection_to_new_db(&mut conn, &current_db_path, &new_db_path)?;
+        match Connection::open(&new_db_path) {
+            Ok(new_read_conn) => {
+                let old_read_conn = std::mem::replace(read_conn, new_read_conn);
+                drop(old_read_conn);
+            }
+            Err(open_err) => {
+                log::error!("打开新数据库读连接失败: {}", open_err);
+                let _ = fs::remove_file(&new_db_path);
+                restore_connection(write_conn, &current_db_path);
+                return Err(AppError::Database(format!("打开新数据库读连接失败: {}", open_err)));
+            }
+        }
 
-    let _ = fs::remove_file(&current_db_path);
-    let _ = fs::remove_file(current_db_path.with_extension("db-wal"));
-    let _ = fs::remove_file(current_db_path.with_extension("db-shm"));
+        let _ = fs::remove_file(&current_db_path);
+        let _ = fs::remove_file(current_db_path.with_extension("db-wal"));
+        let _ = fs::remove_file(current_db_path.with_extension("db-shm"));
 
-    let config_dir = if new_dir.is_empty() {
-        None
-    } else {
-        Some(new_dir)
-    };
-    config::save_db_config(&app, config_dir)?;
+        let config_dir = if new_dir.is_empty() {
+            None
+        } else {
+            Some(new_dir.clone())
+        };
+        config::save_db_config(&app, config_dir)?;
 
-    Ok(build_db_info(&new_db_path))
+        Ok(build_db_info(&new_db_path))
+    })
 }
 
 #[cfg(test)]
