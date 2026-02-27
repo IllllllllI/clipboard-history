@@ -77,7 +77,11 @@ export function useSettings() {
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      } catch (error) {
+        console.warn('设置写入失败：', error);
+      }
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -185,7 +189,12 @@ export function useSettings() {
   }, [settings.allowPrivateNetwork, settings.resolveDnsForUrlSafety, settings.maxDecodedBytes]);
 
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
-    setSettings(prev => ({ ...prev, ...updates }));
+    setSettings(prev => {
+      const next = { ...prev, ...updates };
+      const changed = (Object.keys(updates) as Array<keyof AppSettings>)
+        .some((key) => prev[key] !== next[key]);
+      return changed ? next : prev;
+    });
   }, []);
 
   return { settings, updateSettings };
