@@ -18,25 +18,28 @@ import { ClipItem, ImageType } from '../../types';
  * 使用配置映射替代嵌套三元表达式，遵循开闭原则。
  * 添加新类型只需在此处增加一行。
  */
-const TYPE_ICON_MAP: Record<string, LucideIcon> = {
+const TYPE_ICON_MAP = {
   files: Files,
   url: Link,
   color: Palette,
   'multi-image': Images,
-};
+} satisfies Record<string, LucideIcon>;
 
-const IMAGE_TYPE_ICON_MAP: Record<string, LucideIcon> = {
+const IMAGE_TYPE_ICON_MAP = {
   [ImageType.HttpUrl]: Globe,
   [ImageType.LocalFile]: HardDrive,
   [ImageType.Base64]: FileCode2,
-};
+} satisfies Partial<Record<ImageType, LucideIcon>>;
 
 /** 根据内容类型决定该条目的图标 */
 export function getItemIcon(item: ClipItem, type: string, imageType: ImageType): LucideIcon {
   if (item.is_snippet) return Plus;
-  if (TYPE_ICON_MAP[type]) return TYPE_ICON_MAP[type];
-  if (imageType !== ImageType.None && IMAGE_TYPE_ICON_MAP[imageType]) {
-    return IMAGE_TYPE_ICON_MAP[imageType];
-  }
+  const typeIcon = TYPE_ICON_MAP[type];
+  if (typeIcon) return typeIcon;
+
+  if (imageType === ImageType.None) return Clipboard;
+  const imageTypeIcon = IMAGE_TYPE_ICON_MAP[imageType];
+  if (imageTypeIcon) return imageTypeIcon;
+
   return Clipboard;
 }
