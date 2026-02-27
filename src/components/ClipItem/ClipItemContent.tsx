@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback, useState, useRef } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { Globe, HardDrive, FileCode2, Images, ExternalLink, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClipItem, ImageType } from '../../types';
@@ -61,6 +61,26 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
   const colorBtnRef = useRef<HTMLDivElement>(null);
+  const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current) {
+        clearTimeout(copyFeedbackTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showCopiedFeedback = useCallback((value: string) => {
+    setCopiedColor(value);
+    if (copyFeedbackTimerRef.current) {
+      clearTimeout(copyFeedbackTimerRef.current);
+    }
+    copyFeedbackTimerRef.current = setTimeout(() => {
+      setCopiedColor(null);
+      copyFeedbackTimerRef.current = null;
+    }, 2000);
+  }, []);
 
   const handleColorConfirm = useCallback(async (color: string) => {
     setShowColorPicker(false);
@@ -82,14 +102,16 @@ export const ClipItemContent = React.memo(function ClipItemContent({
     setLocalPickedColor(null);
   }, []);
 
+  const trimmedText = useMemo(() => item.text.trim(), [item.text]);
   const displayText = useMemo(() => item.text.replace(/\n/g, ' ↵ '), [item.text]);
   const dtMatches = useMemo(() => findDateTimesInText(displayText), [displayText]);
   const hasDateTime = dtMatches.length > 0;
-  const isUrl = /^https?:\/\/\S+$/i.test(item.text.trim());
+  const isUrl = useMemo(() => /^https?:\/\/\S+$/i.test(trimmedText), [trimmedText]);
+  const files = useMemo(() => (type === 'files' ? decodeFileList(item.text) : []), [type, item.text]);
 
   const handleOpenUrl = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    const value = item.text.trim();
+    const value = trimmedText;
 
     if (imageType === ImageType.LocalFile) {
       void TauriService.openFile(normalizeFilePath(value));
@@ -97,11 +119,17 @@ export const ClipItemContent = React.memo(function ClipItemContent({
     }
 
     void TauriService.openPath(value);
-  }, [imageType, item.text]);
+  }, [imageType, trimmedText]);
+
+  const handleCopyColor = useCallback((e: React.MouseEvent, value: string) => {
+    e.stopPropagation();
+    void copyText(value).then(() => {
+      showCopiedFeedback(value);
+    });
+  }, [copyText, showCopiedFeedback]);
 
   // --- 文件列表 ---
   if (type === 'files') {
-    const files = decodeFileList(item.text);
     return <FileListDisplay files={files} isSelected={isSelected} />;
   }
 
@@ -137,7 +165,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             {/* 调色后色块（可点击打开调色板） */}
             <div
               ref={colorBtnRef}
-              className="relative w-5 h-5 rounded-md overflow-hidden border-2 border-indigo-400/60 dark:border-indigo-500/60 shadow-sm shrink-0 cursor-pointer hover:scale-110 transition-transform"
+              className="relative w-5 h-5 rounded-xl overflow-hidden border-2 border-indigo-400/60 dark:border-indigo-500/60 shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform duration-150"
               title="点击修改颜色"
               onClick={openPicker}
             >
@@ -148,7 +176,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           /* 仅原始色块（可点击打开调色板） */
           <div
             ref={colorBtnRef}
-            className="relative w-5 h-5 rounded-md overflow-hidden border border-black/20 dark:border-white/20 shadow-sm shrink-0 cursor-pointer hover:scale-110 transition-transform"
+            className="relative w-5 h-5 rounded-xl overflow-hidden border border-black/20 dark:border-white/20 shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform duration-150"
             title="点击调出颜色板"
             onClick={openPicker}
           >
@@ -159,13 +187,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         {/* 文字：原始色值 + 调色后色值 */}
         <div 
           className="flex items-center gap-1 cursor-pointer group"
-          onClick={(e) => {
-            e.stopPropagation();
-            copyText(item.text).then(() => {
-              setCopiedColor(item.text);
-              setTimeout(() => setCopiedColor(null), 2000);
-            });
-          }}
+          onClick={(e) => handleCopyColor(e, item.text)}
           title="点击复制原始颜色"
         >
           <p className="text-sm truncate font-medium font-mono group-hover:text-indigo-500 transition-colors">
@@ -188,12 +210,8 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           <div 
             className="flex items-center gap-1 cursor-pointer group"
             onClick={(e) => {
-              e.stopPropagation();
               if (item.picked_color) {
-                copyText(item.picked_color).then(() => {
-                  setCopiedColor(item.picked_color);
-                  setTimeout(() => setCopiedColor(null), 2000);
-                });
+                handleCopyColor(e, item.picked_color);
               }
             }}
             title="点击复制新颜色"
@@ -323,12 +341,12 @@ export const ClipItemContent = React.memo(function ClipItemContent({
       <p className="text-sm truncate font-medium mt-1 leading-relaxed">
         <span
           className="cursor-pointer text-indigo-500 dark:text-indigo-400 hover:underline transition-colors inline-flex items-center gap-1.5"
-          title={"打开链接: " + item.text.trim()}
+          title={"打开链接: " + trimmedText}
           onClick={handleOpenUrl}
         >
           <Globe className="w-3.5 h-3.5 shrink-0" />
           <span className="truncate">
-            <HighlightText text={item.text.trim()} highlight={searchQuery} />
+            <HighlightText text={trimmedText} highlight={searchQuery} />
           </span>
           <ExternalLink className="w-3 h-3 shrink-0 opacity-50" />
         </span>
