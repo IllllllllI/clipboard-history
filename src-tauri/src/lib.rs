@@ -48,4 +48,5 @@ pub mod db;
 pub mod image_handler;
 pub mod input;
 pub mod storage;
+pub mod settings;
 pub mod window_position;

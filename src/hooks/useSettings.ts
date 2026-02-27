@@ -4,7 +4,6 @@ import { AppSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../constants';
 import { TauriService } from '../services/tauri';
 
-const STORAGE_KEY = 'app-settings';
 const SAVE_DEBOUNCE_MS = 300;
 
 // ============================================================================
@@ -84,19 +83,10 @@ const MIGRATIONS: Migration[] = [
   // 后续迁移在此追加...
 ];
 
-/** 从 localStorage 加载并迁移设置 */
-function loadSettings(): AppSettings {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return DEFAULT_SETTINGS;
-
-  try {
-    const parsed = JSON.parse(saved) as Record<string, unknown>;
-    MIGRATIONS.forEach(m => m(parsed));
-    return { ...DEFAULT_SETTINGS, ...parsed };
-  } catch {
-    console.warn('设置数据解析失败，使用默认值');
-    return DEFAULT_SETTINGS;
-  }
+function normalizeSettings(data: Record<string, unknown>): AppSettings {
+  const next = { ...data };
+  MIGRATIONS.forEach((migration) => migration(next));
+  return { ...DEFAULT_SETTINGS, ...next };
 }
 
 // ============================================================================
@@ -104,21 +94,44 @@ function loadSettings(): AppSettings {
 // ============================================================================
 
 export function useSettings() {
-  const [settings, setSettings] = useState<AppSettings>(loadSettings);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bootstrappedBackendProfileRef = useRef(false);
-  const bootstrappedBackendAdvancedRef = useRef(false);
+  const bootstrappedSettingsRef = useRef(false);
 
-  // 防抖写入 localStorage（滑块等高频操作不会每帧写入）
   useEffect(() => {
+    let cancelled = false;
+
+    TauriService
+      .getAppSettings()
+      .then((stored) => {
+        if (cancelled || !stored || typeof stored !== 'object') return;
+        setSettings(normalizeSettings(stored));
+      })
+      .catch((error) => {
+        console.warn('读取后端应用设置失败：', error);
+      })
+      .finally(() => {
+        if (!cancelled) bootstrappedSettingsRef.current = true;
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 防抖写入后端设置存储
+  useEffect(() => {
+    if (!bootstrappedSettingsRef.current) return;
+
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-      } catch (error) {
-        console.warn('设置写入失败：', error);
-      }
+      TauriService
+        .setAppSettings(settings as unknown as Record<string, unknown>)
+        .catch((error) => {
+          console.warn('写入后端应用设置失败：', error);
+        });
     }, SAVE_DEBOUNCE_MS);
+
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
@@ -139,69 +152,7 @@ export function useSettings() {
   }, [settings.darkMode]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    TauriService
-      .getImagePerformanceProfile()
-      .then((profile) => {
-        if (cancelled || !profile) return;
-
-        setSettings((prev) => {
-          if (prev.imagePerformanceProfile === profile) return prev;
-          return { ...prev, imagePerformanceProfile: profile };
-        });
-      })
-      .catch((error) => {
-        console.warn('读取后端图片性能档位失败：', error);
-      })
-      .finally(() => {
-        if (!cancelled) bootstrappedBackendProfileRef.current = true;
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    TauriService
-      .getImageAdvancedConfig()
-      .then((config) => {
-        if (cancelled || !config) return;
-
-        setSettings((prev) => {
-          if (
-            prev.allowPrivateNetwork === config.allow_private_network
-            && prev.resolveDnsForUrlSafety === config.resolve_dns_for_url_safety
-            && prev.maxDecodedBytes === config.max_decoded_bytes
-          ) {
-            return prev;
-          }
-
-          return {
-            ...prev,
-            allowPrivateNetwork: config.allow_private_network,
-            resolveDnsForUrlSafety: config.resolve_dns_for_url_safety,
-            maxDecodedBytes: config.max_decoded_bytes,
-          };
-        });
-      })
-      .catch((error) => {
-        console.warn('读取后端图片高级配置失败：', error);
-      })
-      .finally(() => {
-        if (!cancelled) bootstrappedBackendAdvancedRef.current = true;
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!bootstrappedBackendProfileRef.current) return;
+    if (!bootstrappedSettingsRef.current) return;
 
     TauriService
       .setImagePerformanceProfile(settings.imagePerformanceProfile)
@@ -211,7 +162,7 @@ export function useSettings() {
   }, [settings.imagePerformanceProfile]);
 
   useEffect(() => {
-    if (!bootstrappedBackendAdvancedRef.current) return;
+    if (!bootstrappedSettingsRef.current) return;
 
     TauriService
       .setImageAdvancedConfig({

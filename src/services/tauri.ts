@@ -34,6 +34,18 @@ async function copyFileViaBackend(
 
 export const TauriService = {
 
+  // ── 应用设置持久化 ──
+
+  async getAppSettings(): Promise<Record<string, unknown> | null> {
+    if (!isTauri) return null;
+    return await invoke<Record<string, unknown> | null>('get_app_settings');
+  },
+
+  async setAppSettings(settings: Record<string, unknown>): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('set_app_settings', { settings });
+  },
+
   // ── 窗口操作 ──
 
   async hideWindow(): Promise<void> {

@@ -6,7 +6,7 @@
 //! 本文件仅负责应用初始化与插件/命令注册。
 //! 业务逻辑分布在各子模块中，详见 `lib.rs` 架构文档。
 
-use clipboard_history::{clipboard, db, image_handler, input, storage, window_position};
+use clipboard_history::{clipboard, db, image_handler, input, settings, storage, window_position};
 use tauri::Manager;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
@@ -201,6 +201,9 @@ fn main() {
             db::db_move_database,
             // 存储目录信息
             storage::get_images_dir_info,
+            // 应用设置存储
+            settings::get_app_settings,
+            settings::set_app_settings,
         ])
         .run(tauri::generate_context!())
         .expect("运行 Tauri 应用时出错");

@@ -6,9 +6,9 @@ import { useSettings } from './useSettings';
 const { mockSetTheme, mockTauriService } = vi.hoisted(() => ({
   mockSetTheme: vi.fn(),
   mockTauriService: {
-    getImagePerformanceProfile: vi.fn(),
+    getAppSettings: vi.fn(),
+    setAppSettings: vi.fn(),
     setImagePerformanceProfile: vi.fn(),
-    getImageAdvancedConfig: vi.fn(),
     setImageAdvancedConfig: vi.fn(),
   },
 }));
@@ -26,24 +26,19 @@ vi.mock('../services/tauri', () => ({
 describe('useSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
 
-    mockTauriService.getImagePerformanceProfile.mockResolvedValue('balanced');
-    mockTauriService.getImageAdvancedConfig.mockResolvedValue({
-      allow_private_network: false,
-      resolve_dns_for_url_safety: true,
-      max_decoded_bytes: 160 * 1024 * 1024,
-    });
+    mockTauriService.getAppSettings.mockResolvedValue(null);
+    mockTauriService.setAppSettings.mockResolvedValue(undefined);
     mockTauriService.setImagePerformanceProfile.mockResolvedValue(undefined);
     mockTauriService.setImageAdvancedConfig.mockResolvedValue(undefined);
   });
 
-  it('启动时从后端回填性能档位与高级配置', async () => {
-    mockTauriService.getImagePerformanceProfile.mockResolvedValue('speed');
-    mockTauriService.getImageAdvancedConfig.mockResolvedValue({
-      allow_private_network: true,
-      resolve_dns_for_url_safety: false,
-      max_decoded_bytes: 64 * 1024 * 1024,
+  it('启动时从后端应用设置回填', async () => {
+    mockTauriService.getAppSettings.mockResolvedValue({
+      imagePerformanceProfile: 'speed',
+      allowPrivateNetwork: true,
+      resolveDnsForUrlSafety: false,
+      maxDecodedBytes: 64 * 1024 * 1024,
     });
 
     const { result } = renderHook(() => useSettings());
@@ -55,18 +50,17 @@ describe('useSettings', () => {
       expect(result.current.settings.maxDecodedBytes).toBe(64 * 1024 * 1024);
     });
 
-    expect(mockTauriService.getImagePerformanceProfile).toHaveBeenCalledTimes(1);
-    expect(mockTauriService.getImageAdvancedConfig).toHaveBeenCalledTimes(1);
+    expect(mockTauriService.getAppSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('设置变更后会下发性能档位与高级配置到后端', async () => {
+  it('设置变更后会写入后端并同步图片配置', async () => {
     const { result } = renderHook(() => useSettings());
 
     await waitFor(() => {
-      expect(mockTauriService.getImagePerformanceProfile).toHaveBeenCalledTimes(1);
-      expect(mockTauriService.getImageAdvancedConfig).toHaveBeenCalledTimes(1);
+      expect(mockTauriService.getAppSettings).toHaveBeenCalledTimes(1);
     });
 
+    mockTauriService.setAppSettings.mockClear();
     mockTauriService.setImagePerformanceProfile.mockClear();
     mockTauriService.setImageAdvancedConfig.mockClear();
 
@@ -80,6 +74,7 @@ describe('useSettings', () => {
     });
 
     await waitFor(() => {
+      expect(mockTauriService.setAppSettings).toHaveBeenCalled();
       expect(mockTauriService.setImagePerformanceProfile).toHaveBeenCalledWith('quality');
       expect(mockTauriService.setImageAdvancedConfig).toHaveBeenCalledWith({
         allow_private_network: true,
