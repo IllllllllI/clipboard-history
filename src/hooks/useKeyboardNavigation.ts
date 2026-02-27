@@ -39,13 +39,24 @@ type ParsedShortcut = {
   key: string;
 };
 
+const shortcutParseCache = new Map<string, ParsedShortcut | null>();
+
 function parseShortcut(shortcut: string): ParsedShortcut | null {
+  const normalizedShortcut = shortcut.trim();
+  if (!normalizedShortcut) return null;
+
+  const cached = shortcutParseCache.get(normalizedShortcut);
+  if (cached !== undefined) return cached;
+
   const tokens = shortcut
     .split('+')
     .map(t => t.trim())
     .filter(Boolean);
 
-  if (tokens.length === 0) return null;
+  if (tokens.length === 0) {
+    shortcutParseCache.set(normalizedShortcut, null);
+    return null;
+  }
 
   const parsed: ParsedShortcut = {
     ctrl: false,
@@ -81,7 +92,12 @@ function parseShortcut(shortcut: string): ParsedShortcut | null {
     parsed.key = token;
   }
 
-  if (!parsed.key) return null;
+  if (!parsed.key) {
+    shortcutParseCache.set(normalizedShortcut, null);
+    return null;
+  }
+
+  shortcutParseCache.set(normalizedShortcut, parsed);
   return parsed;
 }
 
@@ -156,6 +172,15 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
         return;
       }
 
+      // Escape 关闭图片预览（独立于 modalOpen，因为预览本身也是 modal）
+      if (e.key === 'Escape') {
+        if (previewImageUrl) {
+          setPreviewImageUrl(null);
+          e.preventDefault();
+        }
+        return;
+      }
+
       // 弹窗打开时禁用导航/快捷键拦截（避免影响设置中的按键录制）
       if (modalOpen) return;
 
@@ -165,15 +190,6 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
         e.preventDefault();
         e.stopPropagation();
         toggleImmersiveMode();
-        return;
-      }
-
-      // Escape 关闭图片预览（独立于 modalOpen，因为预览本身也是 modal）
-      if (e.key === 'Escape') {
-        if (previewImageUrl) {
-          setPreviewImageUrl(null);
-          e.preventDefault();
-        }
         return;
       }
 
@@ -202,13 +218,17 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
         case 'Enter': {
           e.preventDefault();
           const item = filteredHistory[selectedIndex];
-          if (item) handleDoubleClick(item);
+          if (item) {
+            void handleDoubleClick(item);
+          }
           break;
         }
         case 'c':
           if (e.ctrlKey || e.metaKey) {
             const item = filteredHistory[selectedIndex];
-            if (item) copyToClipboard(item);
+            if (item) {
+              void copyToClipboard(item);
+            }
           }
           break;
       }
