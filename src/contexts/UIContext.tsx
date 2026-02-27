@@ -89,8 +89,7 @@ async function dispatchDragCopy(
   if (isFileList(text)) {
     const files = text.slice('[FILES]\n'.length).split('\n').filter(Boolean);
     if (files.length > 0) {
-      try { await TauriService.copyFileToClipboard(files[0]); }
-      catch (err) { setDownloadState({ isDownloading: false, progress: 0, error: `文件复制失败: ${toMsg(err)}` }); }
+      await copyFallback(files.join('\n'));
     }
     return;
   }
@@ -108,11 +107,7 @@ async function dispatchDragCopy(
 
   // 3) 普通文件
   if (detectContentType(text) === 'file') {
-    try { await TauriService.copyFileToClipboard(normalizeFilePath(text)); }
-    catch (err) {
-      setDownloadState({ isDownloading: false, progress: 0, error: `文件复制失败: ${toMsg(err)}` });
-      await copyFallback(text);
-    }
+    await copyFallback(normalizeFilePath(text));
     return;
   }
 
@@ -234,7 +229,13 @@ export function UIProvider({
   ) => {
     if (!isTauri) return;
 
-    const copyFallback: CopyTextFallback = (t) => copyToClipboard(textFallbackItem(t));
+    const copyFallback: CopyTextFallback = async (t) => {
+      try {
+        await TauriService.writeClipboard(t);
+      } catch {
+        await copyToClipboard(textFallbackItem(t));
+      }
+    };
 
     try {
       await dispatchDragCopy(text, setDownloadState, copyFallback);
