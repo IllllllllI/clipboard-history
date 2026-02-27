@@ -1,0 +1,5 @@
+{
+  "name": "Clipboard History",
+  "description": "A clean and minimal clipboard history tool that saves your copied text locally.",
+  "requestFramePermissions": ["clipboard-read", "clipboard-write"]
+}

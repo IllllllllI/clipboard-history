@@ -1,0 +1,52 @@
+{
+  "productName": "Clipboard History",
+  "version": "0.1.0",
+  "identifier": "com.clipboard.history",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:3000",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Clipboard History",
+        "width": 800,
+        "height": 600,
+        "visible": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: tauri: https: http://asset.localhost https://asset.localhost data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: ipc: http://ipc.localhost",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": [
+      "icons/Clipboard-16x16.png",
+      "icons/Clipboard-32x32.png",
+      "icons/Clipboard-48x48.png",
+      "icons/Clipboard-64x64.png",
+      "icons/Clipboard-128x128.png",
+      "icons/Clipboard-256x256.png",
+      "icons/icon.ico"
+      
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

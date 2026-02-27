@@ -1,0 +1,222 @@
+import React, { useRef, useCallback } from 'react';
+import { motion } from 'motion/react';
+import { Tag as TagIcon } from 'lucide-react';
+import { ClipItem, ImageType } from '../../types';
+import { formatDate, detectType, detectImageType, isFileList } from '../../utils';
+import { hexToRgba } from '../../utils/color';
+import { ClipboardDB } from '../../services/db';
+import { useAppContext } from '../../contexts/AppContext';
+import { getItemIcon } from './constants';
+import { ClipItemContent } from './ClipItemContent';
+import { ActionButtons } from './ActionButtons';
+
+interface ClipItemProps {
+  item: ClipItem;
+  index: number;
+}
+
+/**
+ * 剪贴板历史条目组件
+ *
+ * 职责：布局骨架 + 选中/拖拽/交互事件。
+ * 实际内容渲染委托给 ClipItemContent，操作按钮委托给 ActionButtons。
+ */
+export const ClipItemComponent = React.memo(
+  function ClipItemComponent({ item, index }: ClipItemProps) {
+    const {
+      selectedIndex,
+      settings,
+      searchQuery,
+      copiedId,
+      loadHistory,
+      setSelectedIndex,
+      handleDoubleClick,
+      handleDragStart,
+      handleDragEnd,
+      handleTogglePin,
+      handleToggleFavorite,
+      copyToClipboard,
+      copyText,
+      handleRemove,
+      handleUpdatePickedColor,
+      setPreviewImageUrl,
+      setEditingClip,
+      tags,
+      handleAddTagToItem,
+      handleRemoveTagFromItem,
+    } = useAppContext();
+
+    const isSelected = selectedIndex === index;
+    const itemRef = useRef<HTMLDivElement>(null);
+
+    // --- 衍生状态 ---
+    const type = detectType(item.text);
+    const isFiles = type === 'files';
+    const imageType = isFiles ? ImageType.None : detectImageType(item.text);
+    const isImage = imageType !== ImageType.None;
+    const imageUrls =
+      type === 'multi-image'
+        ? item.text
+            .split('\n')
+            .map((l) => l.trim())
+            .filter(Boolean)
+        : [item.text];
+
+    // --- 图标 ---
+    const IconComponent = getItemIcon(item, type, imageType);
+
+    // --- 语义化颜色指示器 ---
+    const getSemanticColor = () => {
+      if (type === 'code') return 'bg-emerald-500';
+      if (type === 'url') return 'bg-blue-500';
+      if (isImage || type === 'multi-image') return 'bg-purple-500';
+      if (isFiles) return 'bg-amber-500';
+      if (type === 'color') return 'bg-pink-500';
+      return 'bg-transparent';
+    };
+
+    // --- 事件 ---
+    const handleClick = useCallback(() => setSelectedIndex(index), [setSelectedIndex, index]);
+    const handleDblClick = useCallback(
+      (e: React.MouseEvent) => {
+        // 双击按钮、链接、输入框等交互元素时不触发粘贴
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
+        handleDoubleClick(item);
+      },
+      [handleDoubleClick, item],
+    );
+    const onDragStart = useCallback(
+      (e: unknown) => handleDragStart(e as React.DragEvent, item.text),
+      [handleDragStart, item.text],
+    );
+
+    return (
+      <motion.div
+        ref={itemRef}
+        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={handleDragEnd}
+        onDoubleClick={handleDblClick}
+        onClick={handleClick}
+        className={`group relative flex items-start gap-2.5 px-3 py-2.5 mb-1.5 rounded-lg border-2 cursor-pointer transition-all duration-200 overflow-hidden active:scale-[0.99] ${
+          isSelected
+            ? settings.darkMode
+              ? 'bg-neutral-800 border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)] text-neutral-200'
+              : 'bg-white border-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.15)] text-neutral-800'
+            : settings.darkMode
+              ? 'bg-neutral-800/60 border-transparent hover:bg-neutral-800 hover:border-neutral-700 text-neutral-300'
+              : 'bg-white border-transparent hover:border-neutral-200 shadow-sm hover:shadow text-neutral-700'
+        }`}
+      >
+        {/* 语义化颜色指示线 */}
+        <div className={`absolute left-0 top-0 bottom-0 w-1 opacity-70 transition-colors ${getSemanticColor()}`} />
+
+        {/* 左侧图标 */}
+        <div
+          className={`w-8 h-8 shrink-0 flex items-center justify-center rounded-lg mt-0.5 transition-colors z-10 ${
+            isSelected
+              ? 'bg-indigo-500 text-white shadow-sm'
+              : settings.darkMode
+                ? 'bg-neutral-800 text-neutral-400 group-hover:text-neutral-300'
+                : 'bg-neutral-100 text-neutral-500 group-hover:text-neutral-700'
+          }`}
+        >
+          <IconComponent className="w-4 h-4" />
+        </div>
+
+        {/* 主体内容 */}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-1 z-10">
+          <ClipItemContent
+            item={item}
+            type={type}
+            isImage={isImage}
+            imageType={imageType}
+            imageUrls={imageUrls}
+            searchQuery={searchQuery}
+            showImagePreview={settings.showImagePreview}
+            setPreviewImageUrl={setPreviewImageUrl}
+            isSelected={isSelected}
+            darkMode={settings.darkMode}
+            onUpdatePickedColor={handleUpdatePickedColor}
+            onCopyAsNewColor={async (color) => {
+              await copyText(color);
+              await ClipboardDB.addClip(color);
+              await loadHistory();
+            }}
+            copyText={copyText}
+          />
+
+          {/* 标签列表 */}
+          {item.tags && item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {item.tags.map((tag) => {
+                const tagStyle = tag.color
+                  ? {
+                      backgroundColor: hexToRgba(tag.color, 0.1),
+                      color: tag.color,
+                      borderColor: hexToRgba(tag.color, 0.2),
+                    }
+                  : {};
+
+                return (
+                  <span
+                    key={tag.id}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium border transition-colors ${
+                      !tag.color
+                        ? settings.darkMode
+                          ? 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                          : 'bg-neutral-50 text-neutral-600 border-neutral-200'
+                        : ''
+                    }`}
+                    style={tagStyle}
+                  >
+                    <TagIcon className="w-2.5 h-2.5 opacity-70" />
+                    {tag.name}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 右侧：时间 + 操作 */}
+        <div
+          className={`flex flex-col items-end justify-between shrink-0 text-xs pt-1 self-stretch z-10 ${
+            settings.darkMode ? 'text-neutral-500' : 'text-neutral-400'
+          }`}
+        >
+          <span
+            className={`font-mono mt-1 transition-opacity whitespace-nowrap ${
+              isSelected ? 'text-indigo-500 dark:text-indigo-400 font-medium' : ''
+            }`}
+          >
+            {formatDate(item.timestamp)}
+          </span>
+
+          <ActionButtons
+            item={item}
+            isSelected={isSelected}
+            isFiles={isFiles}
+            isImage={isImage}
+            darkMode={settings.darkMode}
+            copiedId={copiedId}
+            tags={tags}
+            onTogglePin={handleTogglePin}
+            onToggleFavorite={handleToggleFavorite}
+            onCopy={copyToClipboard}
+            onRemove={handleRemove}
+            onEdit={setEditingClip}
+            onAddTag={handleAddTagToItem}
+            onRemoveTag={handleRemoveTagFromItem}
+          />
+        </div>
+      </motion.div>
+    );
+  },
+  (prev, next) => prev.item === next.item && prev.index === next.index,
+);
