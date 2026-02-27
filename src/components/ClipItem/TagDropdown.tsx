@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon, Check } from 'lucide-react';
@@ -23,6 +23,24 @@ export const TagDropdown = React.memo(function TagDropdown({
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const { popoverRef, style } = usePopoverPosition(btnRef, open);
+  const itemTagIdSet = useMemo(() => new Set(item.tags?.map((tag) => tag.id) ?? []), [item.tags]);
+
+  const handleToggleOpen = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen((value) => !value);
+  }, []);
+
+  const handleToggleTag = useCallback(
+    async (e: React.MouseEvent, tagId: number, hasTag: boolean) => {
+      e.stopPropagation();
+      if (hasTag) {
+        await onRemoveTag(item.id, tagId);
+        return;
+      }
+      await onAddTag(item.id, tagId);
+    },
+    [item.id, onAddTag, onRemoveTag],
+  );
 
   // 点击外部关闭
   useEffect(() => {
@@ -45,11 +63,8 @@ export const TagDropdown = React.memo(function TagDropdown({
     <>
       <button
         ref={btnRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen(!open);
-        }}
-        className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-all active:scale-90"
+        onClick={handleToggleOpen}
+        className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
         title="添加标签"
       >
         <TagIcon className="w-3.5 h-3.5" />
@@ -65,7 +80,7 @@ export const TagDropdown = React.memo(function TagDropdown({
               transition={{ duration: 0.1 }}
               ref={popoverRef}
               style={style}
-              className="w-48 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 p-2 overflow-hidden"
+              className="w-48 bg-white dark:bg-neutral-800 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 p-2 overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="text-[10px] font-medium text-neutral-500 mb-1.5 px-1 flex justify-between items-center">
@@ -77,7 +92,7 @@ export const TagDropdown = React.memo(function TagDropdown({
                   <div className="text-xs text-neutral-400 text-center py-2">暂无标签，请先创建</div>
                 ) : (
                   tags.map((tag) => {
-                    const hasTag = item.tags?.some((t) => t.id === tag.id);
+                    const hasTag = itemTagIdSet.has(tag.id);
                     const baseColor = tag.color || (darkMode ? '#525252' : '#a3a3a3');
                     const activeBg = tag.color
                       ? hexToRgba(tag.color, 0.15)
@@ -92,12 +107,7 @@ export const TagDropdown = React.memo(function TagDropdown({
                         whileHover={{ scale: 1.02, x: 2 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={(e) => {
-                          e.stopPropagation();
-                          if (hasTag) {
-                            onRemoveTag(item.id, tag.id);
-                          } else {
-                            onAddTag(item.id, tag.id);
-                          }
+                          void handleToggleTag(e, tag.id, hasTag);
                         }}
                         className={`flex items-center justify-between px-2 py-1.5 rounded text-xs transition-colors ${
                           hasTag
