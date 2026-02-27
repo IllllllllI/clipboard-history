@@ -1,6 +1,29 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ClipItem, AppStats, Tag } from '../types';
 
+const DB_COMMANDS = {
+  autoClear: 'db_auto_clear',
+  getStats: 'db_get_stats',
+  getHistory: 'db_get_history',
+  addClip: 'db_add_clip',
+  addClipAndGet: 'db_add_clip_and_get',
+  togglePin: 'db_toggle_pin',
+  toggleFavorite: 'db_toggle_favorite',
+  deleteClip: 'db_delete_clip',
+  updateClip: 'db_update_clip',
+  updatePickedColor: 'db_update_picked_color',
+  clearAll: 'db_clear_all',
+  importData: 'db_import_data',
+  getTags: 'db_get_tags',
+  createTag: 'db_create_tag',
+  updateTag: 'db_update_tag',
+  deleteTag: 'db_delete_tag',
+  addTagToItem: 'db_add_tag_to_item',
+  removeTagFromItem: 'db_remove_tag_from_item',
+} as const;
+
+const hasNonWhitespaceText = (value: string): boolean => value.trim().length > 0;
+
 // ============================================================================
 // IPC 调用封装 — 统一错误处理，消除样板代码
 // ============================================================================
@@ -37,62 +60,62 @@ export const ClipboardDB = {
    * 此方法仅触发按天数的自动清理。
    */
   init: (autoClearDays: number) =>
-    ipcVoid('db_auto_clear', { autoClearDays }),
+    ipcVoid(DB_COMMANDS.autoClear, { autoClearDays }),
 
   getStats: () =>
-    ipc<AppStats>('db_get_stats'),
+    ipc<AppStats>(DB_COMMANDS.getStats),
 
   getHistory: (limit: number) =>
-    ipc<ClipItem[]>('db_get_history', { limit }),
+    ipc<ClipItem[]>(DB_COMMANDS.getHistory, { limit }),
 
   addClip: (text: string, isSnippet = 0) => {
-    if (!text.trim()) return Promise.resolve();
-    return ipcVoid('db_add_clip', { text, isSnippet });
+    if (!hasNonWhitespaceText(text)) return Promise.resolve();
+    return ipcVoid(DB_COMMANDS.addClip, { text, isSnippet });
   },
 
   addClipAndGet: (text: string, isSnippet = 0) => {
-    if (!text.trim()) return Promise.resolve<ClipItem | null>(null);
-    return ipc<ClipItem | null>('db_add_clip_and_get', { text, isSnippet });
+    if (!hasNonWhitespaceText(text)) return Promise.resolve<ClipItem | null>(null);
+    return ipc<ClipItem | null>(DB_COMMANDS.addClipAndGet, { text, isSnippet });
   },
 
   togglePin: (id: number, currentPinned: number) =>
-    ipcVoid('db_toggle_pin', { id, currentPinned }),
+    ipcVoid(DB_COMMANDS.togglePin, { id, currentPinned }),
 
   toggleFavorite: (id: number, currentFavorite: number) =>
-    ipcVoid('db_toggle_favorite', { id, currentFavorite }),
+    ipcVoid(DB_COMMANDS.toggleFavorite, { id, currentFavorite }),
 
   deleteClip: (id: number) =>
-    ipcVoid('db_delete_clip', { id }),
+    ipcVoid(DB_COMMANDS.deleteClip, { id }),
 
   updateClip: (id: number, newText: string) =>
-    ipcVoid('db_update_clip', { id, newText }),
+    ipcVoid(DB_COMMANDS.updateClip, { id, newText }),
 
   updatePickedColor: (id: number, color: string | null) =>
-    ipcVoid('db_update_picked_color', { id, color }),
+    ipcVoid(DB_COMMANDS.updatePickedColor, { id, color }),
 
   clearAll: () =>
-    ipcVoid('db_clear_all'),
+    ipcVoid(DB_COMMANDS.clearAll),
 
   importData: (items: unknown[]) =>
-    ipcVoid('db_import_data', { items }),
+    ipcVoid(DB_COMMANDS.importData, { items }),
 
   // ── 标签管理 ──
 
   getTags: () =>
-    ipc<Tag[]>('db_get_tags'),
+    ipc<Tag[]>(DB_COMMANDS.getTags),
 
   createTag: (name: string, color: string | null) =>
-    ipc<Tag>('db_create_tag', { name, color }),
+    ipc<Tag>(DB_COMMANDS.createTag, { name, color }),
 
   updateTag: (id: number, name: string, color: string | null) =>
-    ipcVoid('db_update_tag', { id, name, color }),
+    ipcVoid(DB_COMMANDS.updateTag, { id, name, color }),
 
   deleteTag: (id: number) =>
-    ipcVoid('db_delete_tag', { id }),
+    ipcVoid(DB_COMMANDS.deleteTag, { id }),
 
   addTagToItem: (itemId: number, tagId: number) =>
-    ipcVoid('db_add_tag_to_item', { itemId, tagId }),
+    ipcVoid(DB_COMMANDS.addTagToItem, { itemId, tagId }),
 
   removeTagFromItem: (itemId: number, tagId: number) =>
-    ipcVoid('db_remove_tag_from_item', { itemId, tagId }),
+    ipcVoid(DB_COMMANDS.removeTagFromItem, { itemId, tagId }),
 };
