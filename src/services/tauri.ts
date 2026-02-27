@@ -248,9 +248,12 @@ export const TauriService = {
   // ── 存储 & 数据库信息 ──
 
   /** 获取图片目录信息（路径 + 占用大小 + 文件数） */
-  async getImagesDirInfo(customDir?: string): Promise<{ path: string; total_size: number; file_count: number } | null> {
+  async getImagesDirInfo(customDir?: string, recursive = false): Promise<{ path: string; total_size: number; file_count: number } | null> {
     if (!isTauri) return null;
-    return await invoke<{ path: string; total_size: number; file_count: number }>('get_images_dir_info', { customDir: customDir || null });
+    return await invoke<{ path: string; total_size: number; file_count: number }>('get_images_dir_info', {
+      customDir: customDir || null,
+      recursive,
+    });
   },
 
   /** 获取数据库信息（路径 + 文件大小） */

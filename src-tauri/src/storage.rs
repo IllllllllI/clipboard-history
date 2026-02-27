@@ -28,6 +28,29 @@ pub struct StorageInfo {
     pub file_count: u64,
 }
 
+fn walk_dir_stats(dir: &PathBuf, recursive: bool) -> (u64, u64) {
+    let mut total_size: u64 = 0;
+    let mut file_count: u64 = 0;
+
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() {
+                    total_size += metadata.len();
+                    file_count += 1;
+                } else if recursive && metadata.is_dir() {
+                    let (nested_size, nested_count) = walk_dir_stats(&path, true);
+                    total_size += nested_size;
+                    file_count += nested_count;
+                }
+            }
+        }
+    }
+
+    (total_size, file_count)
+}
+
 /// 获取图片存储目录
 ///
 /// # 参数
@@ -40,13 +63,12 @@ pub struct StorageInfo {
 pub fn get_images_dir(app: &AppHandle, custom_dir: Option<String>) -> Result<PathBuf, AppError> {
     // 优先使用用户自定义目录
     if let Some(dir) = custom_dir {
+        let dir = dir.trim();
         if !dir.is_empty() {
-            let path = PathBuf::from(&dir);
-            if !path.exists() {
-                fs::create_dir_all(&path).map_err(|e| {
-                    AppError::Storage(format!("创建自定义目录 '{}' 失败: {}", dir, e))
-                })?;
-            }
+            let path = PathBuf::from(dir);
+            fs::create_dir_all(&path).map_err(|e| {
+                AppError::Storage(format!("创建自定义目录 '{}' 失败: {}", dir, e))
+            })?;
             return Ok(path);
         }
     }
@@ -56,33 +78,21 @@ pub fn get_images_dir(app: &AppHandle, custom_dir: Option<String>) -> Result<Pat
         AppError::Storage(format!("获取应用数据目录失败: {}", e))
     })?;
     let images_dir = app_data_dir.join("images");
-    if !images_dir.exists() {
-        fs::create_dir_all(&images_dir).map_err(|e| {
-            AppError::Storage(format!("创建图片目录失败: {}", e))
-        })?;
-    }
+    fs::create_dir_all(&images_dir).map_err(|e| {
+        AppError::Storage(format!("创建图片目录失败: {}", e))
+    })?;
     Ok(images_dir)
 }
 
 /// 获取图片存储目录信息（路径 + 占用大小 + 文件数）
 #[tauri::command]
-pub fn get_images_dir_info(app: AppHandle, custom_dir: Option<String>) -> Result<StorageInfo, AppError> {
+pub fn get_images_dir_info(
+    app: AppHandle,
+    custom_dir: Option<String>,
+    recursive: Option<bool>,
+) -> Result<StorageInfo, AppError> {
     let dir = get_images_dir(&app, custom_dir)?;
-    let mut total_size: u64 = 0;
-    let mut file_count: u64 = 0;
-
-    if dir.exists() {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                if let Ok(metadata) = entry.metadata() {
-                    if metadata.is_file() {
-                        total_size += metadata.len();
-                        file_count += 1;
-                    }
-                }
-            }
-        }
-    }
+    let (total_size, file_count) = walk_dir_stats(&dir, recursive.unwrap_or(false));
 
     Ok(StorageInfo {
         path: dir.to_string_lossy().to_string(),
