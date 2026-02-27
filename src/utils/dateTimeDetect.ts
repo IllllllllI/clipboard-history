@@ -219,6 +219,10 @@ const INLINE_RE_SOURCE = [
     ...INLINE_ONLY_SOURCES,
 ].join('|');
 
+function createInlineSearchRegex(): RegExp {
+    return new RegExp(INLINE_RE_SOURCE, 'g');
+}
+
 // ============================================================================
 // 导出类型
 // ============================================================================
@@ -236,6 +240,12 @@ export interface DateTimeMatch {
     end: number;
     text: string;
     info: DateTimeInfo;
+}
+
+interface InlineCandidate {
+    text: string;
+    start: number;
+    end: number;
 }
 
 // ============================================================================
@@ -294,14 +304,11 @@ function shouldSkipInlineMatch(text: string, matchText: string, start: number, e
     return false;
 }
 
-/**
- * 在文本中查找所有嵌入的日期时间片段
- */
-export function findDateTimesInText(text: string): DateTimeMatch[] {
-    if (!text || text.length === 0) return [];
-
-    const re = new RegExp(INLINE_RE_SOURCE, 'g');
-    const matches: DateTimeMatch[] = [];
+function scanInlineCandidates(
+    text: string,
+    onCandidate: (candidate: InlineCandidate) => boolean | void,
+): void {
+    const re = createInlineSearchRegex();
     let m: RegExpExecArray | null;
 
     while ((m = re.exec(text)) !== null) {
@@ -311,11 +318,25 @@ export function findDateTimesInText(text: string): DateTimeMatch[] {
 
         if (shouldSkipInlineMatch(text, matchText, start, end)) continue;
 
+        const shouldStop = onCandidate({ text: matchText, start, end });
+        if (shouldStop) return;
+    }
+}
+
+/**
+ * 在文本中查找所有嵌入的日期时间片段
+ */
+export function findDateTimesInText(text: string): DateTimeMatch[] {
+    if (!text || text.length === 0) return [];
+
+    const matches: DateTimeMatch[] = [];
+
+    scanInlineCandidates(text, ({ text: matchText, start, end }) => {
         const info = parseDateTimeText(matchText.trim());
         if (info) {
             matches.push({ start, end, text: matchText, info });
         }
-    }
+    });
 
     return matches;
 }
@@ -326,19 +347,17 @@ export function findDateTimesInText(text: string): DateTimeMatch[] {
 export function hasDateTimeInText(text: string): boolean {
     if (!text || text.length === 0) return false;
 
-    const re = new RegExp(INLINE_RE_SOURCE, 'g');
-    let m: RegExpExecArray | null;
+    let found = false;
 
-    while ((m = re.exec(text)) !== null) {
-        const matchText = m[0];
-        const start = m.index;
-        const end = start + matchText.length;
+    scanInlineCandidates(text, ({ text: matchText }) => {
+        if (parseDateTimeText(matchText.trim())) {
+            found = true;
+            return true;
+        }
+        return false;
+    });
 
-        if (shouldSkipInlineMatch(text, matchText, start, end)) continue;
-        if (parseDateTimeText(matchText.trim())) return true;
-    }
-
-    return false;
+    return found;
 }
 
 // ============================================================================
