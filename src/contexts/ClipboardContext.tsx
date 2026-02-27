@@ -134,12 +134,25 @@ export function ClipboardProvider({
   // 初始化：自动清理过期条目 + 加载历史 + 加载标签
   useEffect(() => {
     if (!isTauri) return;
-    ClipboardDB.init(settings.autoClearDays)
-      .then(() => {
-        loadHistory();
-        loadTags();
-      })
-      .catch(err => setError('数据库自动清理失败: ' + toMsg(err)));
+
+    let disposed = false;
+
+    const bootstrap = async () => {
+      try {
+        await ClipboardDB.init(settings.autoClearDays);
+        await Promise.all([loadHistory(), loadTags()]);
+      } catch (err) {
+        if (!disposed) {
+          setError('数据库自动清理失败: ' + toMsg(err));
+        }
+      }
+    };
+
+    void bootstrap();
+
+    return () => {
+      disposed = true;
+    };
   }, [settings.autoClearDays, loadHistory, loadTags]);
 
   // 剪贴板监听 & 复制（注入 setError 实现错误上报）
