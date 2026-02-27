@@ -40,6 +40,7 @@ pub mod window_state;
 
 use tauri::Window;
 use crate::error::AppError;
+use std::time::Instant;
 
 fn restore_if_minimized(window: &Window) -> Result<(), AppError> {
     let is_minimized = window
@@ -56,24 +57,47 @@ fn restore_if_minimized(window: &Window) -> Result<(), AppError> {
 }
 
 async fn compute_target_position(window: &Window) -> Result<tauri::PhysicalPosition<i32>, AppError> {
+    let started = Instant::now();
+
+    let t0 = Instant::now();
     let current_monitor = window.current_monitor()
         .map_err(|e| AppError::Window(format!("Failed to get current monitor: {}", e)))?;
+    let current_monitor_cost = t0.elapsed();
 
+    let t1 = Instant::now();
     let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
+    let cursor_cost = t1.elapsed();
 
+    let t2 = Instant::now();
     let window_size = window.outer_size()
         .map_err(|e| AppError::Window(format!("Failed to get window size: {}", e)))?;
+    let size_cost = t2.elapsed();
 
+    let t3 = Instant::now();
     let monitors = window.available_monitors()
         .map_err(|e| AppError::Window(format!("Failed to get available monitors: {}", e)))?;
+    let monitors_cost = t3.elapsed();
 
-    let monitors_vec: Vec<Monitor> = monitors.into_iter().collect();
-
-    Ok(monitor::calculate_window_position_multi_monitor(
+    let t4 = Instant::now();
+    let target = monitor::calculate_window_position_multi_monitor(
         cursor_pos,
         window_size,
-        &monitors_vec,
-    ))
+        &monitors,
+    );
+    let calc_cost = t4.elapsed();
+
+    let total_cost = started.elapsed();
+    log::debug!(
+        "window_position stages: current_monitor={}ms cursor={}ms window_size={}ms monitors={}ms calc={}ms total={}ms",
+        current_monitor_cost.as_millis(),
+        cursor_cost.as_millis(),
+        size_cost.as_millis(),
+        monitors_cost.as_millis(),
+        calc_cost.as_millis(),
+        total_cost.as_millis(),
+    );
+
+    Ok(target)
 }
 
 /// 在光标附近显示窗口（支持多显示器）

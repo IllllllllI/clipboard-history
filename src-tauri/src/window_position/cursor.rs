@@ -56,8 +56,10 @@ use std::time::Duration;
 pub async fn get_cursor_position_with_retry(monitor: Option<&Monitor>) -> PhysicalPosition<i32> {
     const MAX_RETRIES: u32 = 3;
     const INITIAL_DELAY_MS: u64 = 10;
+    const MAX_TOTAL_RETRY_MS: u64 = 60;
 
     let mut delay_ms = INITIAL_DELAY_MS;
+    let started = std::time::Instant::now();
 
     for attempt in 0..MAX_RETRIES {
         match get_cursor_position().await {
@@ -71,6 +73,16 @@ pub async fn get_cursor_position_with_retry(monitor: Option<&Monitor>) -> Physic
                 log::warn!("Failed to get cursor position (attempt {}): {}", attempt + 1, e);
 
                 if attempt < MAX_RETRIES - 1 {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    if elapsed_ms >= MAX_TOTAL_RETRY_MS {
+                        log::warn!(
+                            "Cursor retry budget reached ({}ms >= {}ms), stop retrying",
+                            elapsed_ms,
+                            MAX_TOTAL_RETRY_MS
+                        );
+                        break;
+                    }
+
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                     delay_ms *= 2;
                 }
@@ -142,7 +154,9 @@ pub async fn get_cursor_position() -> Result<PhysicalPosition<i32>, String> {
     unsafe {
         let display = XOpenDisplay(ptr::null());
         if display.is_null() {
-            return Err("Failed to open X11 display".to_string());
+            return Err(
+                "Failed to open X11 display (current session may be Wayland-only)".to_string(),
+            );
         }
 
         let root = XDefaultRootWindow(display);

@@ -1,16 +1,20 @@
-import React, { useState, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useCallback } from 'react';
 import { AppProvider, useAppContext } from './contexts/AppContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ClipList } from './components/ClipList';
 import { AddSnippetModal } from './components/AddSnippetModal';
-import { CodeEditorModal } from './components/CodeEditor';
 import { SettingsModal } from './components/SettingsModal';
 import { TagManagerModal } from './components/TagManagerModal';
 import { LargeImagePreview } from './components/LargeImagePreview';
 import { DownloadProgressIndicator } from './components/DownloadProgressIndicator';
 import { ToastContainer } from './components/Toast';
 import { Maximize2, Minimize2 } from 'lucide-react';
+
+const CodeEditorModal = lazy(async () => {
+  const module = await import('./components/CodeEditor');
+  return { default: module.CodeEditorModal };
+});
 
 /**
  * App 内部布局组件
@@ -112,7 +116,9 @@ function AppLayout() {
         onClose={() => setShowAddModal(false)}
       />
 
-      <CodeEditorModal />
+      <Suspense fallback={null}>
+        <CodeEditorModal />
+      </Suspense>
 
       <LargeImagePreview 
         url={previewImageUrl}
