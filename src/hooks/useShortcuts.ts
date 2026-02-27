@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { TauriService, isTauri } from '../services/tauri';
 
 // Vite 热更新兜底：在模块替换前/销毁时强制清理全局快捷键
@@ -32,13 +32,13 @@ export function useShortcuts(globalShortcut: string) {
   const pendingRef = useRef<Promise<void> | null>(null);
   const registeredShortcutRef = useRef<string>('');
 
-  const cleanupShortcuts = () => {
+  const cleanupShortcuts = useCallback(() => {
     if (!isTauri) return;
     if (registeredShortcutRef.current) {
       void TauriService.unregisterShortcut(registeredShortcutRef.current);
       registeredShortcutRef.current = '';
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!isTauri) return;
@@ -51,11 +51,7 @@ export function useShortcuts(globalShortcut: string) {
       let task: Promise<void> | null = null;
 
       try {
-        if (globalShortcut) {
-          setIsRegistering(true);
-        } else {
-          setIsRegistering(false);
-        }
+        setIsRegistering(Boolean(globalShortcut));
 
         // 串行化注册流程，避免重复注册竞态导致的 "already registered"
         if (pendingRef.current) {
@@ -64,7 +60,7 @@ export function useShortcuts(globalShortcut: string) {
 
         task = (async () => {
           const previous = registeredShortcutRef.current;
-          if (previous) {
+          if (previous && previous !== globalShortcut) {
             await TauriService.unregisterShortcut(previous);
             if (registeredShortcutRef.current === previous) {
               registeredShortcutRef.current = '';
@@ -76,8 +72,12 @@ export function useShortcuts(globalShortcut: string) {
             return;
           }
 
+          if (registeredShortcutRef.current === globalShortcut) {
+            return;
+          }
+
           await TauriService.registerShortcut(globalShortcut, () => {
-            TauriService.handleGlobalShortcut();
+            void TauriService.handleGlobalShortcut();
           });
 
           if (disposed || versionRef.current !== thisVersion) {
@@ -119,7 +119,7 @@ export function useShortcuts(globalShortcut: string) {
   // 组件卸载时清理快捷键
   useEffect(() => {
     return () => cleanupShortcuts();
-  }, []);
+  }, [cleanupShortcuts]);
 
   // 页面卸载 / 关闭时兜底清理（刷新、导航、应用退出流程）
   useEffect(() => {
@@ -130,7 +130,7 @@ export function useShortcuts(globalShortcut: string) {
       window.removeEventListener('beforeunload', cleanupShortcuts);
       window.removeEventListener('pagehide', cleanupShortcuts);
     };
-  }, []);
+  }, [cleanupShortcuts]);
 
   return { shortcutError, isRegistering };
 }
