@@ -14,11 +14,13 @@
 
 use base64::{Engine as _, engine::general_purpose};
 use std::net::IpAddr;
-use std::net::ToSocketAddrs;
 use std::path::Path;
+use tokio::net::lookup_host;
 
 use super::source::RawImageData;
 use super::{ImageConfig, ImageError, ImageHandler};
+
+const STREAM_SIGNATURE_PROBE_BYTES: usize = 4096;
 
 impl ImageHandler {
     /// 从 URL 加载图片原始字节。
@@ -29,7 +31,7 @@ impl ImageHandler {
     ) -> Result<RawImageData, ImageError> {
         log::info!("🌐 开始下载图片 - URL: {}", url);
 
-        Self::validate_url_safety(url, config)?;
+        Self::validate_url_safety(url, config).await?;
         let bytes = self.download_with_validation(url, config).await?;
         Self::validate_image_signature(&bytes)?;
 
@@ -107,69 +109,115 @@ impl ImageHandler {
         config: &ImageConfig,
     ) -> Result<Vec<u8>, ImageError> {
         log::debug!("📡 发送 HTTP 请求...");
+        let mut current_url = reqwest::Url::parse(url)
+            .map_err(|e| ImageError::InvalidFormat(format!("URL 格式错误：{}", e)))?;
 
-        let response = self
-            .http_client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| self.map_reqwest_error(e, url, config))?;
+        for redirect_count in 0..=config.max_redirects {
+            let response = self
+                .http_client
+                .get(current_url.clone())
+                .send()
+                .await
+                .map_err(|e| self.map_reqwest_error(e, current_url.as_str(), config))?;
 
-        if !response.status().is_success() {
-            return Err(ImageError::Network(format!(
-                "HTTP {}: {}",
-                response.status().as_u16(),
-                Self::status_message(response.status().as_u16())
-            )));
-        }
-
-        if let Some(ct) = response.headers().get("content-type") {
-            if let Ok(ct_str) = ct.to_str() {
-                if !ct_str.starts_with("image/") {
-                    return Err(ImageError::InvalidFormat(format!("不是图片类型：{}", ct_str)));
+            if response.status().is_redirection() {
+                if redirect_count >= config.max_redirects {
+                    return Err(ImageError::Network(format!(
+                        "重定向次数超过限制（{}）",
+                        config.max_redirects
+                    )));
                 }
-            }
-        }
 
-        if let Some(cl) = response.headers().get("content-length") {
-            if let Ok(cl_str) = cl.to_str() {
-                if let Ok(size) = cl_str.parse::<u64>() {
-                    if size > config.max_file_size {
-                        return Err(ImageError::ResourceLimit(format!(
-                            "文件过大：{:.2} MB（限制：{:.2} MB）",
-                            size as f64 / 1024.0 / 1024.0,
-                            config.max_file_size as f64 / 1024.0 / 1024.0
-                        )));
+                let location = response
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .ok_or_else(|| ImageError::Network("重定向响应缺少 Location 头".to_string()))?;
+
+                let location_str = location
+                    .to_str()
+                    .map_err(|e| ImageError::InvalidFormat(format!("重定向地址无效：{}", e)))?;
+
+                let next_url = current_url
+                    .join(location_str)
+                    .map_err(|e| ImageError::InvalidFormat(format!("重定向 URL 解析失败：{}", e)))?;
+
+                Self::validate_url_safety(next_url.as_str(), config).await?;
+
+                log::debug!("↪️ 跳转到: {}", next_url);
+                current_url = next_url;
+                continue;
+            }
+
+            if !response.status().is_success() {
+                return Err(ImageError::Network(format!(
+                    "HTTP {}: {}",
+                    response.status().as_u16(),
+                    Self::status_message(response.status().as_u16())
+                )));
+            }
+
+            if let Some(ct) = response.headers().get("content-type") {
+                if let Ok(ct_str) = ct.to_str() {
+                    if !ct_str.starts_with("image/") {
+                        return Err(ImageError::InvalidFormat(format!("不是图片类型：{}", ct_str)));
                     }
                 }
             }
-        }
 
-        let mut total: u64 = 0;
-        let mut buffer = Vec::new();
-        let mut response = response;
-
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|e| ImageError::Network(format!("下载失败：{}", e)))?
-        {
-            total = total.saturating_add(chunk.len() as u64);
-            if total > config.max_file_size {
-                return Err(ImageError::ResourceLimit("下载后文件超过大小限制".to_string()));
+            if let Some(cl) = response.headers().get("content-length") {
+                if let Ok(cl_str) = cl.to_str() {
+                    if let Ok(size) = cl_str.parse::<u64>() {
+                        if size > config.max_file_size {
+                            return Err(ImageError::ResourceLimit(format!(
+                                "文件过大：{:.2} MB（限制：{:.2} MB）",
+                                size as f64 / 1024.0 / 1024.0,
+                                config.max_file_size as f64 / 1024.0 / 1024.0
+                            )));
+                        }
+                    }
+                }
             }
-            buffer.extend_from_slice(&chunk);
+
+            let mut total: u64 = 0;
+            let mut buffer = Vec::new();
+            let mut response = response;
+            let mut signature_validated = false;
+
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|e| ImageError::Network(format!("下载失败：{}", e)))?
+            {
+                total = total.saturating_add(chunk.len() as u64);
+                if total > config.max_file_size {
+                    return Err(ImageError::ResourceLimit("下载后文件超过大小限制".to_string()));
+                }
+                buffer.extend_from_slice(&chunk);
+
+                if !signature_validated {
+                    signature_validated = Self::validate_stream_signature_probe(
+                        &buffer,
+                        STREAM_SIGNATURE_PROBE_BYTES,
+                    )?;
+                }
+            }
+
+            if !signature_validated {
+                Self::validate_image_signature(&buffer)?;
+            }
+
+            log::debug!("✅ 下载完成 - {} bytes", total);
+
+            return Ok(buffer);
         }
 
-        log::debug!("✅ 下载完成 - {} bytes", total);
-
-        Ok(buffer)
+        Err(ImageError::Network("下载流程异常结束".to_string()))
     }
 
     /// 校验 URL 安全性。
     ///
     /// 默认阻止本地/内网目标，防止 SSRF 风险。
-    fn validate_url_safety(url: &str, config: &ImageConfig) -> Result<(), ImageError> {
+    async fn validate_url_safety(url: &str, config: &ImageConfig) -> Result<(), ImageError> {
         let parsed = reqwest::Url::parse(url)
             .map_err(|e| ImageError::InvalidFormat(format!("URL 格式错误：{}", e)))?;
 
@@ -208,9 +256,9 @@ impl ImageHandler {
                 .port_or_known_default()
                 .ok_or_else(|| ImageError::InvalidFormat("URL 缺少端口信息".to_string()))?;
 
-            let addrs = (host, port).to_socket_addrs().map_err(|e| {
-                ImageError::InvalidFormat(format!("URL 主机解析失败：{}", e))
-            })?;
+            let addrs = lookup_host((host, port))
+                .await
+                .map_err(|e| ImageError::InvalidFormat(format!("URL 主机解析失败：{}", e)))?;
 
             let mut resolved_any = false;
             for addr in addrs {
@@ -316,6 +364,37 @@ impl ImageHandler {
 
         Ok(())
     }
+
+    /// 流式下载阶段的签名探测：尽早识别并拒绝非图片内容。
+    ///
+    /// 返回值：
+    /// - `Ok(true)`：已识别为图片，可视为完成签名校验
+    /// - `Ok(false)`：当前字节不足以判断，继续下载
+    /// - `Err(...)`：已识别为非图片，或达到探测上限仍无法识别
+    fn validate_stream_signature_probe(bytes: &[u8], probe_limit: usize) -> Result<bool, ImageError> {
+        if bytes.is_empty() {
+            return Ok(false);
+        }
+
+        if let Some(kind) = infer::get(bytes) {
+            if kind.matcher_type() != infer::MatcherType::Image {
+                return Err(ImageError::InvalidFormat(format!(
+                    "下载内容不是图片类型：{}",
+                    kind.mime_type()
+                )));
+            }
+            return Ok(true);
+        }
+
+        if bytes.len() >= probe_limit {
+            return Err(ImageError::InvalidFormat(format!(
+                "下载前 {} 字节内无法识别图片类型",
+                probe_limit
+            )));
+        }
+
+        Ok(false)
+    }
 }
 
 #[cfg(test)]
@@ -326,27 +405,29 @@ mod tests {
     use std::net::TcpListener;
     use std::thread;
 
-    #[test]
-    fn url_safety_blocks_private_targets_by_default() {
+    #[tokio::test]
+    async fn url_safety_blocks_private_targets_by_default() {
         let config = ImageConfig::default();
 
         assert!(matches!(
-            ImageHandler::validate_url_safety("http://127.0.0.1/image.png", &config),
+            ImageHandler::validate_url_safety("http://127.0.0.1/image.png", &config).await,
             Err(ImageError::InvalidFormat(_))
         ));
 
         assert!(matches!(
-            ImageHandler::validate_url_safety("https://localhost/image.png", &config),
+            ImageHandler::validate_url_safety("https://localhost/image.png", &config).await,
             Err(ImageError::InvalidFormat(_))
         ));
     }
 
-    #[test]
-    fn url_safety_allows_private_targets_when_enabled() {
+    #[tokio::test]
+    async fn url_safety_allows_private_targets_when_enabled() {
         let mut config = ImageConfig::default();
         config.allow_private_network = true;
 
-        assert!(ImageHandler::validate_url_safety("http://127.0.0.1/image.png", &config).is_ok());
+        assert!(ImageHandler::validate_url_safety("http://127.0.0.1/image.png", &config)
+            .await
+            .is_ok());
     }
 
     #[test]
@@ -355,6 +436,22 @@ mod tests {
         let config = ImageConfig::default();
 
         let result = handler.load_from_base64("SGVsbG8=", &config);
+
+        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
+    }
+
+    #[test]
+    fn stream_signature_probe_recognizes_png_header() {
+        let png_signature = [137_u8, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13];
+        let result = ImageHandler::validate_stream_signature_probe(&png_signature, 64);
+
+        assert!(matches!(result, Ok(true)));
+    }
+
+    #[test]
+    fn stream_signature_probe_rejects_non_image_payload() {
+        let payload = b"<html><body>not an image</body></html>";
+        let result = ImageHandler::validate_stream_signature_probe(payload, 64);
 
         assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
     }
@@ -389,6 +486,39 @@ mod tests {
 
         let url = format!("http://127.0.0.1:{}/fake.png", addr.port());
         let result = handler.load_from_url(&url, &config).await;
+
+        server.join().expect("server thread failed");
+
+        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
+    }
+
+    #[tokio::test]
+    async fn download_with_validation_blocks_redirect_to_localhost() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server failed");
+        let addr = listener.local_addr().expect("read local addr failed");
+
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept failed");
+
+            let mut req_buf = [0u8; 1024];
+            let _ = stream.read(&mut req_buf);
+
+            let response = format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://localhost:{}/final.png\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                addr.port()
+            );
+
+            stream
+                .write_all(response.as_bytes())
+                .expect("write redirect response failed");
+            stream.flush().expect("flush failed");
+        });
+
+        let handler = ImageHandler::new(ImageConfig::default()).expect("handler init failed");
+        let config = ImageConfig::default();
+        let url = format!("http://127.0.0.1:{}/start.png", addr.port());
+
+        let result = handler.download_with_validation(&url, &config).await;
 
         server.join().expect("server thread failed");
 

@@ -43,7 +43,7 @@ impl ImageHandler {
     pub fn new(config: ImageConfig) -> Result<Self, ImageError> {
         let http_client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.download_timeout))
-            .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| ImageError::Network(format!("无法创建 HTTP 客户端：{}", e)))?;
 
