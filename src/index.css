@@ -7,8 +7,8 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -16,20 +16,31 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #e5e5e5;
+  background-color: rgb(212 212 212 / 0.9);
+  border: 2px solid transparent;
+  background-clip: padding-box;
   border-radius: 10px;
 }
 
 .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background-color: #d4d4d4;
+  background-color: rgb(163 163 163 / 0.95);
 }
 
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #404040;
+  background-color: rgb(82 82 82 / 0.9);
 }
 
 .dark .custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background-color: #525252;
+  background-color: rgb(115 115 115 / 0.95);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(163 163 163 / 0.95) transparent;
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: rgb(115 115 115 / 0.95) transparent;
 }
 
 /* Toast slide-in animation */

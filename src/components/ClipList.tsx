@@ -40,7 +40,7 @@ export function ClipList() {
   return (
     <div
       ref={parentRef}
-      className="flex-1 overflow-y-auto custom-scrollbar relative bg-neutral-50/50 dark:bg-neutral-900/50"
+      className="flex-1 overflow-y-auto custom-scrollbar relative scroll-smooth px-1 sm:px-2 bg-neutral-50/50 dark:bg-neutral-900/50"
     >
       {filteredHistory.length === 0 ? (
         <EmptyState />
@@ -48,7 +48,7 @@ export function ClipList() {
         <div
           key="list"
           style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
-          className="py-3"
+          className="pt-2 pb-3"
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const item = filteredHistory[virtualRow.index];

@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import { ClipItem } from '../../types';
 import { ClipItemComponent } from '../ClipItem';
 
@@ -16,18 +17,21 @@ export const VirtualizedClipRow = React.memo(function VirtualizedClipRow({
   onMeasure,
 }: VirtualizedClipRowProps) {
   return (
-    <div
+    <motion.div
       ref={onMeasure}
       data-index={index}
+      initial={false}
+      animate={{ y: start }}
+      transition={{ type: 'spring', stiffness: 360, damping: 30, mass: 0.85 }}
       style={{
         position: 'absolute',
         top: 0,
         left: 0,
         width: '100%',
-        transform: `translateY(${start}px)`,
+        willChange: 'transform',
       }}
     >
       <ClipItemComponent item={item} index={index} />
-    </div>
+    </motion.div>
   );
 });
