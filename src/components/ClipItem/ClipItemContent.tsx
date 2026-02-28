@@ -176,7 +176,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           /* 仅原始色块（可点击打开调色板） */
           <div
             ref={colorBtnRef}
-            className="relative w-5 h-5 rounded-xl overflow-hidden border border-black/20 dark:border-white/20 shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform duration-150"
+            className="relative w-5 h-5 rounded-md overflow-hidden border border-black/20 dark:border-white/20 shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform duration-150"
             title="点击调出颜色板"
             onClick={openPicker}
           >

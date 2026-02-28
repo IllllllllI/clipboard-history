@@ -16,7 +16,7 @@ use rusqlite::Connection;
 
 use crate::error::AppError;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 fn get_user_version(conn: &Connection) -> Result<i64, AppError> {
     conn.query_row("PRAGMA user_version", [], |row| row.get(0))
@@ -133,10 +133,11 @@ fn migrate_history_boolean_checks(conn: &Connection) -> Result<(), AppError> {
 
     create_history_indexes(conn)?;
 
-    // SQLite 的 ALTER TABLE RENAME 会自动将 history_assets 的外键
+    // SQLite 的 ALTER TABLE RENAME 会自动将依赖 history 的外键
     // 从 REFERENCES history(id) 重写为 REFERENCES history_old(id)，
-    // history_old 被 DROP 后外键变为悬空，必须重建 history_assets。
+    // history_old 被 DROP 后外键变为悬空，必须重建相关关联表。
     rebuild_history_assets(conn)?;
+    rebuild_item_tags(conn)?;
 
     Ok(())
 }
@@ -171,6 +172,41 @@ fn rebuild_history_assets(conn: &Connection) -> Result<(), AppError> {
          CREATE INDEX IF NOT EXISTS idx_history_assets_item_id ON history_assets(item_id);
          CREATE INDEX IF NOT EXISTS idx_history_assets_path ON history_assets(path);"
     ).map_err(|e| AppError::Database(format!("恢复外键/重建索引失败: {}", e)))?;
+
+    Ok(())
+}
+
+/// 重建 item_tags 表，修复因 ALTER TABLE RENAME 导致的外键悬空
+fn rebuild_item_tags(conn: &Connection) -> Result<(), AppError> {
+    conn.execute_batch("PRAGMA foreign_keys=OFF;")
+        .map_err(|e| AppError::Database(format!("关闭外键检查失败: {}", e)))?;
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Database(format!("开始 item_tags 重建事务失败: {}", e)))?;
+
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS item_tags_new (
+            item_id INTEGER NOT NULL,
+            tag_id INTEGER NOT NULL,
+            PRIMARY KEY (item_id, tag_id),
+            FOREIGN KEY (item_id) REFERENCES history(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        );
+        INSERT OR IGNORE INTO item_tags_new (item_id, tag_id)
+            SELECT item_id, tag_id FROM item_tags;
+        DROP TABLE IF EXISTS item_tags;
+        ALTER TABLE item_tags_new RENAME TO item_tags;"
+    ).map_err(|e| AppError::Database(format!("重建 item_tags 失败: {}", e)))?;
+
+    tx.commit()
+        .map_err(|e| AppError::Database(format!("提交 item_tags 重建事务失败: {}", e)))?;
+
+    conn.execute_batch(
+        "PRAGMA foreign_keys=ON;
+         CREATE INDEX IF NOT EXISTS idx_item_tags_item_id ON item_tags(item_id);
+         CREATE INDEX IF NOT EXISTS idx_item_tags_tag_id ON item_tags(tag_id);"
+    ).map_err(|e| AppError::Database(format!("恢复外键/item_tags 索引失败: {}", e)))?;
 
     Ok(())
 }
@@ -213,6 +249,14 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), AppError> {
         rebuild_history_assets(conn)?;
         set_user_version(conn, 5)?;
         version = 5;
+    }
+
+    if version < 6 {
+        // 修复 v4 迁移遗留的 item_tags 外键悬空问题：
+        // item_tags 的 FK 同样可能被重写为 REFERENCES history_old(id)。
+        rebuild_item_tags(conn)?;
+        set_user_version(conn, 6)?;
+        version = 6;
     }
 
     if version != SCHEMA_VERSION {
@@ -408,7 +452,6 @@ mod tests {
     fn v5_migration_repairs_broken_history_assets_fk() {
         let conn = Connection::open_in_memory().expect("create memory db");
 
-        // 模拟 v4 迁移后的坏状态：history_assets 的 FK 指向不存在的 history_old
         conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
         conn.execute_batch(
             "CREATE TABLE history (
@@ -432,7 +475,6 @@ mod tests {
                 FOREIGN KEY (item_id) REFERENCES history(id) ON DELETE CASCADE,
                 FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             );
-            -- 模拟外键指向不存在表的坏 history_assets
             CREATE TABLE history_assets (
                 item_id INTEGER NOT NULL,
                 path TEXT NOT NULL,
@@ -446,14 +488,11 @@ mod tests {
         .expect("prepare broken v4 state");
         conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
 
-        // 开启 foreign_keys 后操作 history_assets 应该报错（重现 bug）
         let broken = conn.execute("DELETE FROM history_assets WHERE item_id = 1", []);
         assert!(broken.is_err(), "应能重现 history_old 外键悬空问题");
 
-        // 运行 schema 初始化（应触发 v5 修复）
         initialize_schema(&conn).expect("v5 repair migration should succeed");
 
-        // 修复后 history_assets 应该可以正常操作
         conn.execute(
             "INSERT INTO history_assets (item_id, path) VALUES (1, '/tmp/new.png')",
             [],
@@ -465,7 +504,65 @@ mod tests {
 
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .unwrap();
+            .expect("query user_version after v5 repair");
+        assert_eq!(version, super::SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn v6_migration_repairs_broken_item_tags_fk() {
+        let conn = Connection::open_in_memory().expect("create memory db");
+
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+            CREATE TABLE history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                is_snippet INTEGER NOT NULL DEFAULT 0,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                picked_color TEXT
+            );
+            CREATE TABLE tags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT
+            );
+            CREATE TABLE item_tags (
+                item_id INTEGER NOT NULL,
+                tag_id INTEGER NOT NULL,
+                PRIMARY KEY (item_id, tag_id),
+                FOREIGN KEY (item_id) REFERENCES history_old(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+            );
+            CREATE TABLE history_assets (
+                item_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                PRIMARY KEY (item_id, path),
+                FOREIGN KEY (item_id) REFERENCES history(id) ON DELETE CASCADE
+            );
+            INSERT INTO history (id, text, timestamp, is_pinned, is_snippet, is_favorite, picked_color)
+            VALUES (1, 'hello', 1, 0, 0, 0, NULL);
+            INSERT INTO tags (id, name, color) VALUES (1, 't', NULL);
+            INSERT INTO item_tags (item_id, tag_id) VALUES (1, 1);
+            PRAGMA user_version = 5;
+            PRAGMA foreign_keys=ON;"
+        )
+        .expect("prepare broken v5 state");
+
+        let broken = conn.execute("DELETE FROM item_tags WHERE item_id = 1 AND tag_id = 1", []);
+        assert!(broken.is_err(), "应能重现 item_tags 的 history_old 外键悬空问题");
+
+        initialize_schema(&conn).expect("v6 migration should repair broken item_tags fk");
+
+        conn.execute("DELETE FROM item_tags WHERE item_id = 1 AND tag_id = 1", [])
+            .expect("修复后 item_tags 应该可正常删除");
+        conn.execute("INSERT INTO item_tags (item_id, tag_id) VALUES (1, 1)", [])
+            .expect("修复后 item_tags 应该可正常写入");
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("query user_version after v6 repair");
         assert_eq!(version, super::SCHEMA_VERSION);
     }
 }

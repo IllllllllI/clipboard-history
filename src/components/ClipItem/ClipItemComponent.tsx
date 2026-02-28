@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { ClipItem, ImageType } from '../../types';
 import { formatDate, detectType, detectImageType, isFileList } from '../../utils';
@@ -171,34 +171,41 @@ export const ClipItemComponent = React.memo(
 
           {/* 标签列表 */}
           {item.tags && item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {item.tags.map((tag) => {
-                const tagStyle = tag.color
-                  ? {
-                      backgroundColor: hexToRgba(tag.color, 0.1),
-                      color: tag.color,
-                      borderColor: hexToRgba(tag.color, 0.2),
-                    }
-                  : {};
+            <motion.div layout className="flex flex-wrap gap-1.5 mt-1.5 z-10 relative">
+              <AnimatePresence>
+                {item.tags.map((tag) => {
+                  const tagStyle = tag.color
+                    ? {
+                        backgroundColor: hexToRgba(tag.color, settings.darkMode ? 0.2 : 0.12),
+                        color: tag.color,
+                        borderColor: hexToRgba(tag.color, settings.darkMode ? 0.4 : 0.28),
+                      }
+                    : {};
 
-                return (
-                  <span
-                    key={tag.id}
-                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium border transition-colors ${
-                      !tag.color
-                        ? settings.darkMode
-                          ? 'bg-neutral-800 text-neutral-400 border-neutral-700'
-                          : 'bg-neutral-50 text-neutral-600 border-neutral-200'
-                        : ''
-                    }`}
-                    style={tagStyle}
-                  >
-                    <TagIcon className="w-2.5 h-2.5 opacity-70" />
-                    {tag.name}
-                  </span>
-                );
-              })}
-            </div>
+                  return (
+                    <motion.span
+                      layout
+                      initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
+                      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      key={tag.id}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all hover:scale-[1.03] duration-200 cursor-default ${
+                        !tag.color
+                          ? settings.darkMode
+                            ? 'bg-neutral-800/80 text-neutral-300 border-neutral-700 hover:bg-neutral-700/90'
+                            : 'bg-neutral-50 text-neutral-600 border-neutral-200 hover:bg-white'
+                          : 'hover:brightness-110'
+                      }`}
+                      style={tagStyle}
+                    >
+                      <TagIcon className="w-3 h-3 opacity-85" strokeWidth={2.5} />
+                      {tag.name}
+                    </motion.span>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.div>
           )}
         </div>
 

@@ -42,6 +42,9 @@ export const ActionButtons = React.memo(function ActionButtons({
 }: ActionButtonsProps) {
   return (
     <div
+      onMouseDown={(e) => {
+        e.stopPropagation();
+      }}
       className={`flex items-center gap-0.5 mt-auto ${
         isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
       } transition-opacity duration-150`}
@@ -165,6 +168,9 @@ export const ActionButtons = React.memo(function ActionButtons({
 
       {/* 删除 */}
       <button
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
         onClick={(e) => {
           e.stopPropagation();
           onRemove(item.id);
