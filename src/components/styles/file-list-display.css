@@ -17,7 +17,19 @@
   gap: 0.5rem;
   border: 1px solid transparent;
   border-radius: 0.5rem;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.file-list-item[data-openable='true'] {
+  cursor: pointer;
+}
+
+.file-list-item[data-openable='true']:hover {
+  transform: translateY(-1px);
+}
+
+.file-list-item[data-openable='true']:active {
+  transform: scale(0.99);
 }
 
 .file-list-item[data-compact='true'] {
@@ -59,10 +71,20 @@
 
 .file-list-item[data-selected='false'][data-theme='light']:hover {
   background: rgb(0 0 0 / 0.06);
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.08);
 }
 
 .file-list-item[data-selected='false'][data-theme='dark']:hover {
   background: rgb(255 255 255 / 0.06);
+  box-shadow: 0 4px 10px rgb(0 0 0 / 0.22);
+}
+
+.file-list-item[data-selected='true'][data-theme='light'][data-openable='true']:hover {
+  box-shadow: 0 4px 10px rgb(79 70 229 / 0.2);
+}
+
+.file-list-item[data-selected='true'][data-theme='dark'][data-openable='true']:hover {
+  box-shadow: 0 4px 10px rgb(0 0 0 / 0.3);
 }
 
 .file-list-item__system-icon,
@@ -123,6 +145,56 @@
 
 .file-list-item[data-selected='false'][data-theme='dark'] .file-list-item__name {
   color: #d4d4d4;
+}
+
+.file-list-item__status {
+  width: 0.875rem;
+  height: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.file-list-item__status[data-state='opening'],
+.file-list-item__status[data-state='success'],
+.file-list-item__status[data-state='error'] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.file-list-item__status-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.file-list-item__status[data-state='opening'] .file-list-item__status-icon {
+  color: #6366f1;
+}
+
+.file-list-item__status[data-state='success'] .file-list-item__status-icon {
+  color: #22c55e;
+}
+
+.file-list-item__status[data-state='error'] .file-list-item__status-icon {
+  color: #ef4444;
+}
+
+.file-list-item__status-icon-spin {
+  animation: file-list-status-spin 0.9s linear infinite;
+}
+
+@keyframes file-list-status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .file-list-item__actions {

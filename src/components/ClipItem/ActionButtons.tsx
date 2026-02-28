@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Trash2, Copy, Check, Pin, ExternalLink, FolderOpen, Edit3, Star } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ClipItem, Tag } from '../../types';
@@ -41,6 +41,10 @@ export const ActionButtons = React.memo(function ActionButtons({
   onAddTag,
   onRemoveTag,
 }: ActionButtonsProps) {
+  const files = useMemo(() => (isFiles ? decodeFileList(item.text) : []), [isFiles, item.text]);
+  const firstFile = files[0] ?? null;
+  const showSingleFileActions = isFiles && files.length === 1;
+
   const actionsClass = [
     'clip-item-actions',
     isSelected ? 'clip-item-actions-visible' : '',
@@ -91,13 +95,12 @@ export const ActionButtons = React.memo(function ActionButtons({
       </button>
 
       {/* 文件列表专属操作 */}
-      {isFiles && (
+      {showSingleFileActions && (
         <>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const files = decodeFileList(item.text);
-              if (files.length > 0) TauriService.openFile(files[0]);
+              if (firstFile) TauriService.openFile(firstFile);
             }}
             className="clip-item-action-btn"
             title="打开文件"
@@ -107,8 +110,7 @@ export const ActionButtons = React.memo(function ActionButtons({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const files = decodeFileList(item.text);
-              if (files.length > 0) TauriService.openFileLocation(files[0]);
+              if (firstFile) TauriService.openFileLocation(firstFile);
             }}
             className="clip-item-action-btn"
             title="打开文件位置"

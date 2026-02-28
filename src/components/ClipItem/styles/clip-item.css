@@ -141,6 +141,17 @@
   padding-bottom: 0.25rem;
   padding-right: 0.25rem;
   z-index: 10;
+  transition: padding-right 0.15s ease;
+}
+
+.clip-item-root[data-files='true']:hover .clip-item-content-wrap,
+.clip-item-root[data-files='true'][data-selected='true'] .clip-item-content-wrap {
+  padding-right: 12rem;
+}
+
+.clip-item-root[data-files='true']:hover .clip-item-side-meta,
+.clip-item-root[data-files='true'][data-selected='true'] .clip-item-side-meta {
+  min-width: 12rem;
 }
 
 .clip-item-tag-list {
@@ -262,5 +273,15 @@
 
   .clip-item-time {
     font-size: 11px;
+  }
+
+  .clip-item-root[data-files='true']:hover .clip-item-content-wrap,
+  .clip-item-root[data-files='true'][data-selected='true'] .clip-item-content-wrap {
+    padding-right: 9.5rem;
+  }
+
+  .clip-item-root[data-files='true']:hover .clip-item-side-meta,
+  .clip-item-root[data-files='true'][data-selected='true'] .clip-item-side-meta {
+    min-width: 9.5rem;
   }
 }

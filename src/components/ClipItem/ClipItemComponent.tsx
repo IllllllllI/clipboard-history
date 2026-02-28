@@ -125,6 +125,7 @@ export const ClipItemComponent = React.memo(
         className={containerClass}
         data-selected={isSelected ? 'true' : 'false'}
         data-theme={settings.darkMode ? 'dark' : 'light'}
+        data-files={isFiles ? 'true' : 'false'}
       >
         {/* 语义化颜色指示线 */}
         <div className="clip-item-accent" data-type={accentType} />
