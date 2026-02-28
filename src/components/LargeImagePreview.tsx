@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, ZoomIn, ZoomOut, Copy, Download, RotateCcw, type LucideIcon } from 'lucide-react';
 import { TauriService } from '../services/tauri';
 import { resolveImageSrc, formatBytes, extractFormatLabel } from '../utils/imageUrl';
+import './styles/large-image-preview.css';
 
 // ============================================================================
 // 类型 & 常量
@@ -13,27 +14,11 @@ interface LargeImagePreviewProps {
   onClose: () => void;
 }
 
-/** 棋盘格背景样式（透明图片视觉辅助） */
-const CHECKERBOARD_STYLE: React.CSSProperties = {
-  backgroundImage: [
-    'linear-gradient(45deg, #808080 25%, transparent 25%)',
-    'linear-gradient(-45deg, #808080 25%, transparent 25%)',
-    'linear-gradient(45deg, transparent 75%, #808080 75%)',
-    'linear-gradient(-45deg, transparent 75%, #808080 75%)',
-  ].join(', '),
-  backgroundSize: '20px 20px',
-  backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-};
-
-/** 顶部操作按钮基础样式 */
-const TOP_BTN = 'p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all backdrop-blur-sm';
-
 /** 顶部操作按钮配置 */
 interface TopAction {
   icon: LucideIcon;
   title: string;
-  hoverColor: string;
-  extra?: string;
+  action: 'copy' | 'download' | 'close';
   onClick: () => void;
 }
 
@@ -183,9 +168,9 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
 
   // 顶部操作按钮
   const topActions: TopAction[] = [
-    { icon: Copy,     title: '复制 (Ctrl+C)', hoverColor: 'hover:text-indigo-400',  onClick: handleCopy },
-    { icon: Download, title: '保存到...',      hoverColor: 'hover:text-emerald-400', onClick: handleDownload },
-    { icon: X,        title: '关闭 (Esc)',     hoverColor: 'hover:text-red-400 hover:bg-red-500/20', extra: 'ml-2', onClick: onClose },
+    { icon: Copy,     title: '复制 (Ctrl+C)', action: 'copy', onClick: handleCopy },
+    { icon: Download, title: '保存到...', action: 'download', onClick: handleDownload },
+    { icon: X, title: '关闭 (Esc)', action: 'close', onClick: onClose },
   ];
 
   return (
@@ -194,27 +179,30 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[9999] flex flex-col bg-black/95 select-none"
+        className="large-image-preview"
+        data-dragging={isDragging ? 'true' : 'false'}
         onClick={onClose}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
       >
         {/* 顶部栏 */}
-        <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-50 pointer-events-none">
-          <div className="flex flex-col gap-1 text-white/50 text-xs pointer-events-auto">
-            <span className="font-mono bg-white/10 px-2 py-1 rounded">{format}</span>
+        <div className="large-image-preview__topbar">
+          <div className="large-image-preview__format-wrap">
+            <span className="large-image-preview__format-pill">{format}</span>
           </div>
 
-          <div className="flex gap-2 pointer-events-auto">
-            {topActions.map(({ icon: Icon, title, hoverColor, extra, onClick }) => (
+          <div className="large-image-preview__top-actions">
+            {topActions.map(({ icon: Icon, title, action, onClick }) => (
               <button
+                type="button"
                 key={title}
                 onClick={onClick}
-                className={`${TOP_BTN} ${hoverColor} ${extra ?? ''}`}
+                className="large-image-preview__top-btn"
+                data-action={action}
                 title={title}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="large-image-preview__top-btn-icon" />
               </button>
             ))}
           </div>
@@ -223,22 +211,19 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
         {/* 主画布区域 */}
         <div
           ref={containerRef}
-          className="flex-1 overflow-hidden relative flex items-center justify-center cursor-move"
+          className="large-image-preview__canvas"
           onWheel={onWheel}
           onMouseDown={onMouseDown}
         >
           {/* 棋盘格背景 */}
-          <div
-            className="absolute inset-0 opacity-20 pointer-events-none"
-            style={CHECKERBOARD_STYLE}
-          />
+          <div className="large-image-preview__checkerboard" />
 
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale, opacity: 1, x: position.x, y: position.y }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 30 }}
-            className="relative"
+            className="large-image-preview__image-wrap"
             onClick={stopPropagation}
           >
             {src && (
@@ -248,7 +233,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
                 alt="Full Preview"
                 onDoubleClick={handleDoubleClick}
                 draggable={false}
-                className="max-w-[85vw] max-h-[85vh] object-contain shadow-2xl rounded-sm"
+                className="large-image-preview__image"
               />
             )}
           </motion.div>
@@ -256,27 +241,28 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
 
         {/* 底部悬浮控制栏 */}
         <div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 px-5 py-2.5 rounded-full bg-neutral-900/80 border border-white/10 text-white text-sm backdrop-blur-md shadow-2xl z-50 transition-all hover:bg-neutral-900"
+          className="large-image-preview__bottombar"
           onClick={stopPropagation}
         >
           {/* 信息区 */}
-          <div className="flex items-center gap-3 text-xs text-neutral-400 border-r border-white/10 pr-4 mr-1">
+          <div className="large-image-preview__meta">
             {dimensions ? `${dimensions.width}×${dimensions.height}` : '...'}
             {fileSize && <span>{fileSize}</span>}
           </div>
 
           {/* 缩放控制区 */}
-          <div className="flex items-center gap-2">
+          <div className="large-image-preview__zoom-controls">
             <button
+              type="button"
               onClick={() => handleZoom(-0.1)}
-              className="p-1.5 hover:bg-white/10 rounded-full transition-colors active:scale-90"
+              className="large-image-preview__icon-btn"
               title="缩小 (-)"
             >
-              <ZoomOut className="w-4 h-4 cursor-pointer" />
+              <ZoomOut className="large-image-preview__icon" />
             </button>
 
             <span
-              className="w-12 text-center font-mono cursor-pointer hover:text-indigo-400 transition-colors"
+              className="large-image-preview__zoom-text"
               onClick={resetView}
               title="重置视图 (0)"
             >
@@ -284,23 +270,25 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
             </span>
 
             <button
+              type="button"
               onClick={() => handleZoom(0.1)}
-              className="p-1.5 hover:bg-white/10 rounded-full transition-colors active:scale-90"
+              className="large-image-preview__icon-btn"
               title="放大 (+)"
             >
-              <ZoomIn className="w-4 h-4 cursor-pointer" />
+              <ZoomIn className="large-image-preview__icon" />
             </button>
           </div>
 
-          <div className="w-px h-3 bg-white/10 mx-1" />
+          <div className="large-image-preview__divider" />
 
           {/* 重置 */}
           <button
+            type="button"
             onClick={resetView}
-            className="p-1.5 hover:bg-white/10 rounded-full text-neutral-400 hover:text-white transition-colors"
+            className="large-image-preview__icon-btn large-image-preview__icon-btn--reset"
             title="重置位置与缩放"
           >
-            <RotateCcw className="w-4 h-4" />
+            <RotateCcw className="large-image-preview__icon" />
           </button>
         </div>
       </motion.div>
