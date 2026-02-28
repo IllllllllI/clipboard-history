@@ -189,7 +189,8 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
         {/* 顶部栏 */}
         <div className="large-image-preview__topbar">
           <div className="large-image-preview__format-wrap">
-            <span className="large-image-preview__format-pill">{format}</span>
+            <span className="large-image-preview__format-pill">{format || 'IMAGE'}</span>
+            <span className="large-image-preview__hint">滚轮缩放 · 双击切换 · Esc 关闭</span>
           </div>
 
           <div className="large-image-preview__top-actions">
@@ -201,6 +202,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
                 className="large-image-preview__top-btn"
                 data-action={action}
                 title={title}
+                aria-label={title}
               >
                 <Icon className="large-image-preview__top-btn-icon" />
               </button>
@@ -212,6 +214,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
         <div
           ref={containerRef}
           className="large-image-preview__canvas"
+          data-dragging={isDragging ? 'true' : 'false'}
           onWheel={onWheel}
           onMouseDown={onMouseDown}
         >
@@ -257,6 +260,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
               onClick={() => handleZoom(-0.1)}
               className="large-image-preview__icon-btn"
               title="缩小 (-)"
+              aria-label="缩小"
             >
               <ZoomOut className="large-image-preview__icon" />
             </button>
@@ -274,6 +278,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
               onClick={() => handleZoom(0.1)}
               className="large-image-preview__icon-btn"
               title="放大 (+)"
+              aria-label="放大"
             >
               <ZoomIn className="large-image-preview__icon" />
             </button>
@@ -287,6 +292,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
             onClick={resetView}
             className="large-image-preview__icon-btn large-image-preview__icon-btn--reset"
             title="重置位置与缩放"
+            aria-label="重置视图"
           >
             <RotateCcw className="large-image-preview__icon" />
           </button>
