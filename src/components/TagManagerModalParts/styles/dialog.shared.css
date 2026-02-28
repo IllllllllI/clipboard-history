@@ -1,0 +1,135 @@
+/* =========================
+   Shared Dialog Primitives
+   ========================= */
+
+.tag-manager-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgb(0 0 0 / 0.3);
+  backdrop-filter: blur(4px);
+}
+
+.tag-manager-dialog-content,
+.tag-manager-dialog-delete-content {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 40;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgb(255 255 255 / 0.8);
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 0.95);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 40px -8px rgb(0 0 0 / 0.25), 0 0 0 1px rgb(0 0 0 / 0.05);
+}
+
+.tag-manager-dialog-content {
+  width: 94%;
+  max-width: 28rem;
+  padding: 1.25rem;
+}
+
+.tag-manager-dialog-delete-content {
+  width: 92%;
+  max-width: 24rem;
+  padding: 1.25rem;
+}
+
+.dark .tag-manager-dialog-content,
+.dark .tag-manager-dialog-delete-content {
+  background: rgb(38 38 38 / 0.85);
+  backdrop-filter: blur(16px);
+  border-color: rgb(255 255 255 / 0.1);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+
+.tag-manager-dialog-btn-cancel,
+.tag-manager-dialog-btn-submit,
+.tag-manager-dialog-btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform: scale(1);
+}
+
+.tag-manager-dialog-btn-cancel:active,
+.tag-manager-dialog-btn-submit:active,
+.tag-manager-dialog-btn-danger:active {
+  transform: scale(0.96);
+}
+
+.tag-manager-dialog-btn-cancel {
+  color: #525252;
+  background: #f1f5f9;
+}
+
+.tag-manager-dialog-btn-cancel:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.dark .tag-manager-dialog-btn-cancel {
+  color: #d4d4d4;
+  background: rgb(255 255 255 / 0.1);
+}
+
+.dark .tag-manager-dialog-btn-cancel:hover {
+  background: rgb(255 255 255 / 0.15);
+  color: #ffffff;
+}
+
+.tag-manager-dialog-btn-submit {
+  background: #6366f1;
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgb(99 102 241 / 0.3);
+}
+
+.tag-manager-dialog-btn-submit:hover {
+  background: #4f46e5;
+  box-shadow: 0 4px 8px rgb(99 102 241 / 0.4);
+}
+
+.tag-manager-dialog-btn-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.tag-manager-dialog-btn-danger {
+  color: #ffffff;
+  background: #ef4444;
+  box-shadow: 0 2px 4px rgb(239 68 68 / 0.3);
+}
+
+.tag-manager-dialog-btn-danger:hover {
+  background: #dc2626;
+  box-shadow: 0 4px 8px rgb(239 68 68 / 0.4);
+}
+
+.tag-manager-dialog-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+
+.tag-manager-icon-16 {
+  width: 1rem;
+  height: 1rem;
+}
+
+.tag-manager-icon-14 {
+  width: 0.875rem;
+  height: 0.875rem;
+}

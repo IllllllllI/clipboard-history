@@ -7,6 +7,7 @@ import { TagList } from './TagManagerModalParts/TagList';
 import { TagEditorDialog } from './TagManagerModalParts/TagEditorDialog';
 import { TagDeleteDialog } from './TagManagerModalParts/TagDeleteDialog';
 import { TagEditorTarget, getTagInitialValue } from './TagManagerModalParts/constants';
+import './TagManagerModalParts/styles/modal.css';
 
 interface TagManagerModalProps {
   show: boolean;
@@ -25,6 +26,34 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
     setEditorTarget(null);
     setPendingDeleteTag(null);
   }, [show]);
+
+  useEffect(() => {
+    if (!show) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Only close main modal if sub-dialogs are not open
+        if (!editorTarget && !pendingDeleteTag) {
+          e.preventDefault();
+          onClose();
+        }
+      }
+
+      // Alt+N to create new tag
+      if (e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        if (!editorTarget && !pendingDeleteTag) {
+          setEditorTarget({
+            mode: 'create',
+            initial: { name: '', color: null },
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [show, editorTarget, pendingDeleteTag, onClose]);
 
   const openCreateEditor = () => {
     setEditorTarget({
@@ -73,62 +102,63 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
   return (
     <AnimatePresence initial={false}>
       {show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="tag-manager-modal-root">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { delay: 0.08, duration: 0.16 } }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="absolute inset-0 bg-neutral-900/40 border-0 backdrop-blur-[2px]"
+            className="tag-manager-modal-backdrop"
           />
 
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { duration: 0.16 } }}
-            exit={{ opacity: 0, transition: { duration: 0.14, ease: 'easeIn' } }}
-            className={`relative w-full max-w-2xl h-[620px] max-h-[88vh] rounded-2xl shadow-2xl flex flex-col ${
-              dark ? 'bg-neutral-900 text-neutral-200 ring-1 ring-white/10' : 'bg-white text-neutral-800 ring-1 ring-black/5'
-            }`}
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
+            exit={{ opacity: 0, scale: 0.98, y: 5, transition: { duration: 0.14, ease: 'easeIn' } }}
+            className={`tag-manager-modal-shell ${dark ? 'tag-manager-modal-shell-dark' : ''}`}
           >
-            <div className={`px-6 py-5 flex items-center justify-between shrink-0 rounded-t-2xl ${dark ? 'bg-neutral-800/50 border-b border-neutral-800' : 'bg-neutral-50/70 border-b border-neutral-100'}`}>
-              <div className="flex items-center gap-3">
+            <div className="tag-manager-modal-header">
+              <div className="tag-manager-modal-header-left">
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.16 }}
-                  className={`p-2.5 rounded-xl shadow-inner ${dark ? 'bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/30' : 'bg-indigo-100 text-indigo-600 ring-1 ring-indigo-200'}`}
+                  className="tag-manager-modal-header-icon-wrap"
                 >
-                  <TagIcon className="w-5 h-5" />
+                  <TagIcon className="tag-manager-modal-header-icon" />
                 </motion.div>
                 <div>
-                  <h2 className="text-xl font-bold tracking-tight">标签管理</h2>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p className="text-xs text-neutral-500 font-medium">统一管理标签与颜色</p>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${dark ? 'bg-neutral-700 text-neutral-300' : 'bg-neutral-200 text-neutral-600'}`}>
+                  <h2 className="tag-manager-modal-main-title">标签管理</h2>
+                  <div className="tag-manager-modal-subline">
+                    <p className="tag-manager-modal-subtitle">统一管理标签与颜色</p>
+                    <span className="tag-manager-modal-count-badge">
                       共 {tags.length} 个
                     </span>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="tag-manager-modal-header-actions">
                 <button
                   onClick={openCreateEditor}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-colors inline-flex items-center gap-1.5"
+                  className="tag-manager-modal-create-btn"
+                  title="新建标签 (Alt + N)"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="tag-manager-icon-14" />
                   新建标签
+                  <span className="tag-manager-shortcut-kbd">Alt+N</span>
                 </button>
                 <button
                   onClick={onClose}
-                  className={`p-2 rounded-full transition-colors ${dark ? 'hover:bg-neutral-700 text-neutral-400 hover:text-white' : 'hover:bg-neutral-200 text-neutral-400 hover:text-neutral-900'}`}
+                  className="tag-manager-modal-close-round"
+                  title="关闭 (Esc)"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="tag-manager-modal-header-icon" />
                 </button>
               </div>
             </div>
 
-            <div className={`flex-1 flex flex-col min-h-0 overflow-hidden rounded-b-2xl ${dark ? 'bg-neutral-900/50' : 'bg-white'}`}>
+            <div className="tag-manager-modal-body">
               <TagList
                 dark={dark}
                 tags={tags}

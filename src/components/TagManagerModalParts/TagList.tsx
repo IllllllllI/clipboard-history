@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { Tag } from '../../types';
 import { TagRow } from './TagRow';
+import './styles/list-row.css';
 
 interface TagListProps {
   dark: boolean;
@@ -18,30 +19,47 @@ export const TagList = React.memo(function TagList({
   onDelete,
 }: TagListProps) {
   return (
-    <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-2 custom-scrollbar">
+    <div className="tag-manager-list custom-scrollbar">
       <AnimatePresence mode="popLayout" initial={false}>
         {tags.length === 0 ? (
           <motion.div
             key="empty-state"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex flex-col items-center justify-center h-full w-full text-neutral-400 py-12"
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="tag-manager-empty-state"
           >
-            <div className={`p-4 rounded-full mb-4 ${dark ? 'bg-neutral-800' : 'bg-neutral-100'}`}>
-              <TagIcon className="w-10 h-10 opacity-50" />
-            </div>
-            <p className="text-sm font-medium">暂无标签</p>
-            <p className="text-xs opacity-70 mt-1">点击上方“新建标签”创建第一个标签</p>
+            <motion.div 
+              className="tag-manager-empty-state-icon-bg"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <TagIcon className="tag-manager-empty-icon" />
+            </motion.div>
+            <p className="tag-manager-empty-title">暂无标签</p>
+            <p className="tag-manager-empty-desc">点击上方“新建标签”创建第一个标签</p>
           </motion.div>
         ) : (
           tags
             .slice()
             .reverse()
-            .map((tag) => (
-              <div key={tag.id}>
-                <TagRow tag={tag} dark={dark} onEdit={onEdit} onDelete={onDelete} />
-              </div>
+            .map((tag, index) => (
+              <motion.div 
+                key={tag.id}
+                layout="position"
+                transition={{
+                  layout: { type: "spring", bounce: 0.15, duration: 0.5 }
+                }}
+              >
+                <TagRow
+                  tag={tag}
+                  dark={dark}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  index={index}
+                />
+              </motion.div>
             ))
         )}
       </AnimatePresence>

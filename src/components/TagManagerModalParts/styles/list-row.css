@@ -1,0 +1,189 @@
+/* =========================
+   TagList
+   ========================= */
+
+.tag-manager-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tag-manager-empty-state {
+  width: 100%;
+  height: 100%;
+  padding: 3rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #a3a3a3;
+}
+
+.tag-manager-empty-state-icon-bg {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 9999px;
+  background: #f5f5f5;
+}
+
+.dark .tag-manager-empty-state-icon-bg {
+  background: #262626;
+}
+
+.tag-manager-empty-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  opacity: 0.5;
+}
+
+.tag-manager-empty-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.tag-manager-empty-desc {
+  margin-top: 0.25rem;
+  opacity: 0.7;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+/* =========================
+   TagRow
+   ========================= */
+
+.tag-manager-row {
+  position: relative;
+  border: 1px solid rgb(229 229 229 / 0.8);
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.02);
+  transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tag-manager-row:hover {
+  border-color: #c7d2fe;
+  background: #f8fafc;
+  box-shadow: 0 4px 12px -2px rgb(99 102 241 / 0.12), 0 2px 4px -2px rgb(99 102 241 / 0.06);
+  transform: translateY(-2px);
+}
+
+.dark .tag-manager-row {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(38 38 38 / 0.4);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+}
+
+.dark .tag-manager-row:hover {
+  border-color: rgb(99 102 241 / 0.4);
+  background: rgb(38 38 38 / 0.8);
+  box-shadow: 0 6px 16px -4px rgb(0 0 0 / 0.4), 0 0 8px 0 rgb(99 102 241 / 0.1);
+  transform: translateY(-2px);
+}
+
+.tag-manager-row-inner {
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tag-manager-row-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tag-manager-row-chip {
+  max-width: 17.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.tag-manager-row-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.tag-manager-row-dot-default {
+  background: #a3a3a3;
+}
+
+.dark .tag-manager-row-dot-default {
+  background: #737373;
+}
+
+.tag-manager-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-manager-row-actions {
+  margin-left: 0.25rem;
+  flex-shrink: 0;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  transition: opacity 0.2s ease;
+}
+
+.tag-manager-row:hover .tag-manager-row-actions {
+  opacity: 1;
+}
+
+.tag-manager-row-action-btn-edit,
+.tag-manager-row-action-btn-delete {
+  padding: 0.375rem;
+  border: 0;
+  border-radius: 0.375rem;
+  color: #a3a3a3;
+  background: transparent;
+  cursor: pointer;
+  transform: scale(1);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tag-manager-row-action-btn-edit:hover {
+  color: #6366f1;
+  background: #eef2ff;
+  transform: scale(1.1);
+}
+
+.tag-manager-row-action-btn-delete:hover {
+  color: #ef4444;
+  background: #fef2f2;
+  transform: scale(1.1);
+}
+
+.tag-manager-row-action-btn-edit:active,
+.tag-manager-row-action-btn-delete:active {
+  transform: scale(0.95);
+}
+
+.dark .tag-manager-row-action-btn-edit:hover {
+  background: rgb(99 102 241 / 0.15);
+  color: #818cf8;
+}
+
+.dark .tag-manager-row-action-btn-delete:hover {
+  background: rgb(239 68 68 / 0.15);
+  color: #f87171;
+}

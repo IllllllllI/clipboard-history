@@ -1,6 +1,8 @@
 import React from 'react';
 import { Check } from 'lucide-react';
+import { motion } from 'motion/react';
 import { TAG_COLORS } from './constants';
+import './styles/colorpicker.css';
 
 interface ColorPickerProps {
   selectedColor: string | null;
@@ -8,47 +10,88 @@ interface ColorPickerProps {
   dark: boolean;
 }
 
+interface SwatchButtonProps {
+  color: string | null;
+  selected: boolean;
+  dark: boolean;
+  onSelect: (color: string | null) => void;
+}
+
+const SwatchButton = React.memo(function SwatchButton({
+  color,
+  selected,
+  onSelect,
+}: SwatchButtonProps) {
+  const isDefault = color === null;
+
+  return (
+    <div className="tag-manager-color-swatch-wrapper">
+      <motion.button
+        type="button"
+        onClick={() => onSelect(color)}
+        whileHover={{ scale: 1.15 }}
+        whileTap={{ scale: 0.9 }}
+        aria-pressed={selected}
+        aria-label={isDefault ? '默认颜色' : `颜色 ${color}`}
+        title={isDefault ? '默认颜色' : color}
+        className="tag-manager-color-swatch-btn"
+      >
+        <div
+          className={`tag-manager-color-swatch-inner ${
+            isDefault
+              ? 'tag-manager-color-swatch-default'
+              : 'tag-manager-color-swatch-color'
+          }`}
+          style={isDefault ? undefined : { backgroundColor: color, boxShadow: color ? `0 2px 4px ${color}66` : undefined }}
+        >
+          {selected && (
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+            >
+              <Check
+                className={isDefault ? 'tag-manager-color-swatch-check-default' : 'tag-manager-color-swatch-check-color'}
+                strokeWidth={isDefault ? 2.5 : 3}
+              />
+            </motion.div>
+          )}
+        </div>
+      </motion.button>
+      {selected && (
+        <motion.div
+          layoutId="color-swatch-ring"
+          className="tag-manager-color-swatch-selected-ring"
+          style={isDefault ? { borderColor: '#d4d4d4' } : { borderColor: color }}
+          transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+        />
+      )}
+    </div>
+  );
+});
+
 export const ColorPicker = React.memo(function ColorPicker({
   selectedColor,
   onSelect,
   dark,
 }: ColorPickerProps) {
   return (
-    <div className="grid grid-cols-10 gap-2 p-1">
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => onSelect(null)}
-          className="relative z-10 w-7 h-7 rounded-full flex items-center justify-center"
-          title="默认颜色"
-        >
-          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${dark ? 'bg-neutral-700 border-neutral-600' : 'bg-neutral-200 border-neutral-300'}`}>
-            {selectedColor === null && <Check className="w-3 h-3 text-neutral-500" />}
-          </div>
-        </button>
-        {selectedColor === null && (
-          <div className="absolute inset-0 rounded-full border-2 border-indigo-500" />
-        )}
-      </div>
+    <div className="tag-manager-color-grid">
+      <SwatchButton
+        color={null}
+        selected={selectedColor === null}
+        dark={dark}
+        onSelect={onSelect}
+      />
 
       {TAG_COLORS.map((color) => (
-        <div key={color} className="relative">
-          <button
-            type="button"
-            onClick={() => onSelect(color)}
-            className="relative z-10 w-7 h-7 flex items-center justify-center"
-          >
-            <div
-              className="w-5 h-5 rounded-full shadow-sm flex items-center justify-center"
-              style={{ backgroundColor: color }}
-            >
-              {selectedColor === color && <Check className="w-3 h-3 text-white drop-shadow-md" strokeWidth={3} />}
-            </div>
-          </button>
-          {selectedColor === color && (
-            <div className="absolute inset-0 rounded-full border-2" style={{ borderColor: color }} />
-          )}
-        </div>
+        <SwatchButton
+          key={color}
+          color={color}
+          selected={selectedColor === color}
+          dark={dark}
+          onSelect={onSelect}
+        />
       ))}
     </div>
   );

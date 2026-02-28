@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Check, Edit2, Plus, X, Palette } from 'lucide-react';
 import { ColorPicker } from './ColorPicker';
 import { TagEditorTarget, toTagStyle } from './constants';
+import './styles/dialog.shared.css';
+import './styles/dialog.editor.css';
 
 interface TagEditorDialogProps {
   dark: boolean;
@@ -49,47 +51,41 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.12 } }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/40 z-30"
+            className="tag-manager-dialog-overlay"
           />
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.12 } }}
-            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[94%] max-w-md rounded-2xl border p-5 z-40 shadow-2xl ${
-              dark ? 'bg-neutral-900 border-neutral-700' : 'bg-white border-neutral-200'
-            }`}
+            initial={{ opacity: 0, scale: 0.95, y: 10, x: '-50%' }}
+            animate={{ opacity: 1, scale: 1, y: '-50%', x: '-50%', transition: { type: 'spring', damping: 25, stiffness: 400 } }}
+            exit={{ opacity: 0, scale: 0.95, y: -10, x: '-50%', transition: { duration: 0.15 } }}
+            className="tag-manager-dialog-content"
           >
-            <div className="flex items-start justify-between gap-3">
+            <div className="tag-manager-editor-header">
               <div>
-                <h3 className="text-sm font-semibold inline-flex items-center gap-2">
-                  <Icon className="w-4 h-4 text-indigo-500" />
+                <h3 className="tag-manager-editor-title">
+                  <Icon className="tag-manager-editor-title-icon" />
                   {title}
                 </h3>
-                <p className={`text-xs mt-1 ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>
+                <p className="tag-manager-modal-title-desc">
                   {target.mode === 'create' ? '创建新的分类标签。' : '修改名称和颜色，不影响已关联记录。'}
                 </p>
               </div>
               <button
                 onClick={onClose}
-                className={`p-1.5 rounded-md transition-colors ${dark ? 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200' : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700'}`}
-                title="关闭"
+                className="tag-manager-modal-close-btn"
+                title="关闭 (Esc)"
               >
-                <X className="w-4 h-4" />
+                <X className="tag-manager-icon-16" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-3">
+            <div className="tag-manager-editor-form">
               <input
                 ref={inputRef}
                 type="text"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="输入标签名称，例如：工作、灵感、待办"
-                className={`w-full px-3 py-2 rounded-lg text-sm border bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500/30 ${
-                  dark
-                    ? 'border-neutral-700 text-white focus:border-indigo-500'
-                    : 'border-neutral-200 text-neutral-900 focus:border-indigo-500'
-                }`}
+                className="tag-manager-modal-input"
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     void handleSubmit();
@@ -98,25 +94,26 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
                 }}
               />
 
-              <div className={`rounded-xl p-3 ${dark ? 'bg-neutral-800/60 ring-1 ring-white/5' : 'bg-neutral-50 ring-1 ring-black/5'}`}>
+              <div className="tag-manager-color-picker-container">
                 <ColorPicker selectedColor={color} onSelect={setColor} dark={dark} />
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500 inline-flex items-center gap-1.5 shrink-0">
-                  <Palette className="w-3.5 h-3.5" />
+              <div className="tag-manager-preview-row">
+                <span className="tag-manager-preview-label">
+                  <Palette className="tag-manager-preview-label-icon" />
                   预览
                 </span>
-                <div className="inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold" style={toTagStyle(color, dark)}>
+                <div className="tag-manager-preview-chip" style={toTagStyle(color, dark)}>
                   {name.trim() || '标签预览'}
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 mt-5">
+            <div className="tag-manager-dialog-footer-actions">
               <button
                 onClick={onClose}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${dark ? 'text-neutral-300 bg-neutral-800 hover:bg-neutral-700' : 'text-neutral-600 bg-neutral-100 hover:bg-neutral-200'}`}
+                className="tag-manager-dialog-btn-cancel"
+                title="取消 (Esc)"
               >
                 取消
               </button>
@@ -125,9 +122,10 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
                   void handleSubmit();
                 }}
                 disabled={!name.trim()}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors inline-flex items-center gap-1.5"
+                className="tag-manager-dialog-btn-submit"
+                title="保存 (Enter)"
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="tag-manager-icon-14" />
                 {target.mode === 'create' ? '创建标签' : '保存修改'}
               </button>
             </div>
