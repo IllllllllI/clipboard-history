@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getFileName, getFileExtension, getFileCategory, type FileCategory } from '../utils';
 import { TauriService } from '../services/tauri';
+import './styles/file-list-display.css';
 
 // ============================================================================
 // 系统文件图标缓存 & Hook
@@ -104,22 +105,22 @@ function useSystemFileIcon(filePath: string): string | null {
 // 文件图标映射
 // ============================================================================
 
-/** 文件分类 → 图标 + 颜色映射 */
-const FILE_ICON_MAP: Record<FileCategory, { icon: typeof File; color: string }> = {
-  image:        { icon: FileImage,       color: 'text-emerald-500' },
-  video:        { icon: FileVideo2,      color: 'text-purple-500' },
-  audio:        { icon: FileAudio,       color: 'text-pink-500' },
-  document:     { icon: FileText,        color: 'text-blue-500' },
-  spreadsheet:  { icon: FileSpreadsheet, color: 'text-green-600' },
-  presentation: { icon: FileType,        color: 'text-orange-500' },
-  pdf:          { icon: FileText,        color: 'text-red-500' },
-  code:         { icon: FileCode2,       color: 'text-cyan-500' },
-  archive:      { icon: FileArchive,     color: 'text-yellow-600' },
-  executable:   { icon: File,            color: 'text-red-600' },
-  font:         { icon: FileType,        color: 'text-indigo-500' },
-  text:         { icon: FileText,        color: 'text-neutral-500' },
-  folder:       { icon: Folder,          color: 'text-amber-500' },
-  unknown:      { icon: File,            color: 'text-neutral-400' },
+/** 文件分类 → 图标映射 */
+const FILE_ICON_MAP: Record<FileCategory, { icon: typeof File }> = {
+  image:        { icon: FileImage },
+  video:        { icon: FileVideo2 },
+  audio:        { icon: FileAudio },
+  document:     { icon: FileText },
+  spreadsheet:  { icon: FileSpreadsheet },
+  presentation: { icon: FileType },
+  pdf:          { icon: FileText },
+  code:         { icon: FileCode2 },
+  archive:      { icon: FileArchive },
+  executable:   { icon: File },
+  font:         { icon: FileType },
+  text:         { icon: FileText },
+  folder:       { icon: Folder },
+  unknown:      { icon: File },
 };
 
 const getFileIcon = (category: FileCategory) =>
@@ -132,14 +133,14 @@ const getFileIcon = (category: FileCategory) =>
 interface FileItemProps {
   filePath: string;
   isSelected: boolean;
+  darkMode: boolean;
   compact?: boolean;
 }
 
-const FileItem = React.memo(function FileItem({ filePath, isSelected, compact = false }: FileItemProps) {
+const FileItem = React.memo(function FileItem({ filePath, isSelected, darkMode, compact = false }: FileItemProps) {
   const fileName = getFileName(filePath);
-  const ext = getFileExtension(filePath);
   const category = getFileCategory(filePath);
-  const { icon: FallbackIcon, color } = getFileIcon(category);
+  const { icon: FallbackIcon } = getFileIcon(category);
   
   // Use custom hook to fetch system icon
   const systemIcon = useSystemFileIcon(filePath);
@@ -156,59 +157,47 @@ const FileItem = React.memo(function FileItem({ filePath, isSelected, compact = 
 
   return (
     <div
-      className={`group/file flex items-center gap-2 rounded-lg transition-all ${
-        compact ? 'px-2 py-1' : 'px-2.5 py-1.5'
-      } ${
-        isSelected
-          ? 'bg-white/10 hover:bg-white/15'
-          : 'bg-black/[0.03] dark:bg-white/[0.03] hover:bg-black/[0.06] dark:hover:bg-white/[0.06]'
-      }`}
+      className="file-list-item"
+      data-theme={darkMode ? 'dark' : 'light'}
+      data-selected={isSelected ? 'true' : 'false'}
+      data-compact={compact ? 'true' : 'false'}
     >
       {/* 系统图标优先，回退到 lucide 图标 */}
       {systemIcon ? (
         <img
           src={systemIcon}
           alt=""
-          className="w-4 h-4 shrink-0 object-contain"
+          className="file-list-item__system-icon"
           draggable={false}
         />
       ) : (
-        <FallbackIcon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white/80' : color}`} />
+        <FallbackIcon
+          className="file-list-item__fallback-icon"
+          data-file-category={category}
+        />
       )}
       
       <span
-        className={`text-sm truncate flex-1 min-w-0 ${
-          isSelected ? 'text-white/90' : 'text-neutral-700 dark:text-neutral-300'
-        }`}
+        className="file-list-item__name"
         title={filePath}
       >
         {fileName}
       </span>
 
-      <div className={`flex items-center gap-0.5 shrink-0 ${
-        isSelected ? 'opacity-70 hover:opacity-100' : 'opacity-0 group-hover/file:opacity-100'
-      } transition-opacity`}>
+      <div className="file-list-item__actions">
         <button
           onClick={handleOpenFile}
-          className={`p-1 rounded transition-colors ${
-            isSelected
-              ? 'hover:bg-white/20 text-white/80'
-              : 'hover:bg-black/10 dark:hover:bg-white/10 text-neutral-500 dark:text-neutral-400'
-          }`}
+          className="file-list-item__action-btn"
           title="打开文件"
         >
-          <ExternalLink className="w-3 h-3" />
+          <ExternalLink className="file-list-item__action-icon" />
         </button>
         <button
           onClick={handleOpenLocation}
-          className={`p-1 rounded transition-colors ${
-            isSelected
-              ? 'hover:bg-white/20 text-white/80'
-              : 'hover:bg-black/10 dark:hover:bg-white/10 text-neutral-500 dark:text-neutral-400'
-          }`}
+          className="file-list-item__action-btn"
           title="打开文件位置"
         >
-          <FolderOpen className="w-3 h-3" />
+          <FolderOpen className="file-list-item__action-icon" />
         </button>
       </div>
     </div>
@@ -222,22 +211,29 @@ const FileItem = React.memo(function FileItem({ filePath, isSelected, compact = 
 interface FileListDisplayProps {
   files: string[];
   isSelected: boolean;
+  darkMode: boolean;
 }
 
-export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected }: FileListDisplayProps) {
+export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode }: FileListDisplayProps) {
   const isSingle = files.length === 1;
   const displayFiles = files.slice(0, 5); // 最多显示 5 个文件
   const remaining = files.length - displayFiles.length;
 
   return (
-    <div className="w-full flex flex-col gap-1">
+    <div
+      className="file-list-display"
+      data-theme={darkMode ? 'dark' : 'light'}
+      data-selected={isSelected ? 'true' : 'false'}
+      data-single={isSingle ? 'true' : 'false'}
+    >
       {/* 文件列表 */}
-      <div className="flex flex-col gap-0.5">
+      <div className="file-list-display__items">
         {displayFiles.map((file, i) => (
           <FileItem
             key={i}
             filePath={file}
             isSelected={isSelected}
+            darkMode={darkMode}
             compact={!isSingle}
           />
         ))}
@@ -245,19 +241,15 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
 
       {/* 剩余文件提示 */}
       {remaining > 0 && (
-        <div className={`text-[10px] px-2 ${
-          isSelected ? 'text-indigo-200' : 'text-neutral-400 dark:text-neutral-500'
-        }`}>
+        <div className="file-list-display__remaining">
           还有 {remaining} 个文件...
         </div>
       )}
 
       {/* 文件数量标签 */}
       {!isSingle && (
-        <div className={`flex items-center gap-1.5 text-[10px] px-2 mt-0.5 ${
-          isSelected ? 'text-indigo-200' : 'text-neutral-500 dark:text-neutral-400'
-        }`}>
-          <Folder className="w-3 h-3" />
+        <div className="file-list-display__summary">
+          <Folder className="file-list-display__summary-icon" />
           <span>共 {files.length} 个文件</span>
         </div>
       )}

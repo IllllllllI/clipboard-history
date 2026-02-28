@@ -131,7 +131,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
   // --- 文件列表 ---
   if (type === 'files') {
-    return <FileListDisplay files={files} isSelected={isSelected} />;
+    return <FileListDisplay files={files} isSelected={isSelected} darkMode={darkMode} />;
   }
 
   // --- 颜色值 ---
