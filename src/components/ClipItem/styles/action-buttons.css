@@ -7,10 +7,11 @@
   align-items: center;
   gap: 0.125rem;
   position: absolute;
-  bottom: 0.25rem;
-  right: 0.25rem;
+  bottom: 0.125rem;
+  right: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transform: translateY(2px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
   z-index: 20;
   padding: 0.125rem 0.25rem;
   border-radius: 0.5rem;
@@ -26,10 +27,17 @@
 
 .clip-item-actions-visible {
   opacity: 1;
+  transform: translateY(0);
 }
 
 .group:hover .clip-item-actions {
   opacity: 1;
+  transform: translateY(0);
+}
+
+.group:focus-within .clip-item-actions {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .clip-item-action-btn {
@@ -43,6 +51,11 @@
   color: #a3a3a3;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.clip-item-action-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.25);
 }
 
 .clip-item-actions[data-theme='dark'] .clip-item-action-btn {

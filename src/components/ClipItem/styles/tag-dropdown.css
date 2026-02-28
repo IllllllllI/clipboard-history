@@ -16,6 +16,11 @@
   cursor: pointer;
 }
 
+.clip-item-tag-dropdown-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.25);
+}
+
 .clip-item-actions[data-theme='dark'] .clip-item-tag-dropdown-trigger {
   color: #a3a3a3;
 }
@@ -70,6 +75,7 @@
 
 .clip-item-tag-dropdown-popover {
   width: 15rem;
+  max-width: min(15rem, calc(100vw - 1rem));
   background: rgb(255 255 255 / 0.95);
   backdrop-filter: blur(16px);
   border-radius: 1rem;
@@ -154,6 +160,11 @@
   background: transparent;
   cursor: pointer;
   color: #404040;
+}
+
+.clip-item-tag-dropdown-item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.2);
 }
 
 .clip-item-tag-dropdown-item[data-theme='dark'] {

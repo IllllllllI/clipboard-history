@@ -12,7 +12,7 @@
   border-radius: 0.75rem;
   border: 2px solid transparent;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
   overflow: hidden;
 }
 
@@ -24,13 +24,14 @@
   background: #ffffff;
   border-color: #6366f1;
   color: #262626;
-  box-shadow: 0 0 0 3px rgb(99 102 241 / 0.15);
+  box-shadow: 0 6px 14px rgb(99 102 241 / 0.18), 0 0 0 2px rgb(99 102 241 / 0.2);
 }
 
 .clip-item-root[data-selected='true'][data-theme='dark'] {
   background: #262626;
+  border-color: #818cf8;
   color: #e5e5e5;
-  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.2);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.32), 0 0 0 2px rgb(129 140 248 / 0.28);
 }
 
 .clip-item-root[data-selected='false'] {
@@ -41,8 +42,8 @@
 }
 
 .clip-item-root[data-selected='false']:hover {
-  border-color: #e5e7eb;
-  box-shadow: 0 4px 10px rgb(0 0 0 / 0.06);
+  border-color: #d1d5db;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.08);
 }
 
 .clip-item-root[data-selected='false'][data-theme='dark'] {
@@ -52,7 +53,8 @@
 
 .clip-item-root[data-selected='false'][data-theme='dark']:hover {
   background: #262626;
-  border-color: #404040;
+  border-color: #525252;
+  box-shadow: 0 8px 16px rgb(0 0 0 / 0.24);
 }
 
 .clip-item-accent {
@@ -81,14 +83,16 @@
   justify-content: center;
   border-radius: 0.75rem;
   margin-top: 0.125rem;
-  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
   z-index: 10;
 }
 
 .clip-item-icon-wrap[data-selected='true'] {
   background: #6366f1;
   color: #ffffff;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  border-color: rgb(99 102 241 / 0.5);
+  box-shadow: 0 6px 12px rgb(99 102 241 / 0.28);
 }
 
 .clip-item-icon-wrap[data-selected='false'] {
@@ -99,14 +103,27 @@
 .clip-item-root[data-theme='dark'] .clip-item-icon-wrap[data-selected='false'] {
   background: #262626;
   color: #a3a3a3;
+  border-color: rgb(64 64 64 / 0.75);
 }
 
 .clip-item-root:hover .clip-item-icon-wrap[data-selected='false'] {
+  background: #ffffff;
+  border-color: #d4d4d8;
   color: #404040;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 0.08);
+  transform: translateY(-1px);
 }
 
 .clip-item-root[data-theme='dark']:hover .clip-item-icon-wrap[data-selected='false'] {
+  background: #303030;
+  border-color: #525252;
   color: #d4d4d4;
+  box-shadow: 0 6px 12px rgb(0 0 0 / 0.28);
+}
+
+.clip-item-root[data-theme='dark'] .clip-item-icon-wrap[data-selected='true'] {
+  border-color: rgb(129 140 248 / 0.55);
+  box-shadow: 0 6px 14px rgb(99 102 241 / 0.24);
 }
 
 .clip-item-icon-16 {
@@ -122,6 +139,7 @@
   gap: 0.375rem;
   padding-top: 0.25rem;
   padding-bottom: 0.25rem;
+  padding-right: 0.25rem;
   z-index: 10;
 }
 
@@ -182,13 +200,16 @@
 }
 
 .clip-item-side-meta {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: flex-start;
+  min-width: 5rem;
   flex-shrink: 0;
   font-size: 0.75rem;
   padding-top: 0.25rem;
+  padding-bottom: 2rem;
   align-self: stretch;
   z-index: 10;
   color: #a3a3a3;
@@ -201,15 +222,45 @@
 .clip-item-time {
   font-family: var(--font-mono);
   margin-top: 0.25rem;
-  transition: color 0.15s ease, opacity 0.15s ease;
+  text-align: right;
+  transition: color 0.15s ease, opacity 0.15s ease, text-shadow 0.15s ease;
   white-space: nowrap;
+  opacity: 0.9;
+}
+
+.clip-item-root[data-selected='false']:hover .clip-item-time {
+  color: #52525b;
+  opacity: 1;
+}
+
+.clip-item-root[data-selected='false'][data-theme='dark']:hover .clip-item-time {
+  color: #a1a1aa;
+  opacity: 1;
 }
 
 .clip-item-time[data-selected='true'] {
-  color: #6366f1;
+  color: #4f46e5;
   font-weight: 500;
+  opacity: 1;
+  text-shadow: 0 1px 8px rgb(99 102 241 / 0.2);
 }
 
 .clip-item-root[data-theme='dark'] .clip-item-time[data-selected='true'] {
-  color: #818cf8;
+  color: #a5b4fc;
+  text-shadow: 0 1px 10px rgb(129 140 248 / 0.25);
+}
+
+@media (max-width: 640px) {
+  .clip-item-root {
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+  }
+
+  .clip-item-side-meta {
+    min-width: 4.5rem;
+  }
+
+  .clip-item-time {
+    font-size: 11px;
+  }
 }
