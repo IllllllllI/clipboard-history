@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import './styles/toast.css';
 
 // ============================================================================
 // Toast 类型
@@ -58,7 +59,7 @@ export function ToastContainer() {
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm">
+    <div className="toast-container">
       {toasts.map(t => (
         <ToastItem key={t.id} toast={t} onDismiss={dismiss} />
       ))}
@@ -72,22 +73,17 @@ function ToastItem({ toast: t, onDismiss }: { toast: ToastMessage; onDismiss: (i
     return () => clearTimeout(timer);
   }, [t.id, t.duration, onDismiss]);
 
-  const bgColor = t.type === 'error'
-    ? 'bg-red-600'
-    : t.type === 'success'
-      ? 'bg-green-600'
-      : 'bg-blue-600';
-
   const icon = t.type === 'error' ? '✕' : t.type === 'success' ? '✓' : 'ℹ';
 
   return (
     <div
-      className={`${bgColor} text-white px-4 py-3 rounded-lg shadow-lg flex items-start gap-2 animate-slide-in cursor-pointer text-sm`}
+      className="toast-item animate-slide-in"
+      data-type={t.type}
       onClick={() => onDismiss(t.id)}
       role="alert"
     >
-      <span className="font-bold text-base leading-5">{icon}</span>
-      <span className="flex-1 break-words">{t.message}</span>
+      <span className="toast-item__icon">{icon}</span>
+      <span className="toast-item__message">{t.message}</span>
     </div>
   );
 }

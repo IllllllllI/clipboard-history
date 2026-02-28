@@ -125,7 +125,7 @@ function AppLayout() {
         onClose={() => setPreviewImageUrl(null)}
       />
 
-      <DownloadProgressIndicator downloadState={downloadState} />
+      <DownloadProgressIndicator downloadState={downloadState} darkMode={settings.darkMode} />
       <ToastContainer />
     </div>
   );
