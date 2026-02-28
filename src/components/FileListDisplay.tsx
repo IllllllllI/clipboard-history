@@ -186,6 +186,7 @@ const FileItem = React.memo(function FileItem({ filePath, isSelected, darkMode, 
 
       <div className="file-list-item__actions">
         <button
+          type="button"
           onClick={handleOpenFile}
           className="file-list-item__action-btn"
           title="打开文件"
@@ -193,6 +194,7 @@ const FileItem = React.memo(function FileItem({ filePath, isSelected, darkMode, 
           <ExternalLink className="file-list-item__action-icon" />
         </button>
         <button
+          type="button"
           onClick={handleOpenLocation}
           className="file-list-item__action-btn"
           title="打开文件位置"

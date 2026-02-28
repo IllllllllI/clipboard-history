@@ -27,15 +27,17 @@ export const DownloadProgressIndicator = React.memo(function DownloadProgressInd
             </p>
             {downloadState.progress > 0 && (
               <div className="download-progress__meter-wrap">
-                <div className="download-progress__meter-bg">
-                  <div
-                    className="download-progress__meter-fill"
-                    style={{ width: `${downloadState.progress}%` }}
-                  />
+                <div className="download-progress__meter-row">
+                  <div className="download-progress__meter-bg">
+                    <div
+                      className="download-progress__meter-fill"
+                      style={{ width: `${downloadState.progress}%` }}
+                    />
+                  </div>
+                  <p className="download-progress__percent">
+                    {downloadState.progress}%
+                  </p>
                 </div>
-                <p className="download-progress__percent">
-                  {downloadState.progress}%
-                </p>
               </div>
             )}
           </div>
