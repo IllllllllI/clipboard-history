@@ -198,36 +198,38 @@ export const ImageDisplay = React.memo(function ImageDisplay({
 
         {!error && imageSrc && (
           <div className="image-display__media-wrap">
-            <img
-              src={imageSrc}
-              alt="Clipboard image"
-              style={{
-                maxWidth: '100%',
-                height: 'auto',
-                willChange: isLoading ? 'opacity' : 'auto',
-                transform: 'translateZ(0)',
-                imageRendering: 'auto',
-              }}
-              className={`image-display__image ${
-                isLoading ? 'opacity-0 absolute' : 'opacity-100'
-              } ${onClick ? 'image-display__image--clickable' : ''}`}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-              onClick={handleClick}
-              loading="lazy"
-              decoding="async"
-            />
-            {!isLoading && imageSize && (() => {
-              const fmt = extractFormatLabel(item.text);
-              return (
-                <div className="image-display__meta-chip">
-                  {fmt && <><span className="image-display__meta-format">{fmt}</span><span className="image-display__meta-sep">|</span></>}
-                  <span>{imageSize.width}×{imageSize.height}</span>
-                  <span className="image-display__meta-sep">|</span>
-                  <span>{imageSourceLabel}</span>
-                </div>
-              );
-            })()}
+            <div className="image-display__image-box">
+              <img
+                src={imageSrc}
+                alt="Clipboard image"
+                style={{
+                  maxWidth: '100%',
+                  height: 'auto',
+                  willChange: isLoading ? 'opacity' : 'auto',
+                  transform: 'translateZ(0)',
+                  imageRendering: 'auto',
+                }}
+                className={`image-display__image ${
+                  isLoading ? 'opacity-0 absolute' : 'opacity-100'
+                } ${onClick ? 'image-display__image--clickable' : ''}`}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+                onClick={handleClick}
+                loading="lazy"
+                decoding="async"
+              />
+              {!isLoading && imageSize && (() => {
+                const fmt = extractFormatLabel(item.text);
+                return (
+                  <div className="image-display__meta-chip">
+                    {fmt && <><span className="image-display__meta-format">{fmt}</span><span className="image-display__meta-sep">|</span></>}
+                    <span>{imageSize.width}×{imageSize.height}</span>
+                    <span className="image-display__meta-sep">|</span>
+                    <span>{imageSourceLabel}</span>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
 

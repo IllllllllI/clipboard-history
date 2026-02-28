@@ -160,6 +160,11 @@
 }
 
 .image-display__media-wrap {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.image-display__image-box {
   position: relative;
   width: fit-content;
   max-width: 100%;

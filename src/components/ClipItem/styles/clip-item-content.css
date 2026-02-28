@@ -217,10 +217,20 @@
 .clip-item-content-link {
   cursor: pointer;
   color: #6366f1;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.375rem;
-  transition: color 0.15s ease;
+  width: 100%;
+  min-width: 0;
+  transition: color 0.15s ease, transform 0.12s ease;
+}
+
+.clip-item-content-link-text-wrap {
+  flex: 1;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .clip-item-content-link[data-theme='dark'] {
@@ -229,10 +239,58 @@
 
 .clip-item-content-link:hover {
   text-decoration: underline;
+  transform: translateY(-1px);
 }
 
 .clip-item-content-link-fade {
   opacity: 0.5;
+}
+
+.clip-item-content-link-status {
+  width: 0.75rem;
+  height: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.clip-item-content-link[data-open-state='opening'] .clip-item-content-link-status {
+  color: #6366f1;
+}
+
+.clip-item-content-image-link[data-open-state='opening'] .clip-item-content-link-status {
+  color: #6366f1;
+}
+
+.clip-item-content-link[data-open-state='success'] .clip-item-content-link-status {
+  color: #22c55e;
+}
+
+.clip-item-content-image-link[data-open-state='success'] .clip-item-content-link-status {
+  color: #22c55e;
+}
+
+.clip-item-content-link[data-open-state='error'] .clip-item-content-link-status {
+  color: #ef4444;
+}
+
+.clip-item-content-image-link[data-open-state='error'] .clip-item-content-link-status {
+  color: #ef4444;
+}
+
+.clip-item-content-link-status-spin {
+  animation: clip-item-link-status-spin 0.9s linear infinite;
+}
+
+@keyframes clip-item-link-status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 640px) {

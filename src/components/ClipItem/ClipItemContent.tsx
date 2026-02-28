@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { Globe, HardDrive, FileCode2, Images, ExternalLink, Check } from 'lucide-react';
+import { Globe, HardDrive, FileCode2, Images, ExternalLink, Check, Loader2, CircleCheck, CircleAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClipItem, ImageType } from '../../types';
 import { decodeFileList, findDateTimesInText, normalizeFilePath } from '../../utils';
@@ -61,16 +61,33 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   const [localPickedColor, setLocalPickedColor] = useState<string | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
+  const [urlOpenState, setUrlOpenState] = useState<'idle' | 'opening' | 'success' | 'error'>('idle');
   const colorBtnRef = useRef<HTMLDivElement>(null);
   const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const urlOpeningDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const urlStateResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearUrlStateTimers = useCallback(() => {
+    if (urlOpeningDelayTimerRef.current) {
+      clearTimeout(urlOpeningDelayTimerRef.current);
+      urlOpeningDelayTimerRef.current = null;
+    }
+
+    if (urlStateResetTimerRef.current) {
+      clearTimeout(urlStateResetTimerRef.current);
+      urlStateResetTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
       if (copyFeedbackTimerRef.current) {
         clearTimeout(copyFeedbackTimerRef.current);
       }
+
+      clearUrlStateTimers();
     };
-  }, []);
+  }, [clearUrlStateTimers]);
 
   const showCopiedFeedback = useCallback((value: string) => {
     setCopiedColor(value);
@@ -110,17 +127,55 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   const isUrl = useMemo(() => /^https?:\/\/\S+$/i.test(trimmedText), [trimmedText]);
   const files = useMemo(() => (type === 'files' ? decodeFileList(item.text) : []), [type, item.text]);
 
-  const handleOpenUrl = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openUrlWithStatus = useCallback(async () => {
+    clearUrlStateTimers();
+    urlOpeningDelayTimerRef.current = setTimeout(() => {
+      setUrlOpenState('opening');
+      urlOpeningDelayTimerRef.current = null;
+    }, 180);
+
     const value = trimmedText;
 
-    if (imageType === ImageType.LocalFile) {
-      void TauriService.openFile(normalizeFilePath(value));
-      return;
-    }
+    try {
+      if (imageType === ImageType.LocalFile) {
+        await TauriService.openFile(normalizeFilePath(value));
+      } else {
+        await TauriService.openPath(value);
+      }
 
-    void TauriService.openPath(value);
-  }, [imageType, trimmedText]);
+      clearUrlStateTimers();
+      setUrlOpenState('success');
+      urlStateResetTimerRef.current = setTimeout(() => {
+        setUrlOpenState('idle');
+        urlStateResetTimerRef.current = null;
+      }, 1000);
+    } catch (error) {
+      clearUrlStateTimers();
+      setUrlOpenState('error');
+      console.warn('Open url failed:', value, error);
+      urlStateResetTimerRef.current = setTimeout(() => {
+        setUrlOpenState('idle');
+        urlStateResetTimerRef.current = null;
+      }, 1400);
+    }
+  }, [clearUrlStateTimers, imageType, trimmedText]);
+
+  const handleUrlDoubleClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void openUrlWithStatus();
+  }, [openUrlWithStatus]);
+
+  const openStatusTitle =
+    urlOpenState === 'opening'
+      ? '正在打开...'
+      : urlOpenState === 'success'
+        ? '已打开'
+        : urlOpenState === 'error'
+          ? '打开失败'
+          : imageType === ImageType.LocalFile
+            ? '双击打开文件'
+            : '双击打开链接';
 
   const handleCopyColor = useCallback((e: React.MouseEvent, value: string) => {
     e.stopPropagation();
@@ -284,7 +339,11 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           />
         </div>
         {imageType !== ImageType.Base64 && (
-          <div className="clip-item-content-image-link" data-theme={darkMode ? 'dark' : 'light'}>
+          <div
+            className="clip-item-content-image-link"
+            data-theme={darkMode ? 'dark' : 'light'}
+            data-open-state={urlOpenState}
+          >
             {imageType === ImageType.HttpUrl ? (
               <Globe className="clip-item-content-icon-12" />
             ) : (
@@ -292,10 +351,21 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             )}
             <span
               className="clip-item-content-image-link-text"
-              title={(imageType === ImageType.HttpUrl ? "\u6253\u5f00\u94fe\u63a5: " : "\u6253\u5f00\u6587\u4ef6: ") + item.text}
-              onClick={handleOpenUrl}
+              title={(imageType === ImageType.HttpUrl ? "链接: " : "文件: ") + item.text + "\n" + openStatusTitle}
+              onDoubleClick={handleUrlDoubleClick}
             >
               {item.text}
+            </span>
+            <span className="clip-item-content-link-status" data-state={urlOpenState} aria-hidden="true">
+              {urlOpenState === 'opening' ? (
+                <Loader2 className="clip-item-content-icon-12 clip-item-content-link-status-spin" />
+              ) : urlOpenState === 'success' ? (
+                <CircleCheck className="clip-item-content-icon-12" />
+              ) : urlOpenState === 'error' ? (
+                <CircleAlert className="clip-item-content-icon-12" />
+              ) : (
+                <ExternalLink className="clip-item-content-icon-12 clip-item-content-link-fade" />
+              )}
             </span>
           </div>
         )}
@@ -307,7 +377,11 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   if (isImage) {
     return (
       <p className="clip-item-content-text">
-        <span className="clip-item-content-image-link" data-theme={darkMode ? 'dark' : 'light'}>
+        <span
+          className="clip-item-content-image-link"
+          data-theme={darkMode ? 'dark' : 'light'}
+          data-open-state={urlOpenState}
+        >
           {imageType === ImageType.HttpUrl ? (
             <Globe className="clip-item-content-icon-14" />
           ) : imageType === ImageType.LocalFile ? (
@@ -320,10 +394,23 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           ) : (
             <span
               className="clip-item-content-image-link-text"
-              title={(imageType === ImageType.HttpUrl ? "\u6253\u5f00\u94fe\u63a5: " : "\u6253\u5f00\u6587\u4ef6: ") + item.text}
-              onClick={handleOpenUrl}
+              title={(imageType === ImageType.HttpUrl ? "链接: " : "文件: ") + item.text + "\n" + openStatusTitle}
+              onDoubleClick={handleUrlDoubleClick}
             >
               {item.text}
+            </span>
+          )}
+          {imageType !== ImageType.Base64 && (
+            <span className="clip-item-content-link-status" data-state={urlOpenState} aria-hidden="true">
+              {urlOpenState === 'opening' ? (
+                <Loader2 className="clip-item-content-icon-12 clip-item-content-link-status-spin" />
+              ) : urlOpenState === 'success' ? (
+                <CircleCheck className="clip-item-content-icon-12" />
+              ) : urlOpenState === 'error' ? (
+                <CircleAlert className="clip-item-content-icon-12" />
+              ) : (
+                <ExternalLink className="clip-item-content-icon-12 clip-item-content-link-fade" />
+              )}
             </span>
           )}
         </span>
@@ -346,14 +433,25 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         <span
           className="clip-item-content-link"
           data-theme={darkMode ? 'dark' : 'light'}
-          title={"打开链接: " + trimmedText}
-          onClick={handleOpenUrl}
+          data-open-state={urlOpenState}
+          title={"链接: " + trimmedText + "\n" + openStatusTitle}
+          onDoubleClick={handleUrlDoubleClick}
         >
           <Globe className="clip-item-content-icon-14-shrink" />
-          <span className="truncate">
+          <span className="clip-item-content-link-text-wrap">
             <HighlightText text={trimmedText} highlight={searchQuery} darkMode={darkMode} />
           </span>
-          <ExternalLink className="clip-item-content-icon-12 clip-item-content-link-fade" />
+          <span className="clip-item-content-link-status" data-state={urlOpenState} aria-hidden="true">
+            {urlOpenState === 'opening' ? (
+              <Loader2 className="clip-item-content-icon-12 clip-item-content-link-status-spin" />
+            ) : urlOpenState === 'success' ? (
+              <CircleCheck className="clip-item-content-icon-12" />
+            ) : urlOpenState === 'error' ? (
+              <CircleAlert className="clip-item-content-icon-12" />
+            ) : (
+              <ExternalLink className="clip-item-content-icon-12 clip-item-content-link-fade" />
+            )}
+          </span>
         </span>
       </p>
     );
