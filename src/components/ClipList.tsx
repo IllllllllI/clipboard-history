@@ -41,6 +41,7 @@ export function ClipList() {
     <div
       ref={parentRef}
       className="flex-1 overflow-y-auto custom-scrollbar relative scroll-smooth px-1 sm:px-2 bg-neutral-50/50 dark:bg-neutral-900/50"
+      style={{ overflowAnchor: 'none' }}
     >
       {filteredHistory.length === 0 ? (
         <EmptyState />

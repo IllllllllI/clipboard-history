@@ -1,0 +1,5 @@
+export const ROW_POSITION_CACHE_MAX_ENTRIES = 1200;
+export const ROW_POSITION_CACHE_TTL_MS = 10 * 60 * 1000;
+
+export const ROW_MOVE_ANIMATION_DURATION_MS = 300;
+export const ROW_MOVE_ANIMATION_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)';

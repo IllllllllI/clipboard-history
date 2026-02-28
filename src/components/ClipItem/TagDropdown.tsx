@@ -203,3 +203,5 @@ export const TagDropdown = React.memo(function TagDropdown({
     </>
   );
 });
+
+export default TagDropdown;

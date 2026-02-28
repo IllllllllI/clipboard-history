@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ClipItem, Tag } from '../../types';
 import { decodeFileList } from '../../utils';
 import { TauriService } from '../../services/tauri';
-import { TagDropdown } from './TagDropdown';
+import TagDropdown from './TagDropdown';
 import './styles/action-buttons.css';
 
 interface ActionButtonsProps {

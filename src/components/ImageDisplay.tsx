@@ -131,8 +131,6 @@ export const ImageDisplay = React.memo(function ImageDisplay({
                 style={{
                   maxWidth: '100%',
                   height: 'auto',
-                  willChange: isLoading ? 'opacity' : 'auto',
-                  transform: 'translateZ(0)',
                   imageRendering: 'auto',
                 }}
                 className={`image-display__image ${

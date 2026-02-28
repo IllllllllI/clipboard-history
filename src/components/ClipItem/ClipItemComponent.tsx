@@ -112,11 +112,7 @@ export const ClipItemComponent = React.memo(
     const containerClass = 'clip-item-root';
 
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 10, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.15 } }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+      <div
         draggable
         onDragStart={onDragStart}
         onDragEnd={handleDragEnd}
@@ -212,7 +208,7 @@ export const ClipItemComponent = React.memo(
             onRemoveTag={handleRemoveTagFromItem}
           />
         </div>
-      </motion.div>
+      </div>
     );
   },
   (prev, next) => prev.item === next.item && prev.index === next.index,
