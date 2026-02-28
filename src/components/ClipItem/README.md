@@ -13,8 +13,8 @@
 - `HighlightText.tsx`：搜索高亮文本渲染。
 - `TagDropdown.tsx`：标签下拉与选择交互。
 - `constants.ts`：图标与类型映射等常量。
-- `ColorPicker/`：条目内颜色相关子模块。
-- `ColorPicker/styles/`：ColorPicker 子模块样式目录。
+- `ClipItemColorPicker/`：条目内颜色相关子模块。
+- `ClipItemColorPicker/styles/`：ColorPicker 子模块样式目录。
 - `styles/`：ClipItem 语义化样式目录（按子组件拆分）。
 
 ## 维护约定

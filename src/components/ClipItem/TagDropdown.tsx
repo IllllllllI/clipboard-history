@@ -97,11 +97,10 @@ export const TagDropdown = React.memo(function TagDropdown({
           e.stopPropagation();
         }}
         onClick={handleToggleOpen}
-        className={`clip-item-tag-dropdown-trigger ${
-          open 
-            ? 'clip-item-tag-dropdown-trigger-open' 
-            : ''
-        }`}
+        className="clip-item-tag-dropdown-trigger"
+        data-open={open ? 'true' : 'false'}
+        data-theme={darkMode ? 'dark' : 'light'}
+        aria-expanded={open}
         title="添加标签"
       >
         <TagIcon className="clip-item-tag-dropdown-trigger-icon" />
@@ -161,19 +160,18 @@ export const TagDropdown = React.memo(function TagDropdown({
                         onClick={(e) => {
                           void handleToggleTag(e, tag.id, hasTag);
                         }}
-                        className={`clip-item-tag-dropdown-item ${
-                          hasTag
-                            ? 'clip-item-tag-dropdown-item-active'
-                            : ''
-                        }`}
+                        className="clip-item-tag-dropdown-item"
+                        data-active={hasTag ? 'true' : 'false'}
+                        data-theme={darkMode ? 'dark' : 'light'}
                         style={hasTag ? { backgroundColor: activeBg, color: activeText, borderColor: `${tag.color || baseColor}66` } : {}}
                       >
                         <div className="clip-item-tag-dropdown-item-main">
                           <div
-                            className={`clip-item-tag-dropdown-item-dot ${!hasTag ? 'clip-item-tag-dropdown-item-dot-inactive' : ''}`}
+                            className="clip-item-tag-dropdown-item-dot"
+                            data-inactive={!hasTag ? 'true' : 'false'}
                             style={{ backgroundColor: baseColor }}
                           />
-                          <span className={`clip-item-tag-dropdown-item-name ${hasTag ? 'clip-item-tag-dropdown-item-name-active' : ''}`}>{tag.name}</span>
+                          <span className="clip-item-tag-dropdown-item-name" data-active={hasTag ? 'true' : 'false'}>{tag.name}</span>
                         </div>
                         {hasTag && (
                           <motion.div

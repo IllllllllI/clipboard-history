@@ -168,6 +168,12 @@
   color: #6ee7b7;
 }
 
+.clip-item-color-picker-action-copy-content {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 .clip-item-color-picker-action-confirm {
   background: #6366f1;
   color: #ffffff;

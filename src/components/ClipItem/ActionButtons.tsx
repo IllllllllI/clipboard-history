@@ -41,12 +41,20 @@ export const ActionButtons = React.memo(function ActionButtons({
   onAddTag,
   onRemoveTag,
 }: ActionButtonsProps) {
+  const actionsClass = [
+    'clip-item-actions',
+    isSelected ? 'clip-item-actions-visible' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <div
       onMouseDown={(e) => {
         e.stopPropagation();
       }}
-      className={`clip-item-actions ${isSelected ? 'clip-item-actions-visible' : ''}`}
+      className={actionsClass}
+      data-theme={darkMode ? 'dark' : 'light'}
     >
       {/* 文件列表专属操作 */}
       {isFiles && (
@@ -57,7 +65,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               const files = decodeFileList(item.text);
               if (files.length > 0) TauriService.openFile(files[0]);
             }}
-            className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
+            className="clip-item-action-btn"
             title="打开文件"
           >
             <ExternalLink className="clip-item-action-icon" />
@@ -68,7 +76,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               const files = decodeFileList(item.text);
               if (files.length > 0) TauriService.openFileLocation(files[0]);
             }}
-            className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
+            className="clip-item-action-btn"
             title="打开文件位置"
           >
             <FolderOpen className="clip-item-action-icon" />
@@ -83,7 +91,7 @@ export const ActionButtons = React.memo(function ActionButtons({
             e.stopPropagation();
             onEdit(item);
           }}
-          className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
+          className="clip-item-action-btn"
           title="编辑内容"
         >
           <Edit3 className="clip-item-action-icon" />
@@ -105,16 +113,13 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onToggleFavorite(item);
         }}
-        className={`clip-item-action-btn ${
-          item.is_favorite
-            ? `clip-item-action-btn-favorite ${darkMode ? 'clip-item-action-btn-favorite-dark' : ''}`
-            : darkMode
-              ? 'clip-item-action-btn-dark'
-              : ''
-        }`}
+        className="clip-item-action-btn"
+        data-active={item.is_favorite ? 'true' : 'false'}
+        data-variant="favorite"
+        aria-pressed={Boolean(item.is_favorite)}
         title={item.is_favorite ? '取消收藏' : '收藏'}
       >
-        <Star className={`clip-item-action-icon ${item.is_favorite ? 'clip-item-action-icon-fill' : ''}`} />
+        <Star className="clip-item-action-icon" data-filled={item.is_favorite ? 'true' : 'false'} />
       </button>
 
       {/* 置顶 */}
@@ -123,16 +128,13 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onTogglePin(item);
         }}
-        className={`clip-item-action-btn ${
-          item.is_pinned
-            ? `clip-item-action-btn-pinned ${darkMode ? 'clip-item-action-btn-pinned-dark' : ''}`
-            : darkMode
-              ? 'clip-item-action-btn-dark'
-              : ''
-        }`}
+        className="clip-item-action-btn"
+        data-active={item.is_pinned ? 'true' : 'false'}
+        data-variant="pinned"
+        aria-pressed={Boolean(item.is_pinned)}
         title={item.is_pinned ? '取消置顶' : '置顶'}
       >
-        <Pin className={`clip-item-action-icon ${item.is_pinned ? 'clip-item-action-icon-fill' : ''}`} />
+        <Pin className="clip-item-action-icon" data-filled={item.is_pinned ? 'true' : 'false'} />
       </button>
 
       {/* 复制 */}
@@ -141,7 +143,7 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onCopy(item);
         }}
-        className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
+        className="clip-item-action-btn"
         title="复制"
       >
         <AnimatePresence mode="wait" initial={false}>
@@ -153,7 +155,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               exit={{ opacity: 0, scale: 0.6, y: -2 }}
               transition={{ duration: 0.15 }}
             >
-              <Check className={`clip-item-action-icon clip-item-action-icon-copy-ok ${darkMode ? 'clip-item-action-icon-copy-ok-dark' : ''}`} />
+              <Check className="clip-item-action-icon clip-item-action-icon-copy-ok" />
             </motion.div>
           ) : (
             <motion.div

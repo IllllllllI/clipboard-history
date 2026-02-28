@@ -13,7 +13,7 @@ const MODES: ColorMode[] = ['HEX', 'RGB', 'HSL'];
 /** 颜色模式切换按钮 + 下拉菜单 */
 export function ColorModeSelector({ mode, onCycle, onSelect }: ColorModeSelectorProps) {
   return (
-    <div className="clip-item-color-picker-mode group">
+    <div className="clip-item-color-picker-mode">
       <button
         onClick={(e) => {
           e.stopPropagation();

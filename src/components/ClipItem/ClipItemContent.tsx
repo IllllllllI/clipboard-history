@@ -10,7 +10,7 @@ import { FileListDisplay } from '../FileListDisplay';
 import { ImagePreview } from './ImagePreview';
 import { HighlightText } from './HighlightText';
 import { HighlightDateTimeText } from './DateTimeChip';
-import { ColorPickerPopover } from './ColorPicker';
+import { ColorPickerPopover } from './ClipItemColorPicker';
 import './styles/clip-item-content.css';
 
 /** 标准化 hex 用于比较：展开短 hex、小写、去除不透明 alpha（ff） */

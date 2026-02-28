@@ -75,13 +75,13 @@ export const ClipItemComponent = React.memo(
     );
 
     // --- 语义化颜色指示器 ---
-    const semanticColorClass = useMemo(() => {
-      if (type === 'code') return 'clip-item-accent--code';
-      if (type === 'url') return 'clip-item-accent--url';
-      if (isImage || type === 'multi-image') return 'clip-item-accent--image';
-      if (isFiles) return 'clip-item-accent--files';
-      if (type === 'color') return 'clip-item-accent--color';
-      return 'clip-item-accent--default';
+    const accentType = useMemo(() => {
+      if (type === 'code') return 'code';
+      if (type === 'url') return 'url';
+      if (isImage || type === 'multi-image') return 'image';
+      if (isFiles) return 'files';
+      if (type === 'color') return 'color';
+      return 'default';
     }, [type, isImage, isFiles]);
 
     const handleCopyAsNewColor = useCallback(
@@ -109,26 +109,7 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
-    const containerClass = [
-      'clip-item-root',
-      'group',
-      settings.darkMode ? 'clip-item-root-dark' : '',
-      isSelected ? 'clip-item-root-selected' : 'clip-item-root-unselected',
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-    const iconClass = [
-      'clip-item-icon-wrap',
-      isSelected ? 'clip-item-icon-wrap-selected' : 'clip-item-icon-wrap-unselected',
-    ].join(' ');
-
-    const sideMetaClass = [
-      'clip-item-side-meta',
-      settings.darkMode ? 'clip-item-side-meta-dark' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const containerClass = 'clip-item-root group';
 
     return (
       <motion.div
@@ -142,12 +123,14 @@ export const ClipItemComponent = React.memo(
         onDoubleClick={handleDblClick}
         onClick={handleClick}
         className={containerClass}
+        data-selected={isSelected ? 'true' : 'false'}
+        data-theme={settings.darkMode ? 'dark' : 'light'}
       >
         {/* 语义化颜色指示线 */}
-        <div className={`clip-item-accent ${semanticColorClass}`} />
+        <div className="clip-item-accent" data-type={accentType} />
 
         {/* 左侧图标 */}
-        <div className={iconClass}>
+        <div className="clip-item-icon-wrap" data-selected={isSelected ? 'true' : 'false'}>
           <IconComponent className="clip-item-icon-16" />
         </div>
 
@@ -190,13 +173,9 @@ export const ClipItemComponent = React.memo(
                       exit={{ opacity: 0, scale: 0.8 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                       key={tag.id}
-                      className={`clip-item-tag-pill ${
-                        !tag.color
-                          ? settings.darkMode
-                            ? 'clip-item-tag-pill-default clip-item-tag-pill-dark'
-                            : 'clip-item-tag-pill-default'
-                          : 'clip-item-tag-pill-colored'
-                      }`}
+                      className="clip-item-tag-pill"
+                      data-default={!tag.color ? 'true' : 'false'}
+                      data-theme={settings.darkMode ? 'dark' : 'light'}
                       style={tagStyle}
                     >
                       <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
@@ -210,8 +189,8 @@ export const ClipItemComponent = React.memo(
         </div>
 
         {/* 右侧：时间 + 操作 */}
-        <div className={sideMetaClass}>
-          <span className={`clip-item-time ${isSelected ? 'clip-item-time-selected' : ''}`}>
+        <div className="clip-item-side-meta" data-theme={settings.darkMode ? 'dark' : 'light'}>
+          <span className="clip-item-time" data-selected={isSelected ? 'true' : 'false'}>
             {formatDate(item.timestamp)}
           </span>
 

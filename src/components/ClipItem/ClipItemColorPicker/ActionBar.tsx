@@ -33,7 +33,7 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.5, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="flex items-center gap-1.5 clip-item-color-picker-action-copy-ok"
+              className="clip-item-color-picker-action-copy-content clip-item-color-picker-action-copy-ok"
             >
               <Check className="clip-item-color-picker-action-icon" /> 已复制
             </motion.div>
@@ -44,7 +44,7 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.5, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="flex items-center gap-1.5"
+              className="clip-item-color-picker-action-copy-content"
             >
               <Copy className="clip-item-color-picker-action-icon" /> 复制
             </motion.div>

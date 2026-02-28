@@ -82,20 +82,15 @@ export const DateTimeChip = React.memo(function DateTimeChip({
   return (
     <span
       ref={chipRef}
-      className={`clip-item-datetime-chip ${
-        isSelected
-          ? darkMode
-            ? 'clip-item-datetime-chip-selected clip-item-datetime-chip-selected-dark'
-            : 'clip-item-datetime-chip-selected'
-          : 'clip-item-datetime-chip-default'
-      }`}
+      className="clip-item-datetime-chip"
+      data-selected={isSelected ? 'true' : 'false'}
+      data-theme={darkMode ? 'dark' : 'light'}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       <Clock className="clip-item-datetime-chip-icon" />
       <HighlightText text={match.text} highlight={searchQuery} />
 
-      {/* Portal Popover */}
       {showPopover &&
         formats.length > 0 &&
         createPortal(
@@ -103,13 +98,12 @@ export const DateTimeChip = React.memo(function DateTimeChip({
             ref={popoverRef}
             style={style}
             className="clip-item-datetime-popover"
+            data-theme={darkMode ? 'dark' : 'light'}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="clip-item-datetime-popover-title">
-              快捷复制
-            </span>
+            <span className="clip-item-datetime-popover-title">快捷复制</span>
             {formats.map((fmt) => {
               const key = `${match.start}-${fmt.label}`;
               const isCopied = copiedKey === key;
@@ -118,10 +112,9 @@ export const DateTimeChip = React.memo(function DateTimeChip({
                   key={key}
                   onClick={(e) => handleCopy(fmt.value, key, e)}
                   className={`clip-item-datetime-popover-btn ${
-                    isCopied
-                      ? 'clip-item-datetime-popover-btn-copied'
-                      : ''
+                    isCopied ? 'clip-item-datetime-popover-btn-copied' : ''
                   }`}
+                  data-theme={darkMode ? 'dark' : 'light'}
                 >
                   {isCopied ? (
                     <Check className="clip-item-datetime-popover-icon clip-item-datetime-popover-icon-ok" />
