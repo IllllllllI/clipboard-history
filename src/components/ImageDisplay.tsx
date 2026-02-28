@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { ImageIcon, AlertTriangle, Loader2 } from 'lucide-react';
 import { ClipItem, ImageType } from '../types';
-import { detectImageType, normalizeFilePath } from '../utils';
-import { resolveImageSrc, extractFormatLabel } from '../utils/imageUrl';
-import { fetchAndCacheImage } from '../utils/imageCache';
+import { detectImageType } from '../utils';
+import { extractFormatLabel } from '../utils/imageUrl';
+import { useImageResource } from '../hooks/useImageResource';
 import './styles/image-display.css';
 
 // ============================================================================
@@ -15,19 +15,9 @@ interface ImageDisplayProps {
   darkMode?: boolean;
   centered?: boolean;
   showLinkInfo?: boolean;
+  disableLazyLoad?: boolean;
   onClick?: (content: string) => void;
 }
-
-/** 根据图片类型返回用户友好的错误信息 */
-const ERROR_MESSAGES: Record<ImageType, string> = {
-  [ImageType.HttpUrl]:    '无法加载网络图片，请检查网络连接或图片链接是否有效',
-  [ImageType.LocalFile]:  '无法加载本地图片，文件可能已被移动或删除',
-  [ImageType.Base64]:     '图片数据格式错误，无法显示',
-  [ImageType.None]:       '图片加载失败',
-};
-
-const getErrorMessage = (type: ImageType): string =>
-  ERROR_MESSAGES[type] ?? ERROR_MESSAGES[ImageType.None];
 
 // ============================================================================
 // 子组件
@@ -89,87 +79,23 @@ export const ImageDisplay = React.memo(function ImageDisplay({
   darkMode: dark = false,
   centered = true,
   showLinkInfo = true,
+  disableLazyLoad = false,
   onClick,
 }: ImageDisplayProps) {
   const imageType = detectImageType(item.text);
-
-  // ── 所有 hooks 必须在条件返回之前声明 ──
-  const [isLoading, setIsLoading] = useState(true);
-  const [imageSrc, setImageSrc] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
-  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
-  const [shouldLoad, setShouldLoad] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // IntersectionObserver 懒加载
-  useEffect(() => {
-    if (imageType === ImageType.None) return;
-    if (!containerRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setShouldLoad(true);
-            observer.disconnect();
-          }
-        });
-      },
-      { rootMargin: '50px' }
-    );
-
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [imageType]);
-
-  // 加载图片源（HTTP 图片使用缓存）
-  useEffect(() => {
-    if (imageType === ImageType.None || !shouldLoad) return;
-
-    const loadImage = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        switch (imageType) {
-          case ImageType.Base64:
-            setImageSrc(item.text);
-            break;
-          case ImageType.HttpUrl:
-            setImageSrc(await fetchAndCacheImage(item.text, 10000));
-            break;
-          case ImageType.LocalFile:
-            setImageSrc(resolveImageSrc(normalizeFilePath(item.text)));
-            break;
-          default:
-            setImageSrc('');
-        }
-      } catch (err) {
-        // 某些站点会阻止 fetch(CORS/防盗链)，但 <img src="url"> 仍可直接显示。
-        // 对 HTTP 图片做降级：回退到原始 URL 渲染，而不是立即判定失败。
-        if (imageType === ImageType.HttpUrl) {
-          setImageSrc(item.text);
-          return;
-        }
-
-        setError(getErrorMessage(imageType));
-        setIsLoading(false);
-      }
-    };
-
-    loadImage();
-  }, [shouldLoad, item.text, imageType]);
-
-  const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
-    setIsLoading(false);
-  }, []);
-
-  const handleImageError = useCallback(() => {
-    setError(getErrorMessage(imageType));
-    setIsLoading(false);
-  }, [imageType]);
+  const {
+    containerRef,
+    isLoading,
+    imageSrc,
+    error,
+    imageSize,
+    onImageLoad,
+    onImageError,
+  } = useImageResource({
+    sourceText: item.text,
+    imageType,
+    disableLazyLoad,
+  });
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (onClick) {
@@ -212,8 +138,8 @@ export const ImageDisplay = React.memo(function ImageDisplay({
                 className={`image-display__image ${
                   isLoading ? 'opacity-0 absolute' : 'opacity-100'
                 } ${onClick ? 'image-display__image--clickable' : ''}`}
-                onLoad={handleImageLoad}
-                onError={handleImageError}
+                onLoad={onImageLoad}
+                onError={onImageError}
                 onClick={handleClick}
                 loading="lazy"
                 decoding="async"

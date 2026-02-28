@@ -107,7 +107,7 @@
 }
 
 .clip-item-tag-dropdown-header[data-theme='dark'] {
-  color: #737373;
+  color: #a3a3a3;
 }
 
 .clip-item-tag-dropdown-header-badge {
@@ -120,6 +120,8 @@
 
 .clip-item-tag-dropdown-header-badge[data-theme='dark'] {
   background: #404040;
+  color: #d4d4d4;
+  opacity: 1;
 }
 
 .clip-item-tag-dropdown-list {
@@ -140,6 +142,10 @@
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+}
+
+.clip-item-tag-dropdown-empty[data-theme='dark'] {
+  color: #d4d4d4;
 }
 
 .clip-item-tag-dropdown-empty-icon {

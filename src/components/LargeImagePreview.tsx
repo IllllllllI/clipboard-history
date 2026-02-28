@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ZoomIn, ZoomOut, Copy, Download, RotateCcw, type LucideIcon } from 'lucide-react';
 import { TauriService } from '../services/tauri';
-import { resolveImageSrc, formatBytes, extractFormatLabel } from '../utils/imageUrl';
+import { detectImageType } from '../utils';
+import { formatBytes, extractFormatLabel } from '../utils/imageUrl';
+import { useImageResource } from '../hooks/useImageResource';
 import './styles/large-image-preview.css';
 
 // ============================================================================
@@ -30,18 +32,25 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
   url,
   onClose,
 }: LargeImagePreviewProps) {
-  const [src, setSrc] = useState<string>('');
+  const imageType = detectImageType(url ?? '');
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [fileSize, setFileSize] = useState<string | null>(null);
   const [format, setFormat] = useState<string>('');
 
-  const imgRef = useRef<HTMLImageElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const {
+    containerRef,
+    imageSrc,
+    imageSize,
+    onImageLoad,
+  } = useImageResource({
+    sourceText: url ?? '',
+    imageType,
+    disableLazyLoad: true,
+  });
 
   // ── 缩放 & 重置 ──
 
@@ -61,20 +70,11 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
 
   useEffect(() => {
     if (!url) {
-      setSrc('');
       return;
     }
 
-    const finalUrl = resolveImageSrc(url);
-    setSrc(finalUrl);
     resetView();
     setFormat(extractFormatLabel(url));
-
-    const img = new Image();
-    img.onload = () => {
-      setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-    };
-    img.src = finalUrl;
 
     if (url.startsWith('data:image/')) {
       const base64Length = url.length - (url.indexOf(',') + 1);
@@ -229,11 +229,11 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
             className="large-image-preview__image-wrap"
             onClick={stopPropagation}
           >
-            {src && (
+            {imageSrc && (
               <img
-                ref={imgRef}
-                src={src}
+                src={imageSrc}
                 alt="Full Preview"
+                onLoad={onImageLoad}
                 onDoubleClick={handleDoubleClick}
                 draggable={false}
                 className="large-image-preview__image"
@@ -249,7 +249,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
         >
           {/* 信息区 */}
           <div className="large-image-preview__meta">
-            {dimensions ? `${dimensions.width}×${dimensions.height}` : '...'}
+            {imageSize ? `${imageSize.width}×${imageSize.height}` : '...'}
             {fileSize && <span>{fileSize}</span>}
           </div>
 

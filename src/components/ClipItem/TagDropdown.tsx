@@ -125,6 +125,7 @@ export const TagDropdown = React.memo(function TagDropdown({
               ref={popoverRef}
               style={style}
               className="clip-item-tag-dropdown-popover"
+              data-theme={darkMode ? 'dark' : 'light'}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -142,7 +143,7 @@ export const TagDropdown = React.memo(function TagDropdown({
               </div>
               <div className="clip-item-tag-dropdown-list custom-scrollbar">
                 {tags.length === 0 ? (
-                  <div className="clip-item-tag-dropdown-empty">
+                  <div className="clip-item-tag-dropdown-empty" data-theme={darkMode ? 'dark' : 'light'}>
                     <TagIcon className="clip-item-tag-dropdown-empty-icon" />
                     <span>暂无标签，请先创建</span>
                   </div>

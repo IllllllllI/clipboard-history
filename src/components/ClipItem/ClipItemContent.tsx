@@ -335,6 +335,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             darkMode={darkMode}
             centered
             showLinkInfo={false}
+            disableLazyLoad
             onClick={(text) => setPreviewImageUrl(text)}
           />
         </div>
