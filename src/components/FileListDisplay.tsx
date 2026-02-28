@@ -134,10 +134,17 @@ interface FileItemProps {
   filePath: string;
   isSelected: boolean;
   darkMode: boolean;
+  showActions: boolean;
   compact?: boolean;
 }
 
-const FileItem = React.memo(function FileItem({ filePath, isSelected, darkMode, compact = false }: FileItemProps) {
+const FileItem = React.memo(function FileItem({
+  filePath,
+  isSelected,
+  darkMode,
+  showActions,
+  compact = false,
+}: FileItemProps) {
   const fileName = getFileName(filePath);
   const category = getFileCategory(filePath);
   const { icon: FallbackIcon } = getFileIcon(category);
@@ -184,24 +191,26 @@ const FileItem = React.memo(function FileItem({ filePath, isSelected, darkMode, 
         {fileName}
       </span>
 
-      <div className="file-list-item__actions">
-        <button
-          type="button"
-          onClick={handleOpenFile}
-          className="file-list-item__action-btn"
-          title="打开文件"
-        >
-          <ExternalLink className="file-list-item__action-icon" />
-        </button>
-        <button
-          type="button"
-          onClick={handleOpenLocation}
-          className="file-list-item__action-btn"
-          title="打开文件位置"
-        >
-          <FolderOpen className="file-list-item__action-icon" />
-        </button>
-      </div>
+      {showActions && (
+        <div className="file-list-item__actions">
+          <button
+            type="button"
+            onClick={handleOpenFile}
+            className="file-list-item__action-btn"
+            title="打开文件"
+          >
+            <ExternalLink className="file-list-item__action-icon" />
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenLocation}
+            className="file-list-item__action-btn"
+            title="打开文件位置"
+          >
+            <FolderOpen className="file-list-item__action-icon" />
+          </button>
+        </div>
+      )}
     </div>
   );
 });
@@ -236,6 +245,7 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
             filePath={file}
             isSelected={isSelected}
             darkMode={darkMode}
+            showActions={isSingle}
             compact={!isSingle}
           />
         ))}

@@ -33,6 +33,16 @@
   border-color: rgb(255 255 255 / 0.15);
 }
 
+.file-list-item[data-selected='true'][data-theme='light'] {
+  background: rgb(79 70 229 / 0.1);
+  border-color: rgb(79 70 229 / 0.2);
+}
+
+.file-list-item[data-selected='true'][data-theme='dark'] {
+  background: rgb(255 255 255 / 0.1);
+  border-color: rgb(255 255 255 / 0.15);
+}
+
 .file-list-item[data-selected='true']:hover {
   background: rgb(255 255 255 / 0.15);
 }
@@ -85,6 +95,10 @@
   color: rgb(255 255 255 / 0.8);
 }
 
+.file-list-item[data-selected='true'][data-theme='light'] .file-list-item__fallback-icon {
+  color: #312e81;
+}
+
 .file-list-item__name {
   flex: 1;
   min-width: 0;
@@ -97,6 +111,10 @@
 
 .file-list-item[data-selected='true'] .file-list-item__name {
   color: rgb(255 255 255 / 0.9);
+}
+
+.file-list-item[data-selected='true'][data-theme='light'] .file-list-item__name {
+  color: #1e1b4b;
 }
 
 .file-list-item[data-selected='false'][data-theme='light'] .file-list-item__name {
@@ -155,8 +173,16 @@
   color: rgb(255 255 255 / 0.8);
 }
 
+.file-list-item[data-selected='true'][data-theme='light'] .file-list-item__action-btn {
+  color: #4338ca;
+}
+
 .file-list-item[data-selected='true'] .file-list-item__action-btn:hover {
   background: rgb(255 255 255 / 0.2);
+}
+
+.file-list-item[data-selected='true'][data-theme='light'] .file-list-item__action-btn:hover {
+  background: rgb(79 70 229 / 0.14);
 }
 
 .file-list-item[data-selected='false'][data-theme='light'] .file-list-item__action-btn {
