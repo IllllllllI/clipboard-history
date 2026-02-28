@@ -2,6 +2,7 @@ import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { isTauri } from '../services/tauri';
 import { useAppContext } from '../contexts/AppContext';
+import './styles/footer.css';
 
 // ============================================================================
 // 常量
@@ -15,16 +16,6 @@ const BASE_SHORTCUTS = [
 ] as const;
 
 // ============================================================================
-// 样式工具
-// ============================================================================
-
-const pillClass = (dark: boolean) =>
-  `px-2.5 py-1 rounded-full ${dark ? 'bg-white/5' : 'bg-black/5'}`;
-
-const kbdClass = (dark: boolean) =>
-  `font-mono px-1.5 py-0.5 rounded-md shadow-sm ${dark ? 'bg-white/10 border border-white/5' : 'bg-black/10 border border-black/5'}`;
-
-// ============================================================================
 // 组件
 // ============================================================================
 
@@ -33,22 +24,17 @@ const kbdClass = (dark: boolean) =>
  */
 export const Footer = React.memo(function Footer() {
   const { settings, history, filteredHistory, handleClearAll } = useAppContext();
-  const dark = settings.darkMode;
+  const darkMode = settings.darkMode;
   const immersiveShortcut = settings.immersiveShortcut?.trim() || 'Alt+Z';
   const shortcuts = [...BASE_SHORTCUTS, { key: immersiveShortcut, label: '沉浸' }] as const;
   const captureEnabled = isTauri && settings.autoCapture;
+  const captureState = !isTauri ? 'preview' : captureEnabled ? 'capturing' : 'paused';
 
   return (
-    <footer className={`px-5 py-2.5 border-t flex items-center justify-between shrink-0 text-xs font-medium transition-colors duration-300 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.02)] backdrop-blur-md ${dark ? 'bg-neutral-900/80 border-neutral-800 text-neutral-500' : 'bg-white/80 border-neutral-200 text-neutral-500'}`}>
-      <div className="flex items-center gap-4">
-        <div className={`flex items-center gap-2 ${pillClass(dark)}`}>
-          <div className={`w-2 h-2 rounded-full ${
-            !isTauri
-              ? 'bg-blue-500'
-              : captureEnabled
-                ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]'
-                : 'bg-amber-500/90 shadow-[0_0_6px_rgba(245,158,11,0.45)]'
-          }`} />
+    <footer className="app-footer" data-theme={darkMode ? 'dark' : 'light'}>
+      <div className="app-footer__left">
+        <div className="app-footer__pill">
+          <div className="app-footer__status-dot" data-capture-state={captureState} />
           <span>
             {!isTauri
               ? '网页预览模式'
@@ -58,17 +44,21 @@ export const Footer = React.memo(function Footer() {
           </span>
         </div>
         {history.length > 0 && (
-          <button onClick={handleClearAll} className="hover:text-red-500 hover:bg-red-500/10 px-2 py-1 rounded transition-all active:scale-95 flex items-center gap-1">
-            <Trash2 className="w-3.5 h-3.5" /> 清空全部
+          <button
+            type="button"
+            onClick={handleClearAll}
+            className="app-footer__clear-btn"
+          >
+            <Trash2 className="app-footer__clear-icon" /> 清空全部
           </button>
         )}
       </div>
-      <div className="flex items-center gap-5">
-        <span className={pillClass(dark)}>{filteredHistory.length} 条记录</span>
-        <div className="hidden sm:flex items-center gap-3">
+      <div className="app-footer__right">
+        <span className="app-footer__pill">{filteredHistory.length} 条记录</span>
+        <div className="app-footer__shortcuts">
           {shortcuts.map(({ key, label }) => (
-            <span key={key} className="flex items-center gap-1.5">
-              <kbd className={kbdClass(dark)}>{key}</kbd> {label}
+            <span key={key} className="app-footer__shortcut-item">
+              <kbd className="app-footer__kbd">{key}</kbd> {label}
             </span>
           ))}
         </div>
