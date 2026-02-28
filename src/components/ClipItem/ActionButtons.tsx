@@ -56,6 +56,40 @@ export const ActionButtons = React.memo(function ActionButtons({
       className={actionsClass}
       data-theme={darkMode ? 'dark' : 'light'}
     >
+      {/* 复制 */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onCopy(item);
+        }}
+        className="clip-item-action-btn"
+        title="复制"
+      >
+        <AnimatePresence mode="wait" initial={false}>
+          {copiedId === item.id ? (
+            <motion.div
+              key="copied"
+              initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            >
+              <Check className="clip-item-action-icon clip-item-action-icon-copy-ok" />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="copy"
+              initial={{ opacity: 0, scale: 0.5, rotate: 45 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+            >
+              <Copy className="clip-item-action-icon" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </button>
+
       {/* 文件列表专属操作 */}
       {isFiles && (
         <>
@@ -135,40 +169,6 @@ export const ActionButtons = React.memo(function ActionButtons({
         title={item.is_pinned ? '取消置顶' : '置顶'}
       >
         <Pin className="clip-item-action-icon" data-filled={item.is_pinned ? 'true' : 'false'} />
-      </button>
-
-      {/* 复制 */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopy(item);
-        }}
-        className="clip-item-action-btn"
-        title="复制"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          {copiedId === item.id ? (
-            <motion.div
-              key="copied"
-              initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
-              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            >
-              <Check className="clip-item-action-icon clip-item-action-icon-copy-ok" />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="copy"
-              initial={{ opacity: 0, scale: 0.5, rotate: 45 }}
-              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-              exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            >
-              <Copy className="clip-item-action-icon" />
-            </motion.div>
-          )}
-        </AnimatePresence>
       </button>
 
       {/* 删除 */}

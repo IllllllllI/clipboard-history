@@ -1,4 +1,4 @@
-@import './code-editor-modal.css';
-@import './code-editor-header.css';
-@import './code-editor-footer.css';
-@import './code-editor-language.css';
+@import './CodeEditorModal.css';
+@import './EditorHeader.css';
+@import './EditorFooter.css';
+@import './LanguageSelector.css';

@@ -8,6 +8,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { detectLanguage, loadLanguageExtension, type LanguageId } from '../../utils/languageDetect';
 import { EditorHeader } from './EditorHeader';
 import { EditorFooter } from './EditorFooter';
+import './styles/code-editor.css';
 
 /** CodeMirror 基础配置（静态常量，避免每次渲染创建新对象） */
 const BASIC_SETUP = {
@@ -50,6 +51,7 @@ export function CodeEditorModal() {
   const [languageExtension, setLanguageExtension] = useState<Extension | null>(null);
   const [fontSize, setFontSize] = useState(14);
   const [lineWrapping, setLineWrapping] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
 
   // ── 衍生状态 ──
   const lineCount = useMemo(() => content.split('\n').length, [content]);
@@ -109,19 +111,56 @@ export function CodeEditorModal() {
     setLineWrapping((w) => !w);
   }, []);
 
+  const handleToggleFocusMode = useCallback(() => {
+    setFocusMode((v) => !v);
+  }, []);
+
   // ── CodeMirror 扩展 ──
   const extensions = useMemo(() => {
     const exts: Extension[] = [];
+    const lineHeight = fontSize <= 12 ? 1.62 : 1.68;
+
     if (languageExtension) exts.push(languageExtension);
     if (lineWrapping) exts.push(EditorView.lineWrapping);
     exts.push(
       EditorView.theme({
-        '&': { fontSize: `${fontSize}px` },
-        '.cm-gutters': { fontSize: `${fontSize - 2}px` },
+        '&': {
+          fontSize: `${fontSize}px`,
+          lineHeight,
+          letterSpacing: '0.01em',
+        },
+        '.cm-scroller': {
+          fontFamily: 'var(--font-mono)',
+          lineHeight,
+        },
+        '.cm-content': {
+          padding: '12px 0',
+          caretColor: settings.darkMode ? '#e5e7eb' : '#111827',
+        },
+        '.cm-line': {
+          paddingLeft: '12px',
+          paddingRight: '16px',
+        },
+        '.cm-activeLine': {
+          backgroundColor: settings.darkMode ? 'rgb(99 102 241 / 0.08)' : 'rgb(99 102 241 / 0.06)',
+        },
+        '.cm-selectionBackground, .cm-content ::selection': {
+          backgroundColor: settings.darkMode ? 'rgb(99 102 241 / 0.35) !important' : 'rgb(99 102 241 / 0.22) !important',
+        },
+        '.cm-gutters': {
+          display: focusMode ? 'none' : 'block',
+          fontSize: `${Math.max(fontSize - 2, 10)}px`,
+          background: settings.darkMode ? '#1e1e1e' : '#ffffff',
+          color: settings.darkMode ? '#737373' : '#9ca3af',
+          borderRight: settings.darkMode ? '1px solid rgb(64 64 64 / 0.7)' : '1px solid rgb(229 231 235)',
+        },
+        '.cm-activeLineGutter': {
+          color: settings.darkMode ? '#a5b4fc' : '#4f46e5',
+        },
       }),
     );
     return exts;
-  }, [languageExtension, lineWrapping, fontSize]);
+  }, [languageExtension, lineWrapping, fontSize, settings.darkMode, focusMode]);
 
   // ── 快捷键 ──
   useEffect(() => {
@@ -144,14 +183,14 @@ export function CodeEditorModal() {
   return (
     <AnimatePresence>
       {editingClip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="code-editor-overlay">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="code-editor-backdrop"
           />
 
           {/* Modal */}
@@ -159,11 +198,8 @@ export function CodeEditorModal() {
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className={`relative w-full max-w-6xl h-[88vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden border ${
-              settings.darkMode
-                ? 'bg-[#1e1e1e] border-neutral-800 text-neutral-200'
-                : 'bg-white border-neutral-200 text-neutral-800'
-            }`}
+            className="code-editor-modal"
+            data-theme={settings.darkMode ? 'dark' : 'light'}
           >
             <EditorHeader
               darkMode={settings.darkMode}
@@ -172,15 +208,18 @@ export function CodeEditorModal() {
               langId={langId}
               fontSize={fontSize}
               lineWrapping={lineWrapping}
+              focusMode={focusMode}
               isCopied={isCopied}
               onLangChange={setLangId}
               onFontSizeChange={handleFontSizeChange}
               onToggleLineWrapping={handleToggleLineWrapping}
+              onToggleFocusMode={handleToggleFocusMode}
               onCopy={handleCopy}
               onClose={handleClose}
             />
 
-            <div className="flex-1 overflow-hidden">
+            <div className="code-editor-body" data-theme={settings.darkMode ? 'dark' : 'light'}>
+              <div className="code-editor-shell" data-theme={settings.darkMode ? 'dark' : 'light'}>
               <CodeMirror
                 value={content}
                 onChange={setContent}
@@ -190,6 +229,7 @@ export function CodeEditorModal() {
                 height="100%"
                 style={EDITOR_STYLE}
               />
+              </div>
             </div>
 
             <EditorFooter
