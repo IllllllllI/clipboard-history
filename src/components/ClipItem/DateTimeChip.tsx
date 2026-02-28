@@ -89,7 +89,7 @@ export const DateTimeChip = React.memo(function DateTimeChip({
       onMouseLeave={handleMouseLeave}
     >
       <Clock className="clip-item-datetime-chip-icon" />
-      <HighlightText text={match.text} highlight={searchQuery} />
+      <HighlightText text={match.text} highlight={searchQuery} darkMode={darkMode} />
 
       {showPopover &&
         formats.length > 0 &&
@@ -111,9 +111,8 @@ export const DateTimeChip = React.memo(function DateTimeChip({
                 <button
                   key={key}
                   onClick={(e) => handleCopy(fmt.value, key, e)}
-                  className={`clip-item-datetime-popover-btn ${
-                    isCopied ? 'clip-item-datetime-popover-btn-copied' : ''
-                  }`}
+                  className="clip-item-datetime-popover-btn"
+                  data-copied={isCopied ? 'true' : 'false'}
                   data-theme={darkMode ? 'dark' : 'light'}
                 >
                   {isCopied ? (
@@ -153,7 +152,7 @@ export const HighlightDateTimeText = React.memo(function HighlightDateTimeText({
   copyText: (text: string) => Promise<void>;
 }) {
   if (matches.length === 0) {
-    return <HighlightText text={text} highlight={searchQuery} />;
+    return <HighlightText text={text} highlight={searchQuery} darkMode={darkMode} />;
   }
 
   const segments = useMemo(() => {
@@ -186,7 +185,7 @@ export const HighlightDateTimeText = React.memo(function HighlightDateTimeText({
             copyText={copyText}
           />
         ) : (
-          <HighlightText key={i} text={seg.text} highlight={searchQuery} />
+          <HighlightText key={i} text={seg.text} highlight={searchQuery} darkMode={darkMode} />
         ),
       )}
     </>

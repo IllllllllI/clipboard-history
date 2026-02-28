@@ -116,15 +116,17 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
             initial={{ opacity: 0, scale: 0.96, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
             exit={{ opacity: 0, scale: 0.98, y: 5, transition: { duration: 0.14, ease: 'easeIn' } }}
-            className={`tag-manager-modal-shell ${dark ? 'tag-manager-modal-shell-dark' : ''}`}
+            className="tag-manager-modal-shell"
+            data-theme={dark ? 'dark' : 'light'}
           >
-            <div className="tag-manager-modal-header">
+            <div className="tag-manager-modal-header" data-theme={dark ? 'dark' : 'light'}>
               <div className="tag-manager-modal-header-left">
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.16 }}
                   className="tag-manager-modal-header-icon-wrap"
+                  data-theme={dark ? 'dark' : 'light'}
                 >
                   <TagIcon className="tag-manager-modal-header-icon" />
                 </motion.div>
@@ -132,7 +134,7 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
                   <h2 className="tag-manager-modal-main-title">标签管理</h2>
                   <div className="tag-manager-modal-subline">
                     <p className="tag-manager-modal-subtitle">统一管理标签与颜色</p>
-                    <span className="tag-manager-modal-count-badge">
+                    <span className="tag-manager-modal-count-badge" data-theme={dark ? 'dark' : 'light'}>
                       共 {tags.length} 个
                     </span>
                   </div>
@@ -151,6 +153,7 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
                 <button
                   onClick={onClose}
                   className="tag-manager-modal-close-round"
+                  data-theme={dark ? 'dark' : 'light'}
                   title="关闭 (Esc)"
                 >
                   <X className="tag-manager-modal-header-icon" />
@@ -158,7 +161,7 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
               </div>
             </div>
 
-            <div className="tag-manager-modal-body">
+            <div className="tag-manager-modal-body" data-theme={dark ? 'dark' : 'light'}>
               <TagList
                 dark={dark}
                 tags={tags}

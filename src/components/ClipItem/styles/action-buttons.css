@@ -30,12 +30,12 @@
   transform: translateY(0);
 }
 
-.group:hover .clip-item-actions {
+.clip-item-root:hover .clip-item-actions {
   opacity: 1;
   transform: translateY(0);
 }
 
-.group:focus-within .clip-item-actions {
+.clip-item-root:focus-within .clip-item-actions {
   opacity: 1;
   transform: translateY(0);
 }

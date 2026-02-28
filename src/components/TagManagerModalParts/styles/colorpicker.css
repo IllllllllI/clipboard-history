@@ -46,7 +46,7 @@
   background: #e5e5e5;
 }
 
-.dark .tag-manager-color-swatch-default {
+.tag-manager-color-swatch-default[data-theme='dark'] {
   border-color: #525252;
   background: #404040;
 }

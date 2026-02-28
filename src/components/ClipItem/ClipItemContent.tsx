@@ -158,6 +158,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             {/* 原始颜色色块 */}
             <div
               className="clip-item-content-color-chip"
+              data-theme={darkMode ? 'dark' : 'light'}
               title={`原始: ${item.text}`}
             >
               <div className="clip-item-content-color-chip-fill" style={{ backgroundColor: item.text }} />
@@ -167,6 +168,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             <div
               ref={colorBtnRef}
               className="clip-item-content-color-chip clip-item-content-color-chip-picked clip-item-content-color-chip-clickable"
+              data-theme={darkMode ? 'dark' : 'light'}
               title="点击修改颜色"
               onClick={openPicker}
             >
@@ -178,6 +180,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           <div
             ref={colorBtnRef}
             className="clip-item-content-color-chip clip-item-content-color-chip-clickable"
+            data-theme={darkMode ? 'dark' : 'light'}
             title="点击调出颜色板"
             onClick={openPicker}
           >
@@ -187,7 +190,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
         {/* 文字：原始色值 + 调色后色值 */}
         <div 
-          className="clip-item-content-color-text-wrap group"
+          className="clip-item-content-color-text-wrap"
           onClick={(e) => handleCopyColor(e, item.text)}
           title="点击复制原始颜色"
         >
@@ -209,7 +212,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         </div>
         {hasPickedDiff && (
           <div 
-            className="clip-item-content-color-text-wrap group"
+            className="clip-item-content-color-text-wrap"
             onClick={(e) => {
               if (item.picked_color) {
                 handleCopyColor(e, item.picked_color);
@@ -217,7 +220,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             }}
             title="点击复制新颜色"
           >
-            <span className="clip-item-content-color-new">
+            <span className="clip-item-content-color-new" data-theme={darkMode ? 'dark' : 'light'}>
               → {item.picked_color}
             </span>
             <AnimatePresence>
@@ -257,10 +260,10 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         <div className="clip-item-content-image-list">
           <div className="clip-item-content-image-list-track custom-scrollbar">
             {imageUrls.map((url, i) => (
-              <ImagePreview key={i} url={url} onClick={() => setPreviewImageUrl(url)} />
+              <ImagePreview key={i} url={url} darkMode={darkMode} onClick={() => setPreviewImageUrl(url)} />
             ))}
           </div>
-          <div className="clip-item-content-image-list-meta">
+          <div className="clip-item-content-image-list-meta" data-theme={darkMode ? 'dark' : 'light'}>
             <Images className="clip-item-content-icon-12" />
             <span>包含 {imageUrls.length} 张图片</span>
           </div>
@@ -281,7 +284,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           />
         </div>
         {imageType !== ImageType.Base64 && (
-          <div className="clip-item-content-image-link">
+          <div className="clip-item-content-image-link" data-theme={darkMode ? 'dark' : 'light'}>
             {imageType === ImageType.HttpUrl ? (
               <Globe className="clip-item-content-icon-12" />
             ) : (
@@ -304,7 +307,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   if (isImage) {
     return (
       <p className="clip-item-content-text">
-        <span className="clip-item-content-image-link">
+        <span className="clip-item-content-image-link" data-theme={darkMode ? 'dark' : 'light'}>
           {imageType === ImageType.HttpUrl ? (
             <Globe className="clip-item-content-icon-14" />
           ) : imageType === ImageType.LocalFile ? (
@@ -342,12 +345,13 @@ export const ClipItemContent = React.memo(function ClipItemContent({
       <p className="clip-item-content-text">
         <span
           className="clip-item-content-link"
+          data-theme={darkMode ? 'dark' : 'light'}
           title={"打开链接: " + trimmedText}
           onClick={handleOpenUrl}
         >
           <Globe className="clip-item-content-icon-14-shrink" />
           <span className="truncate">
-            <HighlightText text={trimmedText} highlight={searchQuery} />
+            <HighlightText text={trimmedText} highlight={searchQuery} darkMode={darkMode} />
           </span>
           <ExternalLink className="clip-item-content-icon-12 clip-item-content-link-fade" />
         </span>
@@ -374,7 +378,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   // --- 普通文本 ---
   return (
     <p className="clip-item-content-text">
-      <HighlightText text={displayText} highlight={searchQuery} />
+      <HighlightText text={displayText} highlight={searchQuery} darkMode={darkMode} />
     </p>
   );
 });

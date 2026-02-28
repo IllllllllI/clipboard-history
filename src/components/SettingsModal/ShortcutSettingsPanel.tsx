@@ -11,11 +11,11 @@ export function ShortcutSettingsPanel({
   ShortcutRecorder,
 }: ShortcutSettingsPanelProps) {
   return (
-    <div className="space-y-8">
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">快捷键设置</h3>
-        <div className="space-y-2">
-          <p className="font-medium text-sm">全局唤起快捷键</p>
+    <div className="sm-panel__stack">
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">快捷键设置</h3>
+        <div className="sm-panel__block">
+          <p className="sm-panel__label">全局唤起快捷键</p>
           <ShortcutRecorder
             dark={dark}
             value={settings.globalShortcut}
@@ -26,8 +26,8 @@ export function ShortcutSettingsPanel({
           />
         </div>
 
-        <div className="space-y-2">
-          <p className="font-medium text-sm">沉浸模式快捷键</p>
+        <div className="sm-panel__block">
+          <p className="sm-panel__label">沉浸模式快捷键</p>
           <ShortcutRecorder
             dark={dark}
             value={settings.immersiveShortcut}
@@ -35,7 +35,7 @@ export function ShortcutSettingsPanel({
             error={immersiveShortcutError}
           />
         </div>
-      </div>
+      </section>
     </div>
   );
 }

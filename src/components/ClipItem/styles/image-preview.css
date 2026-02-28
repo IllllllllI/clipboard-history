@@ -19,7 +19,7 @@
   transition: all 0.15s ease;
 }
 
-.dark .clip-item-image-preview {
+.clip-item-image-preview[data-theme='dark'] {
   background: rgb(255 255 255 / 0.05);
 }
 

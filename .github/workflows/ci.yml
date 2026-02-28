@@ -22,21 +22,65 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Detect changed areas
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            quality:
+              - 'src/**'
+              - 'docs/**'
+              - 'scripts/**'
+              - '.githooks/**'
+              - 'README.md'
+              - 'package.json'
+              - 'tsconfig.json'
+              - 'vite.config.ts'
+              - 'vitest.config.ts'
+              - '.github/workflows/ci.yml'
+            backend:
+              - 'src-tauri/**'
+              - 'tests/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+
+      - name: Style and docs quality gate
+        if: steps.changed.outputs.quality == 'true'
+        run: npm run check:all
+
+      - name: Skip quality gate (no related changes)
+        if: steps.changed.outputs.quality != 'true'
+        run: echo "Skip check:all because no frontend/style/docs related files changed."
+
       - name: Frontend build
+        if: steps.changed.outputs.quality == 'true'
         run: npm run build
 
+      - name: Skip frontend build (no related changes)
+        if: steps.changed.outputs.quality != 'true'
+        run: echo "Skip frontend build because no frontend/docs related files changed."
+
       - name: Setup Rust toolchain
+        if: steps.changed.outputs.backend == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust artifacts
+        if: steps.changed.outputs.backend == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
       - name: Rust compile check
+        if: steps.changed.outputs.backend == 'true'
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Run backend db regression tests
+        if: steps.changed.outputs.backend == 'true'
         env:
           CARGO_TARGET_DIR: src-tauri/target-test
         run: cargo test --manifest-path src-tauri/Cargo.toml db:: -- --nocapture
+
+      - name: Skip backend checks (no related changes)
+        if: steps.changed.outputs.backend != 'true'
+        run: echo "Skip Rust checks because no backend-related files changed."

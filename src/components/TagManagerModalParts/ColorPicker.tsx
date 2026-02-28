@@ -20,6 +20,7 @@ interface SwatchButtonProps {
 const SwatchButton = React.memo(function SwatchButton({
   color,
   selected,
+  dark,
   onSelect,
 }: SwatchButtonProps) {
   const isDefault = color === null;
@@ -42,6 +43,7 @@ const SwatchButton = React.memo(function SwatchButton({
               ? 'tag-manager-color-swatch-default'
               : 'tag-manager-color-swatch-color'
           }`}
+          data-theme={dark ? 'dark' : 'light'}
           style={isDefault ? undefined : { backgroundColor: color, boxShadow: color ? `0 2px 4px ${color}66` : undefined }}
         >
           {selected && (

@@ -179,12 +179,13 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
   }, [handleRecordingKeyDown, isRecording]);
 
   const keys = value ? value.split('+') : [];
+  const recorderState = isRecording ? 'recording' : error ? 'error' : 'idle';
 
   return (
-    <div className="space-y-2">
+    <div className="sm-shortcut-recorder">
       <div
         ref={containerRef}
-        data-shortcut-recorder="true"
+        data-sm-shortcut-recorder="true"
         tabIndex={0}
         onPointerDown={(e) => {
           clearOnFocusRef.current = true;
@@ -200,50 +201,49 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
           setIsRecording(false);
           setRecordingHint(null);
         }}
-        className={`
-          relative flex items-center min-h-[42px] px-3 py-2 rounded-xl border transition-all cursor-pointer outline-none
-          ${isRecording
-            ? `ring-2 ring-indigo-500/30 border-indigo-500 ${dark ? 'bg-indigo-500/10' : 'bg-indigo-50'}`
-            : error
-              ? `border-red-500/50 ${dark ? 'bg-red-500/10' : 'bg-red-50'}`
-              : dark ? 'bg-neutral-900 border-neutral-700 hover:border-neutral-600' : 'bg-white border-neutral-200 hover:border-neutral-300'
-          }
-        `}
+        className="sm-shortcut-recorder__box"
+        data-state={recorderState}
+        data-theme={dark ? 'dark' : 'light'}
       >
         <motion.div
-          className="flex-1 flex items-center gap-1.5 flex-wrap"
+          className="sm-shortcut-recorder__main"
           animate={isClearing ? { opacity: 0, y: -2, scale: 0.99 } : { opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: CLEAR_DURATION_MS / 1000, ease: 'easeOut' }}
         >
           {isRecording && !value ? (
-            <span className={`text-sm animate-pulse ${dark ? 'text-indigo-400' : 'text-indigo-500'}`}>
+            <span
+              className="sm-shortcut-recorder__placeholder"
+              data-state="recording"
+              data-pulsing="true"
+              data-theme={dark ? 'dark' : 'light'}
+            >
               请按下组合键...
             </span>
           ) : keys.length > 0 ? (
             keys.map((k, i) => (
               <React.Fragment key={i}>
-                <kbd className={`
-                  px-2 py-1 rounded-md text-xs font-sans font-medium border shadow-sm flex items-center
-                  ${dark ? 'bg-neutral-800 border-neutral-700 text-neutral-200' : 'bg-white border-neutral-200 text-neutral-700'}
-                  ${isRecording ? 'border-indigo-500/30 shadow-indigo-500/20' : ''}
-                `}>
+                <kbd
+                  className="sm-shortcut-recorder__key"
+                  data-theme={dark ? 'dark' : 'light'}
+                  data-recording={isRecording ? 'true' : 'false'}
+                >
                   {k}
                 </kbd>
-                {i < keys.length - 1 && <span className="text-neutral-400 text-xs font-medium">+</span>}
+                {i < keys.length - 1 && <span className="sm-shortcut-recorder__plus">+</span>}
               </React.Fragment>
             ))
           ) : (
-            <span className={`text-sm ${dark ? 'text-neutral-500' : 'text-neutral-400'}`}>
+            <span className="sm-shortcut-recorder__placeholder" data-state="idle" data-theme={dark ? 'dark' : 'light'}>
               点击设置快捷键
             </span>
           )}
         </motion.div>
 
-        <div className="flex items-center gap-2 ml-2">
+        <div className="sm-shortcut-recorder__side">
           {isRecording && (
-            <span className="flex h-2.5 w-2.5 relative" title="正在录制">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${isRegistering ? 'bg-amber-400' : 'bg-indigo-400'} opacity-75`}></span>
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRegistering ? 'bg-amber-500' : 'bg-indigo-500'}`}></span>
+            <span className="sm-shortcut-recorder__recording" title="正在录制">
+              <span className="sm-shortcut-recorder__recording-ping" data-state={isRegistering ? 'registering' : 'ready'}></span>
+              <span className="sm-shortcut-recorder__recording-dot" data-state={isRegistering ? 'registering' : 'ready'}></span>
             </span>
           )}
           {!isRecording && value && (
@@ -252,16 +252,18 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
                 e.stopPropagation();
                 clearValueWithFade();
               }}
-              className={`p-1 rounded-md transition-colors ${dark ? 'hover:bg-neutral-700 text-neutral-400 hover:text-neutral-200' : 'hover:bg-neutral-200 text-neutral-400 hover:text-neutral-600'}`}
+              className="sm-shortcut-recorder__clear-btn"
+              data-theme={dark ? 'dark' : 'light'}
               title="清除快捷键"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="sm-shortcut-recorder__clear-icon" />
             </button>
           )}
         </div>
       </div>
       <motion.p
-        className={`text-xs ${error ? 'text-red-500' : isRecording ? 'text-indigo-500' : 'text-neutral-500'}`}
+        className="sm-shortcut-recorder__hint"
+        data-state={error ? 'error' : isRecording ? 'recording' : 'idle'}
         animate={isClearing ? { opacity: 0, y: -2 } : { opacity: 1, y: 0 }}
         transition={{
           duration: CLEAR_DURATION_MS / 1000,

@@ -115,12 +115,12 @@
   background: #404040;
 }
 
-.clip-item-datetime-popover-btn-copied {
+.clip-item-datetime-popover-btn[data-copied='true'] {
   background: #ecfdf5;
   color: #059669;
 }
 
-.clip-item-datetime-popover-btn-copied[data-theme='dark'] {
+.clip-item-datetime-popover-btn[data-copied='true'][data-theme='dark'] {
   background: rgb(16 185 129 / 0.1);
   color: #34d399;
 }

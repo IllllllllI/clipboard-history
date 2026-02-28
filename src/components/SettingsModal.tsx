@@ -5,6 +5,8 @@ import { useAppContext } from '../contexts/AppContext';
 import { TauriService } from '../services/tauri';
 import { getGlobalShortcutConflict, getImmersiveShortcutConflict } from '../utils';
 import type { WindowPlacementMode } from '../types';
+import './SettingsModal/styles/settings-modal.css';
+import './SettingsModal/styles/settings-modal-panels.css';
 import {
   GeneralSettingsPanel,
   ShortcutSettingsPanel,
@@ -66,10 +68,10 @@ const MIN_DECODED_MB = 8;
 type TabId = 'general' | 'shortcuts' | 'window' | 'storage';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'general', label: '常规', icon: <Settings className="w-4 h-4" /> },
-  { id: 'shortcuts', label: '快捷键', icon: <Keyboard className="w-4 h-4" /> },
-  { id: 'window', label: '窗口', icon: <Monitor className="w-4 h-4" /> },
-  { id: 'storage', label: '图片与存储', icon: <HardDrive className="w-4 h-4" /> },
+  { id: 'general', label: '常规', icon: <Settings className="sm-modal__tab-icon" /> },
+  { id: 'shortcuts', label: '快捷键', icon: <Keyboard className="sm-modal__tab-icon" /> },
+  { id: 'window', label: '窗口', icon: <Monitor className="sm-modal__tab-icon" /> },
+  { id: 'storage', label: '图片与存储', icon: <HardDrive className="sm-modal__tab-icon" /> },
 ];
 
 // ============================================================================
@@ -120,6 +122,22 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
       fetchDbInfo();
     }
   }, [show, fetchImagesInfo, fetchDbInfo]);
+
+  useEffect(() => {
+    if (!show) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [show, onClose]);
 
   useEffect(() => {
     if (!show) return;
@@ -256,49 +274,53 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
   return (
     <AnimatePresence>
       {show && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="sm-modal">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="sm-modal__backdrop"
           />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className={`relative w-full max-w-3xl h-[70vh] rounded-2xl shadow-2xl overflow-hidden border flex flex-col ${dark ? 'bg-neutral-900 border-neutral-800 text-neutral-200' : 'bg-white border-neutral-200 text-neutral-800'}`}
+            className="sm-modal__panel"
+            data-theme={dark ? 'dark' : 'light'}
           >
             {/* 标题栏 */}
-            <div className={`px-6 py-4 border-b flex items-center justify-between flex-shrink-0 ${dark ? 'border-neutral-800' : 'border-neutral-100'}`}>
-              <h2 className="text-lg font-semibold">设置</h2>
-              <button onClick={onClose} className={`p-1.5 rounded-md transition-colors ${dark ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'}`}>
-                <X className="w-5 h-5" />
+            <div className="sm-modal__header" data-theme={dark ? 'dark' : 'light'}>
+              <h2 className="sm-modal__title">设置</h2>
+              <button
+                onClick={onClose}
+                className="sm-modal__close-btn"
+                data-theme={dark ? 'dark' : 'light'}
+              >
+                <X className="sm-modal__close-icon" />
               </button>
             </div>
 
-            <div className="flex flex-1 overflow-hidden">
+            <div className="sm-modal__layout">
               {/* 侧边栏 */}
-              <div className={`w-48 flex-shrink-0 border-r p-3 space-y-1 overflow-y-auto ${dark ? 'border-neutral-800 bg-neutral-900/50' : 'border-neutral-100 bg-neutral-50/50'}`}>
-                {TABS.map(tab => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                      activeTab === tab.id
-                        ? (dark ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600')
-                        : (dark ? 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200' : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900')
-                    }`}
-                  >
-                    {tab.icon}
-                    {tab.label}
-                  </button>
-                ))}
+              <div className="sm-modal__sidebar" data-theme={dark ? 'dark' : 'light'}>
+                <div className="sm-modal__tab-grid">
+                  {TABS.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className="sm-modal__tab"
+                      data-active={activeTab === tab.id ? 'true' : 'false'}
+                    >
+                      {tab.icon}
+                      <span className="sm-modal__tab-label">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* 内容区 */}
-              <div className="flex-1 p-6 overflow-y-auto">
+              <div className="sm-modal__content">
                 {activeTab === 'general' && (
                   <GeneralSettingsPanel
                     dark={dark}

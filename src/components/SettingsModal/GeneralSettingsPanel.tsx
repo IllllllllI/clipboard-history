@@ -12,63 +12,67 @@ export function GeneralSettingsPanel({
   SettingRow,
 }: GeneralSettingsPanelProps) {
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-4 gap-4">
+    <div className="sm-panel__stack">
+      <div className="sm-panel__stats-grid">
         {[
           { label: '总计', value: stats.total, color: '' },
-          { label: '今日', value: stats.today, color: 'text-indigo-500' },
-          { label: '置顶', value: stats.pinned, color: 'text-emerald-500' },
-          { label: '收藏', value: stats.favorites, color: 'text-amber-500' },
+          { label: '今日', value: stats.today, color: '--indigo' },
+          { label: '置顶', value: stats.pinned, color: '--emerald' },
+          { label: '收藏', value: stats.favorites, color: '--amber' },
         ].map((item) => (
-          <div key={item.label} className={`p-3 rounded-xl text-center ${dark ? 'bg-neutral-800/50' : 'bg-neutral-50'}`}>
-            <p className="text-[10px] uppercase tracking-widest font-bold opacity-50 mb-1">{item.label}</p>
-            <p className={`text-lg font-bold ${item.color}`}>{item.value}</p>
+          <div key={item.label} className="sm-panel__stat-card" data-theme={dark ? 'dark' : 'light'}>
+            <p className="sm-panel__stat-label">{item.label}</p>
+            <p className="sm-panel__stat-value" data-tone={item.color ? item.color.replace('--', '') : 'default'}>{item.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">基本设置</h3>
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">基本设置</h3>
         {toggleSettings.map(({ key, title, desc }) => (
           <SettingRow key={String(key)} title={title} desc={desc}>
             <ToggleSwitch dark={dark} on={!!settings[key]} onToggle={() => updateSettings({ [key]: !settings[key] })} />
           </SettingRow>
         ))}
-      </div>
+      </section>
 
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">历史记录</h3>
-        <div className="space-y-2">
-          <p className="font-medium text-sm">历史记录上限</p>
-          <input
-            type="range"
-            min="10"
-            max="500"
-            step="10"
-            value={settings.maxItems}
-            onChange={(e) => updateSettings({ maxItems: Number.parseInt(e.target.value, 10) })}
-            className={`w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-indigo-500 ${dark ? 'bg-neutral-700' : 'bg-neutral-200'}`}
-          />
-          <div className={`flex justify-between text-[10px] font-mono ${dark ? 'text-neutral-500' : 'text-neutral-400'}`}>
-            <span>10</span>
-            <span className="font-bold text-indigo-500">{settings.maxItems}</span>
-            <span>500</span>
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">历史记录</h3>
+        <div className="sm-panel__fields-grid">
+          <div className="sm-panel__block--tight">
+            <p className="sm-panel__label">历史记录上限</p>
+            <input
+              type="range"
+              min="10"
+              max="500"
+              step="10"
+              value={settings.maxItems}
+              onChange={(e) => updateSettings({ maxItems: Number.parseInt(e.target.value, 10) })}
+              className="sm-panel__range"
+              data-theme={dark ? 'dark' : 'light'}
+            />
+            <div className="sm-panel__range-values" data-theme={dark ? 'dark' : 'light'}>
+              <span>10</span>
+              <span className="sm-panel__range-current">{settings.maxItems}</span>
+              <span>500</span>
+            </div>
+          </div>
+
+          <div className="sm-panel__block--tight">
+            <p className="sm-panel__label">自动清理（天）</p>
+            <select
+              value={settings.autoClearDays}
+              onChange={(e) => updateSettings({ autoClearDays: Number.parseInt(e.target.value, 10) })}
+              className="sm-field__select"
+              data-theme={dark ? 'dark' : 'light'}
+            >
+              {autoClearOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
         </div>
-
-        <div className="space-y-2">
-          <p className="font-medium text-sm">自动清理（天）</p>
-          <select
-            value={settings.autoClearDays}
-            onChange={(e) => updateSettings({ autoClearDays: Number.parseInt(e.target.value, 10) })}
-            className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-50 border-neutral-200'}`}
-          >
-            {autoClearOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

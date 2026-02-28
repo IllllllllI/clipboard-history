@@ -5,12 +5,14 @@ import './styles/image-preview.css';
 interface ImagePreviewProps {
   url: string;
   onClick: () => void;
+  darkMode: boolean;
 }
 
 /** 图片缩略图预览 */
 export const ImagePreview = React.memo(function ImagePreview({
   url,
   onClick,
+  darkMode,
 }: ImagePreviewProps) {
   const [src, setSrc] = useState('');
   const [meta, setMeta] = useState<{ width: number; height: number; format: string }>({ width: 0, height: 0, format: '' });
@@ -47,6 +49,7 @@ export const ImagePreview = React.memo(function ImagePreview({
   return (
     <div
       className="clip-item-image-preview"
+      data-theme={darkMode ? 'dark' : 'light'}
       onClick={(e) => {
         e.stopPropagation();
         onClick();

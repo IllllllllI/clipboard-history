@@ -22,3 +22,4 @@
 - 对外依赖统一走 `./ClipItem`（barrel），避免跨文件直接耦合内部实现。
 - 复用逻辑优先下沉到子模块，`ClipItemComponent` 保持“编排层”职责。
 - 新增子能力时优先在目录内按职责拆分，不回填到单文件巨型组件。
+- 样式命名遵循 `docs/clipitem-style-naming.md`，提交前建议运行 `npm run audit:clipitem-style`。

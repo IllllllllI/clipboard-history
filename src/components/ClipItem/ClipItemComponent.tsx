@@ -109,7 +109,7 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
-    const containerClass = 'clip-item-root group';
+    const containerClass = 'clip-item-root';
 
     return (
       <motion.div

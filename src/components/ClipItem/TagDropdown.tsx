@@ -105,7 +105,10 @@ export const TagDropdown = React.memo(function TagDropdown({
       >
         <TagIcon className="clip-item-tag-dropdown-trigger-icon" />
         {selectedCount > 0 && (
-          <span className="clip-item-tag-dropdown-trigger-count">
+          <span
+            className="clip-item-tag-dropdown-trigger-count"
+            data-theme={darkMode ? 'dark' : 'light'}
+          >
             {selectedCount}
           </span>
         )}
@@ -128,9 +131,14 @@ export const TagDropdown = React.memo(function TagDropdown({
                 e.stopPropagation();
               }}
             >
-              <div className="clip-item-tag-dropdown-header">
+              <div className="clip-item-tag-dropdown-header" data-theme={darkMode ? 'dark' : 'light'}>
                 <span>标签选择</span>
-                <span className="clip-item-tag-dropdown-header-badge">{selectedCount}/{tags.length}</span>
+                <span
+                  className="clip-item-tag-dropdown-header-badge"
+                  data-theme={darkMode ? 'dark' : 'light'}
+                >
+                  {selectedCount}/{tags.length}
+                </span>
               </div>
               <div className="clip-item-tag-dropdown-list custom-scrollbar">
                 {tags.length === 0 ? (

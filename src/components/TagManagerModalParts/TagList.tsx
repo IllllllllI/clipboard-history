@@ -19,7 +19,7 @@ export const TagList = React.memo(function TagList({
   onDelete,
 }: TagListProps) {
   return (
-    <div className="tag-manager-list custom-scrollbar">
+    <div className="tag-manager-list custom-scrollbar" data-theme={dark ? 'dark' : 'light'}>
       <AnimatePresence mode="popLayout" initial={false}>
         {tags.length === 0 ? (
           <motion.div
@@ -32,6 +32,7 @@ export const TagList = React.memo(function TagList({
           >
             <motion.div 
               className="tag-manager-empty-state-icon-bg"
+              data-theme={dark ? 'dark' : 'light'}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >

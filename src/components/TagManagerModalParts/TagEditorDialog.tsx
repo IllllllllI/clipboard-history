@@ -58,6 +58,7 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
             animate={{ opacity: 1, scale: 1, y: '-50%', x: '-50%', transition: { type: 'spring', damping: 25, stiffness: 400 } }}
             exit={{ opacity: 0, scale: 0.95, y: -10, x: '-50%', transition: { duration: 0.15 } }}
             className="tag-manager-dialog-content"
+            data-theme={dark ? 'dark' : 'light'}
           >
             <div className="tag-manager-editor-header">
               <div>
@@ -65,13 +66,14 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
                   <Icon className="tag-manager-editor-title-icon" />
                   {title}
                 </h3>
-                <p className="tag-manager-modal-title-desc">
+                <p className="tag-manager-modal-title-desc" data-theme={dark ? 'dark' : 'light'}>
                   {target.mode === 'create' ? '创建新的分类标签。' : '修改名称和颜色，不影响已关联记录。'}
                 </p>
               </div>
               <button
                 onClick={onClose}
                 className="tag-manager-modal-close-btn"
+                data-theme={dark ? 'dark' : 'light'}
                 title="关闭 (Esc)"
               >
                 <X className="tag-manager-icon-16" />
@@ -86,6 +88,7 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
                 onChange={(event) => setName(event.target.value)}
                 placeholder="输入标签名称，例如：工作、灵感、待办"
                 className="tag-manager-modal-input"
+                data-theme={dark ? 'dark' : 'light'}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     void handleSubmit();
@@ -94,7 +97,7 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
                 }}
               />
 
-              <div className="tag-manager-color-picker-container">
+              <div className="tag-manager-color-picker-container" data-theme={dark ? 'dark' : 'light'}>
                 <ColorPicker selectedColor={color} onSelect={setColor} dark={dark} />
               </div>
 
@@ -113,6 +116,7 @@ export const TagEditorDialog = React.memo(function TagEditorDialog({
               <button
                 onClick={onClose}
                 className="tag-manager-dialog-btn-cancel"
+                data-theme={dark ? 'dark' : 'light'}
                 title="取消 (Esc)"
               >
                 取消

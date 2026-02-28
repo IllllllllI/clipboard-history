@@ -69,7 +69,7 @@
   color: #6366f1;
 }
 
-.dark .clip-item-tag-dropdown-trigger-count {
+.clip-item-tag-dropdown-trigger-count[data-theme='dark'] {
   color: #c7d2fe;
 }
 
@@ -87,7 +87,7 @@
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.05), 0 12px 24px rgb(0 0 0 / 0.2);
 }
 
-.dark .clip-item-tag-dropdown-popover {
+.clip-item-tag-dropdown-popover[data-theme='dark'] {
   background: rgb(38 38 38 / 0.95);
   border-color: rgb(64 64 64 / 0.6);
   box-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 12px 24px rgb(0 0 0 / 0.45);
@@ -106,7 +106,7 @@
   letter-spacing: 0.05em;
 }
 
-.dark .clip-item-tag-dropdown-header {
+.clip-item-tag-dropdown-header[data-theme='dark'] {
   color: #737373;
 }
 
@@ -118,7 +118,7 @@
   opacity: 0.8;
 }
 
-.dark .clip-item-tag-dropdown-header-badge {
+.clip-item-tag-dropdown-header-badge[data-theme='dark'] {
   background: #404040;
 }
 

@@ -5,12 +5,14 @@ import './styles/highlight-text.css';
 interface HighlightTextProps {
   text: string;
   highlight: string;
+  darkMode?: boolean;
 }
 
 /** 安全的文本高亮（转义正则特殊字符） */
 export const HighlightText = React.memo(function HighlightText({
   text,
   highlight,
+  darkMode = false,
 }: HighlightTextProps) {
   const trimmedHighlight = useMemo(() => highlight.trim(), [highlight]);
   const lowerHighlight = useMemo(() => trimmedHighlight.toLowerCase(), [trimmedHighlight]);
@@ -35,6 +37,7 @@ export const HighlightText = React.memo(function HighlightText({
             <mark
               key={i}
               className="clip-item-highlight-mark"
+              data-theme={darkMode ? 'dark' : 'light'}
             >
               {part}
             </mark>

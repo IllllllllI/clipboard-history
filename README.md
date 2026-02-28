@@ -1,4 +1,4 @@
-# Clipboard History（Tauri + React）
+# Clipboard History（Tauri + React） · [![CI / check:all](https://github.com/IllllllllI/clipboard-history/actions/workflows/ci.yml/badge.svg)](https://github.com/IllllllllI/clipboard-history/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/IllllllllI/clipboard-history?display_name=tag)](https://github.com/IllllllllI/clipboard-history/releases)
 
 一个基于 **Tauri 2 + React 19 + TypeScript + Rust** 的桌面剪贴板历史工具，面向日常文本/代码/图片工作流。
 
@@ -33,6 +33,10 @@
 - `src-tauri/capabilities/default.json`：Tauri 权限清单。
 - `docs/input-module-architecture.md`：输入模块分层架构说明。
 - `docs/service-api-usage-matrix.md`：前端服务 API 使用矩阵（脚本生成）。
+- `docs/style-naming-overview.md`：样式命名统一规则总览入口。
+- `docs/settings-modal-style-naming.md`：SettingsModal 样式命名规范（BEM 约定）。
+- `docs/clipitem-style-naming.md`：ClipItem 样式命名规范与审计约定。
+- `docs/tagmanager-style-naming.md`：TagManager 样式命名规范与审计约定。
 
 ## 环境要求
 
@@ -47,6 +51,16 @@
 ```bash
 npm install
 ```
+
+1.1 安装仓库本地 Git hooks（启用 pre-commit 审计）
+
+```bash
+npm run hooks:install
+```
+
+安装后，`pre-commit` 会自动执行：
+
+- `npm run check:all`（包含所有审计 + 类型检查）
 
 2. 启动前端开发服务（可选，便于单独调 UI）
 
@@ -71,12 +85,20 @@ Windows 打包目标由 `src-tauri/tauri.conf.json` 配置为 `nsis` 与 `msi`�
 
 ## 常用脚本
 
-- `npm run dev`：启动 Vite 开发服务（端口 3000）。
+- `npm run dev`：单实例启动 Vite 开发服务（端口 3000，若已启动则直接提示并退出）。
+- `npm run dev:force`：强制清理 3000 端口占用后再启动 Vite 开发服务。
 - `npm run tauri:dev`：启动桌面开发模式。
 - `npm run build`：构建前端产物。
 - `npm run tauri:build`：构建桌面安装包。
 - `npm run lint`：TypeScript 类型检查。
+- `npm run hooks:install`：将 Git hooks 路径指向仓库内 `.githooks`。
 - `npm run audit:service-usage`：生成服务层调用审计结果。
+- `npm run audit:clipitem-style`：检查 ClipItem 样式命名是否符合约定。
+- `npm run audit:settings-style`：检查 SettingsModal 是否回退到旧的运行时状态类写法。
+- `npm run audit:tagmanager-style`：检查 TagManager 是否回退到旧的运行时状态类写法。
+- `npm run audit:docs-links`：检查 `README.md` 与 `docs/*.md` 中的 `docs/...md` 引用是否存在。
+- `npm run audit:all`：按顺序执行 `audit:settings-style`、`audit:clipitem-style`、`audit:tagmanager-style`、`audit:docs-links`。
+- `npm run check:all`：执行 `audit:all` + `lint`（与 pre-commit 对齐）。
 
 ## 配置说明（默认值）
 

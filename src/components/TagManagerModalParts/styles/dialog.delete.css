@@ -16,7 +16,7 @@
   background: #fef2f2;
 }
 
-.dark .tag-manager-delete-icon-container {
+.tag-manager-delete-icon-container[data-theme='dark'] {
   color: #fca5a5;
   background: rgb(239 68 68 / 0.15);
 }
@@ -39,7 +39,7 @@
   line-height: 1.25rem;
 }
 
-.dark .tag-manager-delete-desc {
+.tag-manager-delete-desc[data-theme='dark'] {
   color: #a3a3a3;
 }
 
@@ -54,7 +54,7 @@
   line-height: 1rem;
 }
 
-.dark .tag-manager-delete-tag-name {
+.tag-manager-delete-tag-name[data-theme='dark'] {
   background: #262626;
   color: #d4d4d4;
 }

@@ -30,6 +30,7 @@ export const TagRow = React.memo(function TagRow({
         default: { type: 'spring', stiffness: 450, damping: 30, delay: index * 0.04 }
       }}
       className="tag-manager-row"
+      data-theme={dark ? 'dark' : 'light'}
     >
       <div className="tag-manager-row-inner">
         <div className="tag-manager-row-main">
@@ -39,6 +40,7 @@ export const TagRow = React.memo(function TagRow({
           >
             <div
               className={`tag-manager-row-dot ${!tag.color ? 'tag-manager-row-dot-default' : ''}`}
+              data-theme={dark ? 'dark' : 'light'}
               style={tag.color ? { backgroundColor: tag.color, boxShadow: `0 0 8px ${tag.color}55` } : {}}
             />
             <span className="tag-manager-row-name">{tag.name}</span>
@@ -49,6 +51,7 @@ export const TagRow = React.memo(function TagRow({
           <button
             onClick={() => onEdit(tag)}
             className="tag-manager-row-action-btn-edit"
+            data-theme={dark ? 'dark' : 'light'}
             title="编辑"
           >
             <Edit2 className="tag-manager-icon-14" />
@@ -56,6 +59,7 @@ export const TagRow = React.memo(function TagRow({
           <button
             onClick={() => onDelete(tag)}
             className="tag-manager-row-action-btn-delete"
+            data-theme={dark ? 'dark' : 'light'}
             title="删除"
           >
             <Trash2 className="tag-manager-icon-14" />

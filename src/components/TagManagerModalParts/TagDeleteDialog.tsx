@@ -52,16 +52,17 @@ export const TagDeleteDialog = React.memo(function TagDeleteDialog({
             animate={{ opacity: 1, scale: 1, y: '-50%', x: '-50%', transition: { type: 'spring', damping: 25, stiffness: 400 } }}
             exit={{ opacity: 0, scale: 0.95, y: -10, x: '-50%', transition: { duration: 0.15 } }}
             className="tag-manager-dialog-delete-content"
+            data-theme={dark ? 'dark' : 'light'}
           >
             <div className="tag-manager-delete-header">
-              <div className="tag-manager-delete-icon-container">
+              <div className="tag-manager-delete-icon-container" data-theme={dark ? 'dark' : 'light'}>
                 <Trash2 className="tag-manager-icon-16" />
               </div>
               <div className="tag-manager-delete-title-wrap">
                 <h3 className="tag-manager-delete-title">删除标签</h3>
-                <p className="tag-manager-delete-desc">
+                <p className="tag-manager-delete-desc" data-theme={dark ? 'dark' : 'light'}>
                   确认删除标签
-                  <span className="tag-manager-delete-tag-name">
+                  <span className="tag-manager-delete-tag-name" data-theme={dark ? 'dark' : 'light'}>
                     {tag.name}
                   </span>
                   ？此操作不可撤销。
@@ -72,6 +73,7 @@ export const TagDeleteDialog = React.memo(function TagDeleteDialog({
               <button
                 onClick={onClose}
                 className="tag-manager-dialog-btn-cancel"
+                data-theme={dark ? 'dark' : 'light'}
                 title="取消 (Esc)"
               >
                 取消

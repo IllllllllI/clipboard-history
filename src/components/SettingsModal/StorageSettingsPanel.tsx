@@ -32,42 +32,44 @@ export function StorageSettingsPanel({
   PathSelector,
 }: StorageSettingsPanelProps) {
   return (
-    <div className="space-y-8">
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">图片设置</h3>
+    <div className="sm-panel__stack">
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">图片设置</h3>
 
         <SettingRow title="显示图片预览" desc="在列表中显示图片或图片链接的预览">
           <ToggleSwitch dark={dark} on={!!settings.showImagePreview} onToggle={() => updateSettings({ showImagePreview: !settings.showImagePreview })} />
         </SettingRow>
 
-        <div className="space-y-2">
-          <p className="font-medium text-sm">图片处理性能档位</p>
+        <div className="sm-panel__block--tight">
+          <p className="sm-panel__label">图片处理性能档位</p>
           <select
             value={settings.imagePerformanceProfile}
             onChange={(e) => updateSettings({ imagePerformanceProfile: e.target.value as typeof settings.imagePerformanceProfile })}
-            className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-50 border-neutral-200'}`}
+            className="sm-field__select"
+            data-theme={dark ? 'dark' : 'light'}
           >
             {imagePerformanceOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <p className="text-xs text-neutral-500">
+          <p className="sm-panel__muted">
             {imagePerformanceOptions.find((opt) => opt.value === settings.imagePerformanceProfile)?.desc}
           </p>
           {backendProfileSyncState === 'failed' ? (
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs text-red-500">后端已生效：获取失败（{backendProfileError ?? '未知错误'}）</p>
+            <div className="sm-sync__row">
+              <p className="sm-sync__error">后端已生效：获取失败（{backendProfileError ?? '未知错误'}）</p>
               <button
                 type="button"
                 onClick={onRetryBackendProfile}
-                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${dark ? 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200' : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'}`}
+                className="sm-sync__retry-btn"
+                data-theme={dark ? 'dark' : 'light'}
               >
                 重试
               </button>
             </div>
           ) : (
-            <div className={`text-xs flex items-center gap-1.5 ${backendProfileSyncState === 'synced' ? 'text-emerald-500' : 'text-amber-500'}`}>
-              {backendProfileSyncState === 'syncing' && <Loader2 className="w-3 h-3 animate-spin" />}
+            <div className="sm-sync__status" data-state={backendProfileSyncState === 'synced' ? 'synced' : 'syncing'}>
+              {backendProfileSyncState === 'syncing' && <Loader2 className="sm-sync__spinner" />}
               <span>
                 后端已生效：
                 {imagePerformanceOptions.find((opt) => opt.value === (backendImageProfile ?? settings.imagePerformanceProfile))?.label ?? '未知'}
@@ -77,8 +79,8 @@ export function StorageSettingsPanel({
           )}
         </div>
 
-        <div className="space-y-3">
-          <p className="font-medium text-sm">图片处理高级配置</p>
+        <div className="sm-panel__stack">
+          <p className="sm-panel__label">图片处理高级配置</p>
 
           <SettingRow
             title="允许内网地址"
@@ -102,8 +104,8 @@ export function StorageSettingsPanel({
             />
           </SettingRow>
 
-          <div className="space-y-2">
-            <p className="font-medium text-sm">解码内存上限（MB）</p>
+          <div className="sm-panel__block--tight">
+            <p className="sm-panel__label">解码内存上限（MB）</p>
             <input
               type="number"
               min={minDecodedMb}
@@ -114,15 +116,16 @@ export function StorageSettingsPanel({
                 const nextMb = Number.isFinite(parsed) ? Math.max(minDecodedMb, parsed) : minDecodedMb;
                 updateSettings({ maxDecodedBytes: nextMb * 1024 * 1024 });
               }}
-              className={`w-full p-2 rounded-lg border text-sm outline-none ${dark ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-50 border-neutral-200'}`}
+              className="sm-field__number"
+              data-theme={dark ? 'dark' : 'light'}
             />
-            <p className="text-xs text-neutral-500">最小 {minDecodedMb}MB；值越大可处理更大图片，但峰值内存也会增加</p>
+            <p className="sm-panel__muted">最小 {minDecodedMb}MB；值越大可处理更大图片，但峰值内存也会增加</p>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">存储路径</h3>
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">存储路径</h3>
         <PathSelector
           dark={dark}
           title="图片保存路径"
@@ -147,21 +150,22 @@ export function StorageSettingsPanel({
           onSelect={onSelectDbDir}
           onReset={onResetDbDir}
         />
-      </div>
+      </section>
 
-      <div className="space-y-4">
-        <h3 className="text-sm font-semibold text-neutral-500 uppercase tracking-wider">数据管理</h3>
-        <div className="flex gap-3">
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">数据管理</h3>
+        <div className="sm-data__actions">
           <button
             onClick={onExportData}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${dark ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-100 hover:bg-neutral-200'}`}
+            className="sm-data__export-btn"
+            data-theme={dark ? 'dark' : 'light'}
           >导出数据</button>
-          <label className={`flex-1 py-2 rounded-lg text-xs font-semibold text-center cursor-pointer transition-all ${dark ? 'bg-neutral-800 hover:bg-neutral-700' : 'bg-neutral-100 hover:bg-neutral-200'}`}>
+          <label className="sm-data__import-label" data-theme={dark ? 'dark' : 'light'}>
             导入数据
-            <input type="file" accept=".json" onChange={onImportData} className="hidden" />
+            <input type="file" accept=".json" onChange={onImportData} className="sm-data__file-input" />
           </label>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -36,8 +36,8 @@
   padding: 1.25rem;
 }
 
-.dark .tag-manager-dialog-content,
-.dark .tag-manager-dialog-delete-content {
+.tag-manager-dialog-content[data-theme='dark'],
+.tag-manager-dialog-delete-content[data-theme='dark'] {
   background: rgb(38 38 38 / 0.85);
   backdrop-filter: blur(16px);
   border-color: rgb(255 255 255 / 0.1);
@@ -78,12 +78,12 @@
   color: #0f172a;
 }
 
-.dark .tag-manager-dialog-btn-cancel {
+.tag-manager-dialog-btn-cancel[data-theme='dark'] {
   color: #d4d4d4;
   background: rgb(255 255 255 / 0.1);
 }
 
-.dark .tag-manager-dialog-btn-cancel:hover {
+.tag-manager-dialog-btn-cancel[data-theme='dark']:hover {
   background: rgb(255 255 255 / 0.15);
   color: #ffffff;
 }

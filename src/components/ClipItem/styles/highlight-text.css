@@ -9,6 +9,6 @@
   padding: 0 0.125rem;
 }
 
-.dark .clip-item-highlight-mark {
+.clip-item-highlight-mark[data-theme='dark'] {
   background: rgb(133 77 14 / 0.5);
 }
