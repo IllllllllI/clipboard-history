@@ -1,6 +1,19 @@
-# Clipboard History（Tauri + React） · [![CI / check:all](https://github.com/IllllllllI/clipboard-history/actions/workflows/ci.yml/badge.svg)](https://github.com/IllllllllI/clipboard-history/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/IllllllllI/clipboard-history?display_name=tag)](https://github.com/IllllllllI/clipboard-history/releases)
+# Clipboard History（Tauri + React）
+
+[![CI / check:all](https://github.com/IllllllllI/clipboard-history/actions/workflows/ci.yml/badge.svg)](https://github.com/IllllllllI/clipboard-history/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/IllllllllI/clipboard-history?display_name=tag)](https://github.com/IllllllllI/clipboard-history/releases)
 
 一个基于 **Tauri 2 + React 19 + TypeScript + Rust** 的桌面剪贴板历史工具，面向日常文本/代码/图片工作流。
+
+## 文档导航
+
+- 样式规范总览：`docs/style-naming-overview.md`
+- 输入模块架构：`docs/input-module-architecture.md`
+- 服务 API 使用矩阵：`docs/service-api-usage-matrix.md`
+- SettingsModal：`docs/settings-modal-style-naming.md`
+- ClipItem：`docs/clipitem-style-naming.md`
+- TagManager：`docs/tagmanager-style-naming.md`
+- FileList：`docs/filelist-style-naming.md`
 
 ## 主要功能
 
@@ -74,6 +87,16 @@ npm run dev
 npm run tauri:dev
 ```
 
+## 开发建议流程
+
+推荐开发顺序：
+
+1. 先启动前端：`npm run dev`
+2. 再启动桌面壳：`npm run tauri:dev`
+3. 提交前执行：`npm run check:all`
+
+这样可以更快定位问题来源（前端、桌面壳、还是质量审计）。
+
 ## 构建发布
 
 ```bash
@@ -99,6 +122,20 @@ Windows 打包目标由 `src-tauri/tauri.conf.json` 配置为 `nsis` 与 `msi`�
 - `npm run audit:docs-links`：检查 `README.md` 与 `docs/*.md` 中的 `docs/...md` 引用是否存在。
 - `npm run audit:all`：按顺序执行 `audit:settings-style`、`audit:clipitem-style`、`audit:tagmanager-style`、`audit:docs-links`。
 - `npm run check:all`：执行 `audit:all` + `lint`（与 pre-commit 对齐）。
+
+## 样式治理现状
+
+当前已落地“语义类名 + `data-*` 状态表达 + 审计/校验闭环”的模块与组件包括：
+
+- SettingsModal
+- ClipItem
+- TagManager
+- FileList
+- Header / Footer
+- ImageDisplay / LargeImagePreview
+- Toast / DownloadProgressIndicator
+
+统一入口见：`docs/style-naming-overview.md`
 
 ## 配置说明（默认值）
 
@@ -146,6 +183,13 @@ cargo check --manifest-path src-tauri/Cargo.toml
   - Node 版本是否满足要求；
   - Rust 工具链是否安装完整；
   - Windows 下 WebView2 与 C++ 构建工具是否可用。
+- 若 `npm run dev` 提示端口占用或启动失败：
+
+```bash
+npm run dev:force
+```
+
+  该命令会先清理 3000 端口占用，再启动开发服务。
 - 若窗口关闭后“像没退出”，这是预期行为：主窗口默认关闭转隐藏，可从托盘再次唤起。
 
 ## 安全与权限
