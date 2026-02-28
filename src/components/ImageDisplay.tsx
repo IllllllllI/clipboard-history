@@ -4,6 +4,7 @@ import { ClipItem, ImageType } from '../types';
 import { detectImageType, normalizeFilePath } from '../utils';
 import { resolveImageSrc, extractFormatLabel } from '../utils/imageUrl';
 import { fetchAndCacheImage } from '../utils/imageCache';
+import './styles/image-display.css';
 
 // ============================================================================
 // 类型 & 常量
@@ -35,11 +36,11 @@ const getErrorMessage = (type: ImageType): string =>
 /** 图片加载中骨架 */
 const LoadingSkeleton = React.memo(function LoadingSkeleton({ dark }: { dark: boolean }) {
   return (
-    <div className={`flex items-center justify-center h-64 rounded-lg border-2 border-dashed ${dark ? 'bg-neutral-800 border-neutral-700' : 'bg-neutral-50 border-neutral-200'}`}>
-      <div className="flex flex-col items-center gap-3">
-        <ImageIcon className={`w-16 h-16 ${dark ? 'text-neutral-600' : 'text-neutral-300'}`} />
-        <Loader2 className={`w-8 h-8 animate-spin ${dark ? 'text-neutral-500' : 'text-neutral-400'}`} />
-        <div className={`text-sm ${dark ? 'text-neutral-400' : 'text-neutral-500'}`}>加载中...</div>
+    <div className="image-display__loading" data-theme={dark ? 'dark' : 'light'}>
+      <div className="image-display__loading-inner">
+        <ImageIcon className="image-display__loading-icon" />
+        <Loader2 className="image-display__spinner animate-spin" />
+        <div className="image-display__loading-text">加载中...</div>
       </div>
     </div>
   );
@@ -58,19 +59,19 @@ const ErrorDisplay = React.memo(function ErrorDisplay({
   url: string;
 }) {
   return (
-    <div className={`flex items-center justify-center h-64 rounded-lg border-2 border-dashed ${dark ? 'bg-neutral-800 border-neutral-600' : 'bg-neutral-50 border-neutral-300'}`}>
-      <div className="flex flex-col items-center gap-3 px-6 py-4 max-w-md">
-        <AlertTriangle className={`w-14 h-14 ${dark ? 'text-red-400' : 'text-red-500'}`} />
-        <div className="text-center">
-          <div className={`text-sm font-semibold mb-1 ${dark ? 'text-red-400' : 'text-red-600'}`}>
+    <div className="image-display__error" data-theme={dark ? 'dark' : 'light'}>
+      <div className="image-display__error-inner">
+        <AlertTriangle className="image-display__error-icon" />
+        <div className="image-display__error-text-wrap">
+          <div className="image-display__error-title">
             图片加载失败
           </div>
-          <div className={`text-xs leading-relaxed ${dark ? 'text-neutral-400' : 'text-neutral-600'}`}>
+          <div className="image-display__error-message">
             {error}
           </div>
         </div>
         {imageType === ImageType.HttpUrl && (
-          <div className={`text-xs break-all text-center max-w-full ${dark ? 'text-neutral-500' : 'text-neutral-500'}`}>
+          <div className="image-display__error-url">
             {url}
           </div>
         )}
@@ -179,12 +180,16 @@ export const ImageDisplay = React.memo(function ImageDisplay({
 
   // ── 非图片：提前返回（所有 hooks 已声明） ──
   if (imageType === ImageType.None) return null;
-
-  const containerClass = centered ? 'flex items-center justify-center w-full' : 'w-full';
+  const imageSourceLabel = imageType === ImageType.HttpUrl ? '网络' : imageType === ImageType.LocalFile ? '本地' : 'Base64';
 
   return (
-    <div className={containerClass} ref={containerRef}>
-      <div className={`flex flex-col ${centered ? 'items-center' : ''}`}>
+    <div
+      className="image-display"
+      ref={containerRef}
+      data-theme={dark ? 'dark' : 'light'}
+      data-centered={centered ? 'true' : 'false'}
+    >
+      <div className="image-display__content">
         {isLoading && !error && <LoadingSkeleton dark={dark} />}
 
         {error && (
@@ -192,7 +197,7 @@ export const ImageDisplay = React.memo(function ImageDisplay({
         )}
 
         {!error && imageSrc && (
-          <div className="relative group/imgdisplay">
+          <div className="image-display__media-wrap">
             <img
               src={imageSrc}
               alt="Clipboard image"
@@ -203,9 +208,9 @@ export const ImageDisplay = React.memo(function ImageDisplay({
                 transform: 'translateZ(0)',
                 imageRendering: 'auto',
               }}
-              className={`max-h-64 object-contain rounded transition-opacity duration-200 ${
+              className={`image-display__image ${
                 isLoading ? 'opacity-0 absolute' : 'opacity-100'
-              } ${onClick ? 'cursor-zoom-in hover:brightness-95 transition-all' : ''}`}
+              } ${onClick ? 'image-display__image--clickable' : ''}`}
               onLoad={handleImageLoad}
               onError={handleImageError}
               onClick={handleClick}
@@ -215,11 +220,11 @@ export const ImageDisplay = React.memo(function ImageDisplay({
             {!isLoading && imageSize && (() => {
               const fmt = extractFormatLabel(item.text);
               return (
-                <div className="absolute bottom-1 right-1 z-10 flex items-center gap-1.5 bg-black/60 backdrop-blur-sm text-[9px] text-white/90 px-1.5 py-0.5 rounded whitespace-nowrap opacity-0 group-hover/imgdisplay:opacity-100 transition-opacity pointer-events-none">
-                  {fmt && <><span className="font-semibold">{fmt}</span><span className="opacity-60">|</span></>}
+                <div className="image-display__meta-chip">
+                  {fmt && <><span className="image-display__meta-format">{fmt}</span><span className="image-display__meta-sep">|</span></>}
                   <span>{imageSize.width}×{imageSize.height}</span>
-                  <span className="opacity-60">|</span>
-                  <span>{imageType === ImageType.HttpUrl ? '\u7f51\u7edc' : imageType === ImageType.LocalFile ? '\u672c\u5730' : 'Base64'}</span>
+                  <span className="image-display__meta-sep">|</span>
+                  <span>{imageSourceLabel}</span>
                 </div>
               );
             })()}
@@ -227,19 +232,19 @@ export const ImageDisplay = React.memo(function ImageDisplay({
         )}
 
         {showLinkInfo && imageType === ImageType.HttpUrl && !error && (
-          <div className={`mt-3 pt-3 border-t ${dark ? 'border-neutral-700' : 'border-neutral-200'}`}>
-            <div className="flex items-start gap-2">
-              <span className="text-xs text-neutral-500 flex-shrink-0 mt-0.5">
+          <div className="image-display__link-block">
+            <div className="image-display__link-row">
+              <span className="image-display__link-label">
                 链接:
               </span>
               <a
                 href={item.text}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`text-xs break-all transition-colors duration-150 leading-relaxed ${
+                className={`image-display__source-link ${
                   dark
-                    ? 'text-neutral-400 hover:text-blue-400'
-                    : 'text-neutral-600 hover:text-blue-600'
+                    ? 'hover:text-blue-400'
+                    : 'hover:text-blue-600'
                 }`}
                 title={item.text}
               >
