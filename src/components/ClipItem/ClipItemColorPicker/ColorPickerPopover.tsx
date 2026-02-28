@@ -74,7 +74,7 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
   const [showHistory, setShowHistory] = useState(false);
 
   const colorState = useColorState(originalColor, pickedColor, onColorChange);
-  const { hex, isChanged, setFromPicker, resetColor, mode, cycleMode, setMode } = colorState;
+  const { hex, isChanged, setFromPicker, resetColor, mode, setMode } = colorState;
 
   // 点击外部：已改色则确认，否则关闭
   useClickOutside(
@@ -115,7 +115,7 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
               isChanged={isChanged}
               onReset={resetColor}
             />
-            <ColorModeSelector mode={mode} onCycle={cycleMode} onSelect={setMode} />
+            <ColorModeSelector mode={mode} onSelect={setMode} />
 
             {/* 历史颜色开关 */}
             <button

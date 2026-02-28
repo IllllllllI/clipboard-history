@@ -150,20 +150,20 @@ export const ActionButtons = React.memo(function ActionButtons({
           {copiedId === item.id ? (
             <motion.div
               key="copied"
-              initial={{ opacity: 0, scale: 0.6, y: 2 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.6, y: -2 }}
-              transition={{ duration: 0.15 }}
+              initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             >
               <Check className="clip-item-action-icon clip-item-action-icon-copy-ok" />
             </motion.div>
           ) : (
             <motion.div
               key="copy"
-              initial={{ opacity: 0, scale: 0.6, y: 2 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.6, y: -2 }}
-              transition={{ duration: 0.15 }}
+              initial={{ opacity: 0, scale: 0.5, rotate: 45 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.5 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             >
               <Copy className="clip-item-action-icon" />
             </motion.div>
