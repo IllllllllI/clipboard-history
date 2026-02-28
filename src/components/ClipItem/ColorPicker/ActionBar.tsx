@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import './styles/color-picker.css';
 
 interface ActionBarProps {
   hex: string;
@@ -13,7 +14,7 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
   const [copied, setCopied] = useState(false);
 
   return (
-    <div className="px-3 py-2.5 flex items-center gap-2 border-t border-neutral-100 dark:border-neutral-700/80 bg-neutral-50/80 dark:bg-neutral-900/80">
+    <div className="clip-item-color-picker-actionbar">
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -21,7 +22,7 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
         }}
-        className="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-xl transition-all duration-150 text-neutral-500 dark:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-100 relative overflow-hidden"
+        className="clip-item-color-picker-action-btn clip-item-color-picker-action-copy"
         title="复制并新增条目"
       >
         <AnimatePresence mode="wait" initial={false}>
@@ -32,9 +33,9 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.5, y: -10 }}
               transition={{ duration: 0.15 }}
-              className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-300"
+              className="flex items-center gap-1.5 clip-item-color-picker-action-copy-ok"
             >
-              <Check className="w-3.5 h-3.5" /> 已复制
+              <Check className="clip-item-color-picker-action-icon" /> 已复制
             </motion.div>
           ) : (
             <motion.div
@@ -45,7 +46,7 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
               transition={{ duration: 0.15 }}
               className="flex items-center gap-1.5"
             >
-              <Copy className="w-3.5 h-3.5" /> 复制
+              <Copy className="clip-item-color-picker-action-icon" /> 复制
             </motion.div>
           )}
         </AnimatePresence>
@@ -55,10 +56,10 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
           e.stopPropagation();
           onConfirm(hex);
         }}
-        className="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-medium py-1.5 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-all duration-150 shadow-sm shadow-indigo-500/15"
+        className="clip-item-color-picker-action-btn clip-item-color-picker-action-confirm"
         title="确认并保存当前条目颜色"
       >
-        <Check className="w-3.5 h-3.5" /> 确认
+        <Check className="clip-item-color-picker-action-icon" /> 确认
       </button>
     </div>
   );

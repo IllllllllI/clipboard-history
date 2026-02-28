@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import './styles/color-picker.css';
 
 interface ChannelInputProps {
   label: string;
@@ -14,8 +15,8 @@ export function ChannelInput({ label, value, max, onChange }: ChannelInputProps)
   const clamp = (v: number) => Math.max(0, Math.min(max, v));
 
   return (
-    <div className="flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl border transition-all duration-150 flex-1 min-w-0 bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200/50 dark:border-neutral-600/60 focus-within:border-indigo-500/50 focus-within:bg-white dark:focus-within:bg-neutral-900">
-      <span className="text-[9px] font-bold select-none shrink-0 text-neutral-400 dark:text-neutral-400">
+    <div className="clip-item-color-picker-channel-wrap">
+      <span className="clip-item-color-picker-channel-label">
         {label}
       </span>
       <input
@@ -41,7 +42,7 @@ export function ChannelInput({ label, value, max, onChange }: ChannelInputProps)
           wheelDeltaRef.current -= direction * totalSteps * threshold;
         }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full bg-transparent text-center text-[11px] font-mono outline-none min-w-0 text-neutral-700 dark:text-neutral-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        className="clip-item-color-picker-channel-input"
       />
     </div>
   );

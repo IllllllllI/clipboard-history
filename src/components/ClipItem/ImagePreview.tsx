@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { resolveImageSrc, extractFormatLabel } from '../../utils/imageUrl';
+import './styles/image-preview.css';
 
 interface ImagePreviewProps {
   url: string;
@@ -45,14 +46,14 @@ export const ImagePreview = React.memo(function ImagePreview({
 
   return (
     <div
-      className="group/img relative h-16 w-auto max-w-[200px] shrink-0 rounded-xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center cursor-zoom-in border border-transparent hover:border-indigo-500 transition-all duration-150 active:scale-[0.99]"
+      className="clip-item-image-preview"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
       }}
     >
-      <img src={src} alt="Clipboard Image" className="h-full w-auto object-contain" draggable={false} />
-      <div className="absolute inset-x-0 bottom-0 bg-black/60 backdrop-blur-[1px] text-[9px] text-white p-0.5 px-1.5 opacity-0 group-hover/img:opacity-100 transition-opacity flex justify-between items-center">
+      <img src={src} alt="Clipboard Image" className="clip-item-image-preview-img" draggable={false} />
+      <div className="clip-item-image-preview-meta">
         <span>{meta.format}</span>
         {meta.width > 0 && (
           <span>

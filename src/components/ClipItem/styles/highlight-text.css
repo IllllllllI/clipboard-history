@@ -1,0 +1,14 @@
+/* =========================
+   HighlightText
+   ========================= */
+
+.clip-item-highlight-mark {
+  background: #fde68a;
+  color: inherit;
+  border-radius: 0.125rem;
+  padding: 0 0.125rem;
+}
+
+.dark .clip-item-highlight-mark {
+  background: rgb(133 77 14 / 0.5);
+}

@@ -12,14 +12,14 @@ export function ColorInputPanel({ state }: ColorInputPanelProps) {
 
   if (mode === 'HEX') {
     return (
-      <div className="flex items-center rounded-xl px-2.5 py-1.5 border transition-all duration-150 bg-neutral-50 dark:bg-neutral-900/50 border-neutral-200/50 dark:border-neutral-600/60 focus-within:border-indigo-500/50 focus-within:bg-white dark:focus-within:bg-neutral-900">
-        <Hash className="w-3.5 h-3.5 shrink-0 mr-1.5 text-neutral-400 dark:text-neutral-400" />
+      <div className="clip-item-color-picker-input-hex">
+        <Hash className="clip-item-color-picker-input-hex-icon" />
         <input
           type="text"
           value={displayColor.replace('#', '').toUpperCase()}
           onChange={(e) => setHexFromInput(e.target.value)}
           onClick={(e) => e.stopPropagation()}
-          className="flex-1 w-full bg-transparent text-xs font-mono outline-none tracking-wider text-neutral-800 dark:text-neutral-100"
+          className="clip-item-color-picker-input-hex-field"
           spellCheck={false}
           placeholder="FFFFFFFF"
         />
@@ -29,7 +29,7 @@ export function ColorInputPanel({ state }: ColorInputPanelProps) {
 
   if (mode === 'RGB') {
     return (
-      <div className="flex gap-1">
+      <div className="clip-item-color-picker-rgba-grid">
         <ChannelInput label="R" value={rgba.r} max={255} onChange={(v) => setRgbaChannel('r', v)} />
         <ChannelInput label="G" value={rgba.g} max={255} onChange={(v) => setRgbaChannel('g', v)} />
         <ChannelInput label="B" value={rgba.b} max={255} onChange={(v) => setRgbaChannel('b', v)} />
@@ -40,7 +40,7 @@ export function ColorInputPanel({ state }: ColorInputPanelProps) {
 
   // HSL
   return (
-    <div className="flex gap-1">
+    <div className="clip-item-color-picker-hsl-grid">
       <ChannelInput label="H" value={hslDraft.h} max={359} onChange={(v) => setHslaChannel('h', v)} />
       <ChannelInput label="S" value={hslDraft.s} max={100} onChange={(v) => setHslaChannel('s', v)} />
       <ChannelInput label="L" value={hslDraft.l} max={100} onChange={(v) => setHslaChannel('l', v)} />

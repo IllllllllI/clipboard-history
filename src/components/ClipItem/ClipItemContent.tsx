@@ -11,6 +11,7 @@ import { ImagePreview } from './ImagePreview';
 import { HighlightText } from './HighlightText';
 import { HighlightDateTimeText } from './DateTimeChip';
 import { ColorPickerPopover } from './ColorPicker';
+import './styles/clip-item-content.css';
 
 /** 标准化 hex 用于比较：展开短 hex、小写、去除不透明 alpha（ff） */
 function normalizeHex(hex: string): string {
@@ -151,46 +152,46 @@ export const ClipItemContent = React.memo(function ClipItemContent({
     };
 
     return (
-      <div className="flex items-center gap-2 mt-1">
+      <div className="clip-item-content-color-row">
         {hasPickedDiff ? (
           <>
             {/* 原始颜色色块 */}
             <div
-              className="relative w-5 h-5 rounded-md overflow-hidden border border-black/20 dark:border-white/20 shadow-sm shrink-0"
+              className="clip-item-content-color-chip"
               title={`原始: ${item.text}`}
             >
-              <div className="w-full h-full pointer-events-none" style={{ backgroundColor: item.text }} />
+              <div className="clip-item-content-color-chip-fill" style={{ backgroundColor: item.text }} />
             </div>
-            <span className="text-neutral-400 dark:text-neutral-500 text-xs select-none">→</span>
+            <span className="clip-item-content-color-arrow">→</span>
             {/* 调色后色块（可点击打开调色板） */}
             <div
               ref={colorBtnRef}
-              className="relative w-5 h-5 rounded-xl overflow-hidden border-2 border-indigo-400/60 dark:border-indigo-500/60 shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform duration-150"
+              className="clip-item-content-color-chip clip-item-content-color-chip-picked clip-item-content-color-chip-clickable"
               title="点击修改颜色"
               onClick={openPicker}
             >
-              <div className="w-full h-full pointer-events-none" style={{ backgroundColor: displayColor }} />
+              <div className="clip-item-content-color-chip-fill" style={{ backgroundColor: displayColor }} />
             </div>
           </>
         ) : (
           /* 仅原始色块（可点击打开调色板） */
           <div
             ref={colorBtnRef}
-            className="relative w-5 h-5 rounded-md overflow-hidden border border-black/20 dark:border-white/20 shadow-sm shrink-0 cursor-pointer hover:scale-105 transition-transform duration-150"
+            className="clip-item-content-color-chip clip-item-content-color-chip-clickable"
             title="点击调出颜色板"
             onClick={openPicker}
           >
-            <div className="w-full h-full pointer-events-none" style={{ backgroundColor: item.text }} />
+            <div className="clip-item-content-color-chip-fill" style={{ backgroundColor: item.text }} />
           </div>
         )}
 
         {/* 文字：原始色值 + 调色后色值 */}
         <div 
-          className="flex items-center gap-1 cursor-pointer group"
+          className="clip-item-content-color-text-wrap group"
           onClick={(e) => handleCopyColor(e, item.text)}
           title="点击复制原始颜色"
         >
-          <p className="text-sm truncate font-medium font-mono group-hover:text-indigo-500 transition-colors">
+          <p className="clip-item-content-color-text">
             {item.text}
           </p>
           <AnimatePresence>
@@ -201,14 +202,14 @@ export const ClipItemContent = React.memo(function ClipItemContent({
                 exit={{ opacity: 0, scale: 0.5 }}
                 transition={{ duration: 0.15 }}
               >
-                <Check className="w-3.5 h-3.5 text-green-500" />
+                <Check className="clip-item-content-copy-check" />
               </motion.div>
             )}
           </AnimatePresence>
         </div>
         {hasPickedDiff && (
           <div 
-            className="flex items-center gap-1 cursor-pointer group"
+            className="clip-item-content-color-text-wrap group"
             onClick={(e) => {
               if (item.picked_color) {
                 handleCopyColor(e, item.picked_color);
@@ -216,7 +217,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
             }}
             title="点击复制新颜色"
           >
-            <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono truncate group-hover:text-indigo-500 transition-colors">
+            <span className="clip-item-content-color-new">
               → {item.picked_color}
             </span>
             <AnimatePresence>
@@ -227,7 +228,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
                   exit={{ opacity: 0, scale: 0.5 }}
                   transition={{ duration: 0.15 }}
                 >
-                  <Check className="w-3 h-3 text-green-500" />
+                  <Check className="clip-item-content-copy-check-small" />
                 </motion.div>
               )}
             </AnimatePresence>
@@ -253,14 +254,14 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   if (showImagePreview && isImage) {
     if (type === 'multi-image') {
       return (
-        <div className="flex flex-col gap-2 w-full">
-          <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 max-w-full">
+        <div className="clip-item-content-image-list">
+          <div className="clip-item-content-image-list-track custom-scrollbar">
             {imageUrls.map((url, i) => (
               <ImagePreview key={i} url={url} onClick={() => setPreviewImageUrl(url)} />
             ))}
           </div>
-          <div className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
-            <Images className="w-3 h-3" />
+          <div className="clip-item-content-image-list-meta">
+            <Images className="clip-item-content-icon-12" />
             <span>包含 {imageUrls.length} 张图片</span>
           </div>
         </div>
@@ -269,8 +270,8 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
     // 单张图片
     return (
-      <div className="w-full flex flex-col gap-1.5">
-        <div className="w-full rounded-md hover:border-indigo-500/50 transition-colors">
+      <div className="clip-item-content-image-single">
+        <div className="clip-item-content-image-display-wrap">
           <ImageDisplay
             item={item}
             darkMode={darkMode}
@@ -280,14 +281,14 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           />
         </div>
         {imageType !== ImageType.Base64 && (
-          <div className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5 truncate">
+          <div className="clip-item-content-image-link">
             {imageType === ImageType.HttpUrl ? (
-              <Globe className="w-3 h-3 shrink-0" />
+              <Globe className="clip-item-content-icon-12" />
             ) : (
-              <HardDrive className="w-3 h-3 shrink-0" />
+              <HardDrive className="clip-item-content-icon-12" />
             )}
             <span
-              className="truncate cursor-pointer hover:text-indigo-500 hover:underline transition-colors"
+              className="clip-item-content-image-link-text"
               title={(imageType === ImageType.HttpUrl ? "\u6253\u5f00\u94fe\u63a5: " : "\u6253\u5f00\u6587\u4ef6: ") + item.text}
               onClick={handleOpenUrl}
             >
@@ -302,20 +303,20 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   // --- 图片（无预览模式） ---
   if (isImage) {
     return (
-      <p className="text-sm truncate font-medium mt-1 leading-relaxed">
-        <span className="flex items-center gap-1.5 text-neutral-500 dark:text-neutral-400">
+      <p className="clip-item-content-text">
+        <span className="clip-item-content-image-link">
           {imageType === ImageType.HttpUrl ? (
-            <Globe className="w-3.5 h-3.5" />
+            <Globe className="clip-item-content-icon-14" />
           ) : imageType === ImageType.LocalFile ? (
-            <HardDrive className="w-3.5 h-3.5" />
+            <HardDrive className="clip-item-content-icon-14" />
           ) : (
-            <FileCode2 className="w-3.5 h-3.5" />
+            <FileCode2 className="clip-item-content-icon-14" />
           )}
           {imageType === ImageType.Base64 ? (
             <span className="truncate">[Base64 \u56fe\u7247\u6570\u636e]</span>
           ) : (
             <span
-              className="truncate cursor-pointer hover:text-indigo-500 hover:underline transition-colors"
+              className="clip-item-content-image-link-text"
               title={(imageType === ImageType.HttpUrl ? "\u6253\u5f00\u94fe\u63a5: " : "\u6253\u5f00\u6587\u4ef6: ") + item.text}
               onClick={handleOpenUrl}
             >
@@ -329,7 +330,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
   if (type === 'multi-image') {
     return (
-      <p className="text-sm truncate font-medium mt-1 leading-relaxed">
+      <p className="clip-item-content-text">
         {`[${imageUrls.length} 张图片]`}
       </p>
     );
@@ -338,17 +339,17 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   // --- URL 链接 ---
   if (isUrl) {
     return (
-      <p className="text-sm truncate font-medium mt-1 leading-relaxed">
+      <p className="clip-item-content-text">
         <span
-          className="cursor-pointer text-indigo-500 dark:text-indigo-400 hover:underline transition-colors inline-flex items-center gap-1.5"
+          className="clip-item-content-link"
           title={"打开链接: " + trimmedText}
           onClick={handleOpenUrl}
         >
-          <Globe className="w-3.5 h-3.5 shrink-0" />
+          <Globe className="clip-item-content-icon-14-shrink" />
           <span className="truncate">
             <HighlightText text={trimmedText} highlight={searchQuery} />
           </span>
-          <ExternalLink className="w-3 h-3 shrink-0 opacity-50" />
+          <ExternalLink className="clip-item-content-icon-12 clip-item-content-link-fade" />
         </span>
       </p>
     );
@@ -357,7 +358,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   // --- 文本（含日期时间检测） ---
   if (hasDateTime) {
     return (
-      <p className="text-sm font-medium mt-1 leading-relaxed overflow-visible">
+      <p className="clip-item-content-text clip-item-content-text-notruncate">
         <HighlightDateTimeText
           text={displayText}
           matches={dtMatches}
@@ -372,7 +373,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
   // --- 普通文本 ---
   return (
-    <p className="text-sm truncate font-medium mt-1 leading-relaxed">
+    <p className="clip-item-content-text">
       <HighlightText text={displayText} highlight={searchQuery} />
     </p>
   );

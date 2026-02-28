@@ -1,4 +1,5 @@
 import { RotateCcw } from 'lucide-react';
+import './styles/color-picker.css';
 
 /** 棋盘格背景 data URL（用于透明色预览） */
 const CHECKER_BG =
@@ -15,7 +16,7 @@ interface ColorPreviewProps {
 export function ColorPreview({ originalColor, currentColor, isChanged, onReset }: ColorPreviewProps) {
   return (
     <div
-      className="relative w-8 h-8 rounded-full shadow-sm border border-black/10 dark:border-white/10 overflow-hidden shrink-0 cursor-pointer group"
+      className="clip-item-color-picker-preview"
       style={{ backgroundImage: CHECKER_BG }}
       onClick={(e) => {
         e.stopPropagation();
@@ -25,14 +26,14 @@ export function ColorPreview({ originalColor, currentColor, isChanged, onReset }
     >
       {isChanged ? (
         <>
-          <div className="absolute inset-y-0 left-0 right-1/2" style={{ backgroundColor: originalColor }} />
-          <div className="absolute inset-y-0 left-1/2 right-0" style={{ backgroundColor: currentColor }} />
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 backdrop-blur-[1px]">
-            <RotateCcw className="w-3.5 h-3.5 text-white drop-shadow-md" />
+          <div className="clip-item-color-picker-preview-half-left" style={{ backgroundColor: originalColor }} />
+          <div className="clip-item-color-picker-preview-half-right" style={{ backgroundColor: currentColor }} />
+          <div className="clip-item-color-picker-preview-reset-mask">
+            <RotateCcw className="clip-item-color-picker-preview-reset-icon" />
           </div>
         </>
       ) : (
-        <div className="absolute inset-0" style={{ backgroundColor: currentColor }} />
+        <div className="clip-item-color-picker-preview-full" style={{ backgroundColor: currentColor }} />
       )}
     </div>
   );

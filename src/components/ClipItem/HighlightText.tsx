@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { escapeRegExp } from '../../utils';
+import './styles/highlight-text.css';
 
 interface HighlightTextProps {
   text: string;
@@ -33,7 +34,7 @@ export const HighlightText = React.memo(function HighlightText({
           part.toLowerCase() === lowerHighlight ? (
             <mark
               key={i}
-              className="bg-yellow-200 dark:bg-yellow-800/50 text-inherit rounded-sm px-0.5"
+              className="clip-item-highlight-mark"
             >
               {part}
             </mark>

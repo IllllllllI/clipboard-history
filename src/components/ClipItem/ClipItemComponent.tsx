@@ -9,6 +9,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { getItemIcon } from './constants';
 import { ClipItemContent } from './ClipItemContent';
 import { ActionButtons } from './ActionButtons';
+import './styles/clip-item.css';
 
 interface ClipItemProps {
   item: ClipItem;
@@ -75,12 +76,12 @@ export const ClipItemComponent = React.memo(
 
     // --- 语义化颜色指示器 ---
     const semanticColorClass = useMemo(() => {
-      if (type === 'code') return 'bg-emerald-500';
-      if (type === 'url') return 'bg-blue-500';
-      if (isImage || type === 'multi-image') return 'bg-purple-500';
-      if (isFiles) return 'bg-amber-500';
-      if (type === 'color') return 'bg-pink-500';
-      return 'bg-transparent';
+      if (type === 'code') return 'clip-item-accent--code';
+      if (type === 'url') return 'clip-item-accent--url';
+      if (isImage || type === 'multi-image') return 'clip-item-accent--image';
+      if (isFiles) return 'clip-item-accent--files';
+      if (type === 'color') return 'clip-item-accent--color';
+      return 'clip-item-accent--default';
     }, [type, isImage, isFiles]);
 
     const handleCopyAsNewColor = useCallback(
@@ -108,27 +109,26 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
-    const containerClass = `group relative flex items-start gap-2.5 px-3 py-2.5 mb-1.5 rounded-xl border-2 cursor-pointer transition-all duration-150 overflow-hidden active:scale-[0.99] ${
-      isSelected
-        ? settings.darkMode
-          ? 'bg-neutral-800 border-indigo-500 shadow-[0_0_0_2px_rgba(99,102,241,0.2)] text-neutral-200'
-          : 'bg-white border-indigo-500 shadow-[0_0_0_3px_rgba(99,102,241,0.15)] text-neutral-800'
-        : settings.darkMode
-          ? 'bg-neutral-800/60 border-transparent hover:bg-neutral-800 hover:border-neutral-700 text-neutral-300'
-          : 'bg-white border-transparent hover:border-neutral-200 shadow-sm hover:shadow text-neutral-700'
-    }`;
+    const containerClass = [
+      'clip-item-root',
+      'group',
+      settings.darkMode ? 'clip-item-root-dark' : '',
+      isSelected ? 'clip-item-root-selected' : 'clip-item-root-unselected',
+    ]
+      .filter(Boolean)
+      .join(' ');
 
-    const iconClass = `w-8 h-8 shrink-0 flex items-center justify-center rounded-xl mt-0.5 transition-colors z-10 ${
-      isSelected
-        ? 'bg-indigo-500 text-white shadow-sm'
-        : settings.darkMode
-          ? 'bg-neutral-800 text-neutral-400 group-hover:text-neutral-300'
-          : 'bg-neutral-100 text-neutral-500 group-hover:text-neutral-700'
-    }`;
+    const iconClass = [
+      'clip-item-icon-wrap',
+      isSelected ? 'clip-item-icon-wrap-selected' : 'clip-item-icon-wrap-unselected',
+    ].join(' ');
 
-    const sideMetaClass = `flex flex-col items-end justify-between shrink-0 text-xs pt-1 self-stretch z-10 ${
-      settings.darkMode ? 'text-neutral-500' : 'text-neutral-400'
-    }`;
+    const sideMetaClass = [
+      'clip-item-side-meta',
+      settings.darkMode ? 'clip-item-side-meta-dark' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     return (
       <motion.div
@@ -144,15 +144,15 @@ export const ClipItemComponent = React.memo(
         className={containerClass}
       >
         {/* 语义化颜色指示线 */}
-        <div className={`absolute left-0 top-0 bottom-0 w-1 opacity-70 transition-colors ${semanticColorClass}`} />
+        <div className={`clip-item-accent ${semanticColorClass}`} />
 
         {/* 左侧图标 */}
         <div className={iconClass}>
-          <IconComponent className="w-4 h-4" />
+          <IconComponent className="clip-item-icon-16" />
         </div>
 
         {/* 主体内容 */}
-        <div className="flex-1 min-w-0 flex flex-col gap-1.5 py-1 z-10">
+        <div className="clip-item-content-wrap">
           <ClipItemContent
             item={item}
             type={type}
@@ -171,7 +171,7 @@ export const ClipItemComponent = React.memo(
 
           {/* 标签列表 */}
           {item.tags && item.tags.length > 0 && (
-            <motion.div layout className="flex flex-wrap gap-1.5 mt-1.5 z-10 relative">
+            <motion.div layout className="clip-item-tag-list">
               <AnimatePresence>
                 {item.tags.map((tag) => {
                   const tagStyle = tag.color
@@ -190,16 +190,16 @@ export const ClipItemComponent = React.memo(
                       exit={{ opacity: 0, scale: 0.8 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                       key={tag.id}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all hover:scale-[1.03] duration-200 cursor-default ${
+                      className={`clip-item-tag-pill ${
                         !tag.color
                           ? settings.darkMode
-                            ? 'bg-neutral-800/80 text-neutral-300 border-neutral-700 hover:bg-neutral-700/90'
-                            : 'bg-neutral-50 text-neutral-600 border-neutral-200 hover:bg-white'
-                          : 'hover:brightness-110'
+                            ? 'clip-item-tag-pill-default clip-item-tag-pill-dark'
+                            : 'clip-item-tag-pill-default'
+                          : 'clip-item-tag-pill-colored'
                       }`}
                       style={tagStyle}
                     >
-                      <TagIcon className="w-3 h-3 opacity-85" strokeWidth={2.5} />
+                      <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
                       {tag.name}
                     </motion.span>
                   );
@@ -211,11 +211,7 @@ export const ClipItemComponent = React.memo(
 
         {/* 右侧：时间 + 操作 */}
         <div className={sideMetaClass}>
-          <span
-            className={`font-mono mt-1 transition-opacity whitespace-nowrap ${
-              isSelected ? 'text-indigo-500 dark:text-indigo-400 font-medium' : ''
-            }`}
-          >
+          <span className={`clip-item-time ${isSelected ? 'clip-item-time-selected' : ''}`}>
             {formatDate(item.timestamp)}
           </span>
 

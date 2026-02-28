@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
+import './styles/color-picker.css';
 
 // TODO: 后续接入真实历史记录持久化
 const PRESET_COLORS = [
@@ -20,9 +21,9 @@ export function HistoryColors({ visible, onSelect }: HistoryColorsProps) {
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          className="overflow-hidden"
+          className="clip-item-color-picker-history-wrap"
         >
-          <div className="flex flex-wrap gap-1.5 pt-1">
+          <div className="clip-item-color-picker-history-grid">
             {PRESET_COLORS.map((c) => (
               <button
                 key={c}
@@ -30,7 +31,7 @@ export function HistoryColors({ visible, onSelect }: HistoryColorsProps) {
                   e.stopPropagation();
                   onSelect(c);
                 }}
-                className="w-6 h-6 rounded-md border border-black/10 dark:border-white/10 shadow-sm hover:scale-105 transition-transform duration-150"
+                className="clip-item-color-picker-history-swatch"
                 style={{ backgroundColor: c }}
                 title={c}
               />

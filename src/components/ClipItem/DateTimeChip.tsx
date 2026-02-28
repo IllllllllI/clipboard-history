@@ -5,6 +5,7 @@ import type { DateTimeMatch } from '../../utils';
 import { getDateTimeFormats } from '../../utils';
 import { usePopoverPosition } from '../../hooks/usePopoverPosition';
 import { HighlightText } from './HighlightText';
+import './styles/datetime-chip.css';
 
 // ---------------------------------------------------------------------------
 // DateTimeChip — 单个日期时间高亮标签 + 悬停弹出格式转换
@@ -81,17 +82,17 @@ export const DateTimeChip = React.memo(function DateTimeChip({
   return (
     <span
       ref={chipRef}
-      className={`inline-flex items-center gap-0.5 px-1 py-0 rounded cursor-default transition-colors ${
+      className={`clip-item-datetime-chip ${
         isSelected
           ? darkMode
-            ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30'
-            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-          : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/20'
+            ? 'clip-item-datetime-chip-selected clip-item-datetime-chip-selected-dark'
+            : 'clip-item-datetime-chip-selected'
+          : 'clip-item-datetime-chip-default'
       }`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <Clock className="w-3 h-3 shrink-0 opacity-60" />
+      <Clock className="clip-item-datetime-chip-icon" />
       <HighlightText text={match.text} highlight={searchQuery} />
 
       {/* Portal Popover */}
@@ -101,12 +102,12 @@ export const DateTimeChip = React.memo(function DateTimeChip({
           <div
             ref={popoverRef}
             style={style}
-            className="flex flex-col gap-0.5 p-1.5 rounded-xl shadow-xl border backdrop-blur-sm bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 min-w-[150px] max-w-[300px]"
+            className="clip-item-datetime-popover"
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
             onClick={(e) => e.stopPropagation()}
           >
-            <span className="text-[9px] text-neutral-400 dark:text-neutral-500 px-1 mb-0.5 font-medium select-none">
+            <span className="clip-item-datetime-popover-title">
               快捷复制
             </span>
             {formats.map((fmt) => {
@@ -116,19 +117,19 @@ export const DateTimeChip = React.memo(function DateTimeChip({
                 <button
                   key={key}
                   onClick={(e) => handleCopy(fmt.value, key, e)}
-                  className={`flex items-center gap-1.5 text-[11px] px-1.5 py-1 rounded-lg transition-all duration-150 text-left whitespace-nowrap ${
+                  className={`clip-item-datetime-popover-btn ${
                     isCopied
-                      ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                      : 'hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300'
+                      ? 'clip-item-datetime-popover-btn-copied'
+                      : ''
                   }`}
                 >
                   {isCopied ? (
-                    <Check className="w-3 h-3 shrink-0 text-emerald-500" />
+                    <Check className="clip-item-datetime-popover-icon clip-item-datetime-popover-icon-ok" />
                   ) : (
-                    <Copy className="w-3 h-3 shrink-0 opacity-40" />
+                    <Copy className="clip-item-datetime-popover-icon" />
                   )}
-                  <span className="font-medium shrink-0 min-w-[2rem]">{fmt.label}</span>
-                  <span className="opacity-60 truncate">{fmt.value}</span>
+                  <span className="clip-item-datetime-popover-label">{fmt.label}</span>
+                  <span className="clip-item-datetime-popover-value">{fmt.value}</span>
                 </button>
               );
             })}

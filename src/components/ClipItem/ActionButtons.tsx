@@ -5,6 +5,7 @@ import { ClipItem, Tag } from '../../types';
 import { decodeFileList } from '../../utils';
 import { TauriService } from '../../services/tauri';
 import { TagDropdown } from './TagDropdown';
+import './styles/action-buttons.css';
 
 interface ActionButtonsProps {
   item: ClipItem;
@@ -45,9 +46,7 @@ export const ActionButtons = React.memo(function ActionButtons({
       onMouseDown={(e) => {
         e.stopPropagation();
       }}
-      className={`flex items-center gap-0.5 mt-auto ${
-        isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-      } transition-opacity duration-150`}
+      className={`clip-item-actions ${isSelected ? 'clip-item-actions-visible' : ''}`}
     >
       {/* 文件列表专属操作 */}
       {isFiles && (
@@ -58,10 +57,10 @@ export const ActionButtons = React.memo(function ActionButtons({
               const files = decodeFileList(item.text);
               if (files.length > 0) TauriService.openFile(files[0]);
             }}
-            className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
+            className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
             title="打开文件"
           >
-            <ExternalLink className="w-3.5 h-3.5" />
+            <ExternalLink className="clip-item-action-icon" />
           </button>
           <button
             onClick={(e) => {
@@ -69,10 +68,10 @@ export const ActionButtons = React.memo(function ActionButtons({
               const files = decodeFileList(item.text);
               if (files.length > 0) TauriService.openFileLocation(files[0]);
             }}
-            className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
+            className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
             title="打开文件位置"
           >
-            <FolderOpen className="w-3.5 h-3.5" />
+            <FolderOpen className="clip-item-action-icon" />
           </button>
         </>
       )}
@@ -84,10 +83,10 @@ export const ActionButtons = React.memo(function ActionButtons({
             e.stopPropagation();
             onEdit(item);
           }}
-          className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
+          className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
           title="编辑内容"
         >
-          <Edit3 className="w-3.5 h-3.5" />
+          <Edit3 className="clip-item-action-icon" />
         </button>
       )}
 
@@ -106,14 +105,16 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onToggleFavorite(item);
         }}
-        className={`p-1.5 rounded-xl transition-all duration-150 active:scale-95 ${
+        className={`clip-item-action-btn ${
           item.is_favorite
-            ? 'text-amber-500 bg-amber-50 dark:bg-amber-500/10'
-            : 'hover:bg-black/10 dark:hover:bg-white/10'
+            ? `clip-item-action-btn-favorite ${darkMode ? 'clip-item-action-btn-favorite-dark' : ''}`
+            : darkMode
+              ? 'clip-item-action-btn-dark'
+              : ''
         }`}
         title={item.is_favorite ? '取消收藏' : '收藏'}
       >
-        <Star className={`w-3.5 h-3.5 ${item.is_favorite ? 'fill-current' : ''}`} />
+        <Star className={`clip-item-action-icon ${item.is_favorite ? 'clip-item-action-icon-fill' : ''}`} />
       </button>
 
       {/* 置顶 */}
@@ -122,14 +123,16 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onTogglePin(item);
         }}
-        className={`p-1.5 rounded-xl transition-all duration-150 active:scale-95 ${
+        className={`clip-item-action-btn ${
           item.is_pinned
-            ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
-            : 'hover:bg-black/10 dark:hover:bg-white/10'
+            ? `clip-item-action-btn-pinned ${darkMode ? 'clip-item-action-btn-pinned-dark' : ''}`
+            : darkMode
+              ? 'clip-item-action-btn-dark'
+              : ''
         }`}
         title={item.is_pinned ? '取消置顶' : '置顶'}
       >
-        <Pin className={`w-3.5 h-3.5 ${item.is_pinned ? 'fill-current' : ''}`} />
+        <Pin className={`clip-item-action-icon ${item.is_pinned ? 'clip-item-action-icon-fill' : ''}`} />
       </button>
 
       {/* 复制 */}
@@ -138,7 +141,7 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onCopy(item);
         }}
-        className="p-1.5 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 transition-all duration-150 active:scale-95"
+        className={`clip-item-action-btn ${darkMode ? 'clip-item-action-btn-dark' : ''}`}
         title="复制"
       >
         <AnimatePresence mode="wait" initial={false}>
@@ -150,7 +153,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               exit={{ opacity: 0, scale: 0.6, y: -2 }}
               transition={{ duration: 0.15 }}
             >
-              <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-300" />
+              <Check className={`clip-item-action-icon clip-item-action-icon-copy-ok ${darkMode ? 'clip-item-action-icon-copy-ok-dark' : ''}`} />
             </motion.div>
           ) : (
             <motion.div
@@ -160,7 +163,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               exit={{ opacity: 0, scale: 0.6, y: -2 }}
               transition={{ duration: 0.15 }}
             >
-              <Copy className="w-3.5 h-3.5" />
+              <Copy className="clip-item-action-icon" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -175,10 +178,10 @@ export const ActionButtons = React.memo(function ActionButtons({
           e.stopPropagation();
           onRemove(item.id);
         }}
-        className="p-1.5 rounded-xl hover:bg-red-500/10 hover:text-red-500 transition-all duration-150 active:scale-95"
+        className="clip-item-action-btn clip-item-action-btn-delete"
         title="删除"
       >
-        <Trash2 className="w-3.5 h-3.5" />
+        <Trash2 className="clip-item-action-icon" />
       </button>
     </div>
   );
