@@ -30,6 +30,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   galleryDisplayMode: 'carousel',
   galleryScrollDirection: 'horizontal',
   galleryWheelMode: 'ctrl',
+  galleryListMaxVisibleItems: 6,
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,

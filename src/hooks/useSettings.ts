@@ -143,6 +143,14 @@ const MIGRATIONS: Migration[] = [
       data.galleryWheelMode = 'ctrl';
     }
   },
+  // v0.12: 列表模式最大显示条目兜底
+  (data) => {
+    const maxVisible = Number(data.galleryListMaxVisibleItems);
+    data.galleryListMaxVisibleItems =
+      Number.isFinite(maxVisible)
+        ? Math.min(30, Math.max(1, Math.trunc(maxVisible)))
+        : 6;
+  },
   // 后续迁移在此追加...
 ];
 

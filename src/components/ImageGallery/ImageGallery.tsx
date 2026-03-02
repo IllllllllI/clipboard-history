@@ -47,6 +47,8 @@ export interface ImageGalleryProps {
   scrollDirection?: GalleryScrollDirection;
   /** 滚轮触发模式（carousel 生效） */
   wheelMode?: GalleryWheelMode;
+  /** 列表模式最大显示条目数（超出后可展开） */
+  listMaxVisibleItems?: number;
   /** 是否为文件图片（影响底部提示文案） */
   isFileGallery?: boolean;
   /** 可选：模式切换回调（让父级保存设置） */
@@ -197,12 +199,14 @@ export const ImageGallery = React.memo(function ImageGallery({
   displayMode = 'carousel',
   scrollDirection = 'horizontal',
   wheelMode = 'ctrl',
+  listMaxVisibleItems = 6,
   isFileGallery = false,
   onDisplayModeChange,
   onScrollDirectionChange,
 }: ImageGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [thumbExpanded, setThumbExpanded] = useState(false);
+  const [listExpanded, setListExpanded] = useState(false);
   const [copiedImageUrl, setCopiedImageUrl] = useState<string | null>(null);
   const [copiedListIndex, setCopiedListIndex] = useState<number | null>(null);
   const galleryRef = useRef<HTMLDivElement | null>(null);
@@ -213,6 +217,10 @@ export const ImageGallery = React.memo(function ImageGallery({
   const listCopyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const theme = darkMode ? 'dark' : 'light';
   const isVertical = scrollDirection === 'vertical';
+  const normalizedListMaxVisibleItems = useMemo(
+    () => Math.min(30, Math.max(1, Math.trunc(listMaxVisibleItems))),
+    [listMaxVisibleItems],
+  );
 
   // ── 安全索引 ──
   const safeIndex = useMemo(() => {
@@ -234,6 +242,7 @@ export const ImageGallery = React.memo(function ImageGallery({
   useEffect(() => {
     setActiveIndex(0);
     setThumbExpanded(false);
+    setListExpanded(false);
     setCopiedImageUrl(null);
     setCopiedListIndex(null);
   }, [baseItem.id, imageUrls.length]);
@@ -389,6 +398,12 @@ export const ImageGallery = React.memo(function ImageGallery({
   // 列表模式
   // ============================
   if (displayMode === 'list') {
+    const canToggleList = imageUrls.length > normalizedListMaxVisibleItems;
+    const isListCollapsed = canToggleList && !listExpanded;
+    const visibleListUrls = isListCollapsed
+      ? imageUrls.slice(0, normalizedListMaxVisibleItems)
+      : imageUrls;
+
     return (
       <div className="img-gallery img-gallery--list" data-theme={theme}>
         {/* 顶栏 */}
@@ -404,7 +419,7 @@ export const ImageGallery = React.memo(function ImageGallery({
 
         {/* 列表 */}
         <div className="img-gallery__list-wrap custom-scrollbar">
-          {imageUrls.map((url, i) => {
+          {visibleListUrls.map((url, i) => {
             const thumbSrc = resolveImageSrc(url);
             const fileName = url.split(/[\\/]/).pop() ?? url;
             return (
@@ -469,6 +484,31 @@ export const ImageGallery = React.memo(function ImageGallery({
             );
           })}
         </div>
+
+        {canToggleList && (
+          <div className="img-gallery__list-toggle-wrap">
+            <button
+              type="button"
+              className="img-gallery__list-toggle-btn"
+              data-theme={theme}
+              aria-expanded={listExpanded ? 'true' : 'false'}
+              onClick={(e) => {
+                e.stopPropagation();
+                setListExpanded((prev) => {
+                  const next = !prev;
+                  if (!next) {
+                    setActiveIndex((current) => Math.min(current, normalizedListMaxVisibleItems - 1));
+                  }
+                  return next;
+                });
+              }}
+            >
+              {listExpanded
+                ? '收起列表'
+                : `展开剩余 ${imageUrls.length - normalizedListMaxVisibleItems} 项`}
+            </button>
+          </div>
+        )}
       </div>
     );
   }

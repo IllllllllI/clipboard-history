@@ -88,6 +88,32 @@ describe('ImageGallery', () => {
     expect(onListItemClick).not.toHaveBeenCalled();
   });
 
+  it('list 模式超出最大条目时默认折叠，并支持展开/收起', () => {
+    const { container } = render(
+      <ImageGallery
+        imageUrls={[
+          'https://example.com/1.png',
+          'https://example.com/2.png',
+          'https://example.com/3.png',
+          'https://example.com/4.png',
+        ]}
+        baseItem={baseItem}
+        darkMode={false}
+        displayMode="list"
+        listMaxVisibleItems={2}
+      />,
+    );
+
+    expect(container.querySelectorAll('.img-gallery__list-row')).toHaveLength(2);
+    const expandBtn = screen.getByRole('button', { name: '展开剩余 2 项' });
+    fireEvent.click(expandBtn);
+    expect(container.querySelectorAll('.img-gallery__list-row')).toHaveLength(4);
+
+    const collapseBtn = screen.getByRole('button', { name: '收起列表' });
+    fireEvent.click(collapseBtn);
+    expect(container.querySelectorAll('.img-gallery__list-row')).toHaveLength(2);
+  });
+
   it('carousel 模式多图时显示导航按钮与计数，并可切换计数', () => {
     render(
       <ImageGallery

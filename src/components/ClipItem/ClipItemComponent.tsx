@@ -232,6 +232,7 @@ export const ClipItemComponent = React.memo(
             galleryDisplayMode={settings.galleryDisplayMode}
             galleryScrollDirection={settings.galleryScrollDirection}
             galleryWheelMode={settings.galleryWheelMode}
+            galleryListMaxVisibleItems={settings.galleryListMaxVisibleItems}
             onGalleryDisplayModeChange={handleGalleryDisplayModeChange}
             onGalleryScrollDirectionChange={handleGalleryScrollDirectionChange}
             onGalleryListItemClick={handleGalleryListItemClick}

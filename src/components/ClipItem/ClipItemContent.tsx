@@ -38,6 +38,7 @@ interface ClipItemContentProps {
   galleryDisplayMode: GalleryDisplayMode;
   galleryScrollDirection: GalleryScrollDirection;
   galleryWheelMode: GalleryWheelMode;
+  galleryListMaxVisibleItems: number;
   onGalleryDisplayModeChange: (mode: GalleryDisplayMode) => void;
   onGalleryScrollDirectionChange: (dir: GalleryScrollDirection) => void;
   onGalleryListItemClick: (url: string) => void;
@@ -62,6 +63,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   galleryDisplayMode,
   galleryScrollDirection,
   galleryWheelMode,
+  galleryListMaxVisibleItems,
   onGalleryDisplayModeChange,
   onGalleryScrollDirectionChange,
   onGalleryListItemClick,
@@ -346,6 +348,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         displayMode={galleryDisplayMode}
         scrollDirection={galleryScrollDirection}
         wheelMode={galleryWheelMode}
+        listMaxVisibleItems={galleryListMaxVisibleItems}
         isFileGallery={showFilesAsGallery}
         onCopyImage={onGalleryCopyImage}
         onListItemClick={onGalleryListItemClick}

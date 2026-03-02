@@ -77,6 +77,7 @@ export interface AppSettings {
   galleryDisplayMode: GalleryDisplayMode;
   galleryScrollDirection: GalleryScrollDirection;
   galleryWheelMode: GalleryWheelMode;
+  galleryListMaxVisibleItems: number;
   windowPlacement: WindowPlacementSettings;
 }
 
