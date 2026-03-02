@@ -312,7 +312,7 @@ export const ClipItemComponent = React.memo(
       emitClipItemHudSnapshot();
       void TauriService.setClipItemHudMousePassthrough(false);
       void TauriService.showClipItemHud();
-      const mode = clipItemHudTriggerSourceRef.current === 'mouse' && triggerMouseMode === 'press_release' ? 'radial' : 'linear';
+        const mode = clipItemHudTriggerSourceRef.current === 'mouse' ? 'radial' : 'linear';
       void TauriService.positionClipItemHudNearCursor(mode);
       clipItemHudVisibleRef.current = true;
     }, [canShowClipItemHud, emitClipItemHudSnapshot]);
@@ -373,6 +373,11 @@ export const ClipItemComponent = React.memo(
         if (triggerMouseMode === 'press_release') {
           clipItemHudMouseButtonPressedRef.current = true;
           clipItemHudTriggerSourceRef.current = 'mouse';
+          try {
+            (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+          } catch (err) {
+            console.warn(err);
+          }
           showClipItemHudAtCursor();
         }
       }
@@ -410,7 +415,7 @@ export const ClipItemComponent = React.memo(
           void TauriService.setClipItemHudMousePassthrough(false);
           void TauriService.showClipItemHud();
 
-          void TauriService.positionClipItemHudNearCursor('linear');
+          void TauriService.positionClipItemHudNearCursor('radial');
           clipItemHudVisibleRef.current = true;
         }
         return;

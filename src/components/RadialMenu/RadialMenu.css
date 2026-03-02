@@ -3,6 +3,8 @@
   width: 320px;
   height: 320px;
   pointer-events: auto;
+  touch-action: none;
+  user-select: none;
   background-color: rgba(0, 0, 0, 0.01);
   font-family: system-ui, sans-serif;
   z-index: 9999;

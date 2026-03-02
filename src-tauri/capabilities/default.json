@@ -5,6 +5,11 @@
   "windows": ["main", "download-hud", "clipitem-hud"],
   "permissions": [
     "core:default",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:event:allow-emit",
+    "core:event:allow-emit-to",
     "core:window:default",
     "core:window:allow-hide",
     "core:window:allow-show",

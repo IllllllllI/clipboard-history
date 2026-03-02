@@ -23,6 +23,7 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
 
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
+      // console.log('[RadialMenu] pointermove', e.clientX, e.clientY);
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
@@ -57,6 +58,7 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
     };
 
     const handlePointerUp = async (e: PointerEvent) => {
+      // console.log('[RadialMenu] pointerup', activeIndex);
       if (activeIndex !== null) {
         const action = actions[activeIndex];
         await executeAction(action.id, clipItem);
