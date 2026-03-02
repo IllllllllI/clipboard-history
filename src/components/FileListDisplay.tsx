@@ -16,7 +16,7 @@ import './styles/file-list-display.css';
 /** 
  * 模块级图标缓存（KEY: 可能是扩展名，也可能是特定文件路径） 
  */
-const iconCache = new Map<string, string | null>();
+const iconCache = new Map<string, string>();
 const ICON_CACHE_LIMIT = 400;
 /** 去重正在进行中的请求 */
 const pendingRequests = new Map<string, Promise<string | null>>();
@@ -28,11 +28,18 @@ function getCachedIcon(cacheKey: string): { hit: boolean; value: string | null }
 
   const value = iconCache.get(cacheKey) ?? null;
   iconCache.delete(cacheKey);
-  iconCache.set(cacheKey, value);
+  if (value) {
+    iconCache.set(cacheKey, value);
+  }
   return { hit: true, value };
 }
 
 function setCachedIcon(cacheKey: string, value: string | null): void {
+  if (value == null) {
+    iconCache.delete(cacheKey);
+    return;
+  }
+
   if (iconCache.has(cacheKey)) {
     iconCache.delete(cacheKey);
   }
@@ -54,6 +61,9 @@ function setCachedIcon(cacheKey: string, value: string | null): void {
  */
 function useSystemFileIcon(filePath: string): string | null {
   const ext = getFileExtension(filePath);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryAttemptRef = useRef(0);
+  const [retryToken, setRetryToken] = useState(0);
   
   // 对于 .exe, .lnk 等特殊文件，图标通常是文件特定的，需要按完整路径获取
   // 其他文件类型通常共享同类型的图标，按扩展名获取即可（节省资源）
@@ -67,6 +77,22 @@ function useSystemFileIcon(filePath: string): string | null {
     const cached = getCachedIcon(cacheKey);
     return cached.hit ? cached.value : null;
   });
+
+  useEffect(() => {
+    retryAttemptRef.current = 0;
+    setRetryToken(0);
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+
+    return () => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, [cacheKey]);
 
   useEffect(() => {
     // 检查缓存
@@ -89,14 +115,46 @@ function useSystemFileIcon(filePath: string): string | null {
       setCachedIcon(cacheKey, result);
       pendingRequests.delete(cacheKey);
       setIcon(result);
+
+      if (result) {
+        retryAttemptRef.current = 0;
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+        return;
+      }
+
+      if (retryAttemptRef.current < 2) {
+        retryAttemptRef.current += 1;
+        const delayMs = 180 * retryAttemptRef.current;
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+        }
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          setRetryToken((v) => v + 1);
+        }, delayMs);
+      }
     }).catch(err => {
       console.warn("Failed to load icon:", cacheKey, err);
-      // 失败后缓存 null 防止反复请求（例如文件不存在）
       setCachedIcon(cacheKey, null);
       pendingRequests.delete(cacheKey);
       setIcon(null);
+
+      if (retryAttemptRef.current < 2) {
+        retryAttemptRef.current += 1;
+        const delayMs = 220 * retryAttemptRef.current;
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+        }
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          setRetryToken((v) => v + 1);
+        }, delayMs);
+      }
     });
-  }, [filePath, ext, cacheKey]);
+  }, [cacheKey, retryToken]);
 
   return icon;
 }

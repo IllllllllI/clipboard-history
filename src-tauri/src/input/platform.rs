@@ -383,7 +383,9 @@ pub async fn get_file_icon(input: String) -> Result<Option<String>, AppError> {
         .map_err(|e| AppError::Input(format!("图标任务执行失败: {}", e)))??;
 
     if let Ok(mut cache) = FILE_ICON_CACHE.lock() {
-        cache.put(cache_key, icon.clone());
+        if icon.is_some() {
+            cache.put(cache_key, icon.clone());
+        }
     }
 
     Ok(icon)
