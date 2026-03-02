@@ -132,7 +132,7 @@ export interface ImageDownloadProgressEvent {
   error_message?: string;
 }
 
-export type ClipItemHudActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete';
+export type ClipItemHudActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste';
 
 export interface ClipItemHudSnapshot {
   itemId: number;

@@ -123,6 +123,16 @@ export const TauriService = {
     await invoke<void>('set_clipitem_hud_mouse_passthrough', { passthrough });
   },
 
+  async emitClipItemHudGlobalPointerUp(): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(CLIPITEM_HUD_WINDOW_LABEL, 'clipitem-hud-global-pointer-up', {});
+  },
+
+  async listenClipItemHudGlobalPointerUp(handler: () => void): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen('clipitem-hud-global-pointer-up', () => handler());
+  },
+
   async emitClipItemHudSnapshot(snapshot: ClipItemHudSnapshot): Promise<void> {
     if (!isTauri) return;
     await emitTo(CLIPITEM_HUD_WINDOW_LABEL, CLIPITEM_HUD_SNAPSHOT_EVENT, snapshot);

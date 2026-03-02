@@ -57,6 +57,7 @@ export default function ClipItemHudApp() {
   }, []);
 
   const sendAction = (action: ClipItemHudActionType) => {
+    console.log('[HUD Window] sendAction:', action);
     if (!snapshot) return;
     void TauriService.emitClipItemHudAction({
       itemId: snapshot.itemId,

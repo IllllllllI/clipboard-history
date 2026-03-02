@@ -423,6 +423,9 @@ export const ClipItemComponent = React.memo(
 
       clipItemHudMouseButtonPressedRef.current = false;
       if (!clipItemHudAltPressedRef.current) {
+        if (clipItemHudTriggerSourceRef.current === 'mouse') {
+          void TauriService.emitClipItemHudGlobalPointerUp();
+        }
         setTimeout(() => {
           if (!clipItemHudAltPressedRef.current && !clipItemHudMouseButtonPressedRef.current) {
             hideClipItemHud();

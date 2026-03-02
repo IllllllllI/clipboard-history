@@ -252,6 +252,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     let unlisten: (() => void) | null = null;
 
     void TauriService.listenClipItemHudAction((payload) => {
+      console.log('[Main Window] received action:', payload);
       if (!mounted) return;
 
       const target = historyRef.current.find((item) => item.id === payload.itemId);
@@ -259,6 +260,15 @@ function AppBridge({ children }: { children: React.ReactNode }) {
 
       if (payload.action === 'copy') {
         void copyToClipboardRef.current(target);
+        return;
+      }
+
+      if (payload.action === 'paste') {
+        void copyToClipboardRef.current(target).then(() => {
+          setTimeout(() => {
+            void TauriService.pasteText(true);
+          }, 150);
+        });
         return;
       }
 

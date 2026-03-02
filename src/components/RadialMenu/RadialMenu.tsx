@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import './RadialMenu.css';
 import { ClipItem, ClipItemHudSnapshot } from '../../types';
+import { TauriService } from '../../services/tauri';
 
 interface RadialMenuProps {
   snapshot: ClipItemHudSnapshot;
@@ -64,8 +65,13 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
       setActiveIndex(nearestIndex);
     };
 
-    const handlePointerUp = async (e: PointerEvent) => {
-      // console.log('[RadialMenu] pointerup', activeIndexRef.current);
+    const handledRef = useRef(false);
+
+    const handlePointerUp = async (e?: PointerEvent) => {
+      console.log('[RadialMenu] pointerup', activeIndexRef.current);
+      if (handledRef.current) return;
+      handledRef.current = true;
+
       if (activeIndexRef.current !== null) {
         const action = actions[activeIndexRef.current];
         await executeAction(action.id, clipItemRef.current);
@@ -74,16 +80,25 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
       }
     };
 
-    const executeAction = async (actionId: string, item: any) => { onActionComplete(actionId); };
+    const executeAction = async (actionId: string, item: any) => { 
+      console.log('[RadialMenu] executeAction', actionId);
+      onActionComplete(actionId); 
+    };
+
+    let unlisten: (() => void) | null = null;
+    TauriService.listenClipItemHudGlobalPointerUp(() => {
+      handlePointerUp();
+    }).then(u => unlisten = u);
 
     window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp, true);
-    window.addEventListener('mouseup', handlePointerUp, true);
+    window.addEventListener('pointerup', handlePointerUp as any, true);
+    window.addEventListener('mouseup', handlePointerUp as any, true);
 
     return () => {
+      if (unlisten) unlisten();
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp, true);
-      window.removeEventListener('mouseup', handlePointerUp, true);
+      window.removeEventListener('pointerup', handlePointerUp as any, true);
+      window.removeEventListener('mouseup', handlePointerUp as any, true);
     };
   }, [actions, onActionComplete, onCancel]);
 
