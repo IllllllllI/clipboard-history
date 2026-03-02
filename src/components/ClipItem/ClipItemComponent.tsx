@@ -412,7 +412,11 @@ export const ClipItemComponent = React.memo(
 
       clipItemHudMouseButtonPressedRef.current = false;
       if (!clipItemHudAltPressedRef.current) {
-        hideClipItemHud();
+        setTimeout(() => {
+          if (!clipItemHudAltPressedRef.current && !clipItemHudMouseButtonPressedRef.current) {
+            hideClipItemHud();
+          }
+        }, 150);
       }
     }, [clearSuppressActiveFeedback, emitClipItemHudSnapshot, hideClipItemHud, triggerMouseMode, triggerPointerButton]);
 
