@@ -41,9 +41,11 @@ interface ClipItemContentProps {
   galleryListMaxVisibleItems: number;
   fileListMaxVisibleItems: number;
   onFileListItemClick: (filePath: string) => void;
+  onFileListItemDragStart: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
   onGalleryDisplayModeChange: (mode: GalleryDisplayMode) => void;
   onGalleryScrollDirectionChange: (dir: GalleryScrollDirection) => void;
   onGalleryListItemClick: (url: string) => void;
+  onGalleryListItemDragStart: (e: React.DragEvent<HTMLDivElement>, url: string) => void;
   onGalleryCopyImage: (url: string) => void;
   onUpdatePickedColor: (id: number, color: string | null) => Promise<void>;
   onCopyAsNewColor: (color: string) => Promise<void>;
@@ -68,9 +70,11 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   galleryListMaxVisibleItems,
   fileListMaxVisibleItems,
   onFileListItemClick,
+  onFileListItemDragStart,
   onGalleryDisplayModeChange,
   onGalleryScrollDirectionChange,
   onGalleryListItemClick,
+  onGalleryListItemDragStart,
   onGalleryCopyImage,
   onUpdatePickedColor,
   onCopyAsNewColor,
@@ -225,6 +229,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         isSelected={isSelected}
         darkMode={darkMode}
         onItemCopy={onFileListItemClick}
+        onItemDragStart={onFileListItemDragStart}
         maxVisibleItems={fileListMaxVisibleItems}
       />
     );
@@ -364,6 +369,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         isFileGallery={showFilesAsGallery}
         onCopyImage={onGalleryCopyImage}
         onListItemClick={onGalleryListItemClick}
+        onListItemDragStart={onGalleryListItemDragStart}
         onDisplayModeChange={onGalleryDisplayModeChange}
         onScrollDirectionChange={onGalleryScrollDirectionChange}
       />

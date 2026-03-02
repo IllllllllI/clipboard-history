@@ -2,7 +2,7 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from '
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection } from '../../types';
-import { formatDate, detectType, detectImageType, isFileList, decodeFileList } from '../../utils';
+import { formatDate, detectType, detectImageType, isFileList, decodeFileList, encodeFileList } from '../../utils';
 import { hexToRgba } from '../../utils/color';
 import { ClipboardDB } from '../../services/db';
 import { useAppContext } from '../../contexts/AppContext';
@@ -123,6 +123,10 @@ export const ClipItemComponent = React.memo(
       );
     }, [copyToClipboard, item]);
 
+    const handleGalleryListItemDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, url: string) => {
+      void handleDragStart(e, url);
+    }, [handleDragStart]);
+
     const handleGalleryCopyImage = useCallback((url: string) => {
       void copyToClipboard(
         { ...item, text: url },
@@ -132,10 +136,14 @@ export const ClipItemComponent = React.memo(
 
     const handleFileListItemClick = useCallback((filePath: string) => {
       void copyToClipboard(
-        { ...item, text: filePath },
+        { ...item, text: encodeFileList([filePath]) },
         { suppressCopiedIdFeedback: true },
       );
     }, [copyToClipboard, item]);
+
+    const handleFileListItemDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, filePath: string) => {
+      void handleDragStart(e, filePath);
+    }, [handleDragStart]);
 
     const handleCopyAsNewColor = useCallback(
       async (color: string) => {
@@ -242,9 +250,11 @@ export const ClipItemComponent = React.memo(
             galleryListMaxVisibleItems={settings.galleryListMaxVisibleItems}
             fileListMaxVisibleItems={settings.fileListMaxVisibleItems}
             onFileListItemClick={handleFileListItemClick}
+            onFileListItemDragStart={handleFileListItemDragStart}
             onGalleryDisplayModeChange={handleGalleryDisplayModeChange}
             onGalleryScrollDirectionChange={handleGalleryScrollDirectionChange}
             onGalleryListItemClick={handleGalleryListItemClick}
+            onGalleryListItemDragStart={handleGalleryListItemDragStart}
             onGalleryCopyImage={handleGalleryCopyImage}
             onUpdatePickedColor={handleUpdatePickedColor}
             onCopyAsNewColor={handleCopyAsNewColor}

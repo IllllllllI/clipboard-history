@@ -139,6 +139,7 @@ interface FileItemProps {
   compact?: boolean;
   copied?: boolean;
   onCopy?: (filePath: string) => void;
+  onDragStartItem?: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
 }
 
 const FileItem = React.memo(function FileItem({
@@ -149,6 +150,7 @@ const FileItem = React.memo(function FileItem({
   compact = false,
   copied = false,
   onCopy,
+  onDragStartItem,
 }: FileItemProps) {
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'success' | 'error'>('idle');
   const openingDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -226,6 +228,11 @@ const FileItem = React.memo(function FileItem({
     onCopy?.(filePath);
   };
 
+  const handleDragStartItem = (e: React.DragEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    onDragStartItem?.(e, filePath);
+  };
+
   const handleFileDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -256,9 +263,11 @@ const FileItem = React.memo(function FileItem({
       data-open-state={openState}
       role="button"
       tabIndex={0}
+      draggable
       title={`${filePath}\n点击复制文件路径，双击打开文件\n${statusTitle}`}
       onClick={handleCopyItem}
       onKeyDown={handleCopyByKeyboard}
+      onDragStart={handleDragStartItem}
       onDoubleClick={handleFileDoubleClick}
     >
       {/* 系统图标优先，回退到 lucide 图标 */}
@@ -326,10 +335,11 @@ interface FileListDisplayProps {
   isSelected: boolean;
   darkMode: boolean;
   onItemCopy?: (filePath: string) => void;
+  onItemDragStart?: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
   maxVisibleItems?: number;
 }
 
-export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode, onItemCopy, maxVisibleItems = 5 }: FileListDisplayProps) {
+export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode, onItemCopy, onItemDragStart, maxVisibleItems = 5 }: FileListDisplayProps) {
   const isSingle = files.length === 1;
   const normalizedMaxVisibleItems = Math.min(30, Math.max(1, Math.trunc(maxVisibleItems)));
   const [expanded, setExpanded] = useState(false);
@@ -384,6 +394,7 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
             compact={!isSingle}
             copied={copiedIndex === i}
             onCopy={(filePath) => handleItemCopy(i, filePath)}
+            onDragStartItem={onItemDragStart}
           />
         ))}
       </div>

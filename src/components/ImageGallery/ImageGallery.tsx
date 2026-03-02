@@ -41,6 +41,8 @@ export interface ImageGalleryProps {
   onCopyImage?: (url: string) => void;
   /** 列表模式下点击条目回调（通常复制当前条目） */
   onListItemClick?: (url: string) => void;
+  /** 列表模式下拖拽单条目回调（通常触发单项拖拽粘贴） */
+  onListItemDragStart?: (e: React.DragEvent<HTMLDivElement>, url: string) => void;
   /** 显示模式 */
   displayMode?: GalleryDisplayMode;
   /** 滚动方向（仅 carousel 生效） */
@@ -116,11 +118,12 @@ interface GridCellProps {
   isOverflowCell: boolean;
   theme: string;
   onClick: (url: string) => void;
+  onDragStart?: (e: React.DragEvent<HTMLDivElement>, url: string) => void;
   onCopy?: (url: string) => void;
   copied: boolean;
 }
 
-const GridCell = React.memo(function GridCell({ url, index, overflowCount, isOverflowCell, theme, onClick, onCopy, copied }: GridCellProps) {
+const GridCell = React.memo(function GridCell({ url, index, overflowCount, isOverflowCell, theme, onClick, onDragStart, onCopy, copied }: GridCellProps) {
   const src = resolveImageSrc(url);
 
   return (
@@ -129,7 +132,12 @@ const GridCell = React.memo(function GridCell({ url, index, overflowCount, isOve
       data-theme={theme}
       role="button"
       tabIndex={0}
+      draggable
       onClick={(e) => { e.stopPropagation(); onClick(url); }}
+      onDragStart={(e) => {
+        e.stopPropagation();
+        onDragStart?.(e, url);
+      }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         e.preventDefault();
@@ -196,6 +204,7 @@ export const ImageGallery = React.memo(function ImageGallery({
   onImageClick,
   onCopyImage,
   onListItemClick,
+  onListItemDragStart,
   displayMode = 'carousel',
   scrollDirection = 'horizontal',
   wheelMode = 'ctrl',
@@ -385,6 +394,9 @@ export const ImageGallery = React.memo(function ImageGallery({
                 setActiveIndex(i);
                 onImageClick?.(u);
               }}
+              onDragStart={(e, u) => {
+                onListItemDragStart?.(e, u);
+              }}
               onCopy={triggerCopyImage}
               copied={copiedImageUrl === url}
             />
@@ -432,10 +444,15 @@ export const ImageGallery = React.memo(function ImageGallery({
                 data-copied={copiedListIndex === i ? 'true' : 'false'}
                 role="button"
                 tabIndex={0}
+                draggable
                 onClick={(e) => {
                   e.stopPropagation();
                   setActiveIndex(i);
                   triggerListItemCopy(i, url);
+                }}
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  onListItemDragStart?.(e, url);
                 }}
                 onKeyDown={(e) => {
                   if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -591,7 +608,14 @@ export const ImageGallery = React.memo(function ImageGallery({
 
       {/* 主区域：overlay 箭头 + 主图 + 浮动计数 */}
       <div className="img-gallery__carousel-stage" data-theme={theme}>
-        <div className="img-gallery__main-image">
+        <div
+          className="img-gallery__main-image"
+          draggable
+          onDragStart={(e) => {
+            e.stopPropagation();
+            onListItemDragStart?.(e, activeImageUrl);
+          }}
+        >
           <ImageDisplay
             item={activeImageItem}
             darkMode={darkMode}

@@ -201,7 +201,7 @@ describe('ClipItem + ImageGallery list interaction', () => {
     expect(mockCopyToClipboard).toHaveBeenCalledWith(
       expect.objectContaining({
         id: item.id,
-        text: 'C:\\A\\one.txt',
+        text: '[FILES]\nC:\\A\\one.txt',
       }),
       { suppressCopiedIdFeedback: true },
     );
@@ -229,5 +229,91 @@ describe('ClipItem + ImageGallery list interaction', () => {
 
     fireEvent.click(container.querySelector('.file-list-display__toggle-btn')!);
     expect(container.querySelectorAll('.file-list-item')).toHaveLength(1);
+  });
+
+  it('文件列表拖拽单条目时应走单文件拖拽链路', () => {
+    const item = createFileListItem();
+    const mockHandleDragStart = vi.fn();
+    (useAppContext as any).mockReturnValue(
+      createMockContext({
+        selectedIndex: 0,
+        handleDragStart: mockHandleDragStart,
+      }),
+    );
+
+    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const fileRows = container.querySelectorAll('.file-list-item');
+    expect(fileRows).toHaveLength(2);
+
+    fireEvent.dragStart(fileRows[1]);
+
+    expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'C:\\B\\two.md');
+  });
+
+  it('图片列表拖拽单条目时应走单条 URL 拖拽链路', () => {
+    const item = createMultiImageItem();
+    const mockHandleDragStart = vi.fn();
+    (useAppContext as any).mockReturnValue(
+      createMockContext({
+        selectedIndex: 0,
+        handleDragStart: mockHandleDragStart,
+      }),
+    );
+
+    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const imageRows = container.querySelectorAll('.img-gallery__list-row');
+    expect(imageRows).toHaveLength(2);
+
+    fireEvent.dragStart(imageRows[1]);
+
+    expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png');
+  });
+
+  it('图片轮播模式拖拽主图时应走当前图片 URL 拖拽链路', () => {
+    const item = createMultiImageItem();
+    const mockHandleDragStart = vi.fn();
+    (useAppContext as any).mockReturnValue(
+      createMockContext({
+        selectedIndex: 0,
+        handleDragStart: mockHandleDragStart,
+        settings: {
+          ...defaultSettings,
+          galleryDisplayMode: 'carousel',
+        },
+      }),
+    );
+
+    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    fireEvent.click(container.querySelector('button[aria-label="下一张"]')!);
+    fireEvent.dragStart(container.querySelector('.img-gallery__main-image')!);
+
+    expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png');
+  });
+
+  it('图片宫格模式拖拽单格时应走对应图片 URL 拖拽链路', () => {
+    const item = createMultiImageItem();
+    const mockHandleDragStart = vi.fn();
+    (useAppContext as any).mockReturnValue(
+      createMockContext({
+        selectedIndex: 0,
+        handleDragStart: mockHandleDragStart,
+        settings: {
+          ...defaultSettings,
+          galleryDisplayMode: 'grid',
+        },
+      }),
+    );
+
+    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const gridCells = container.querySelectorAll('.img-gallery__grid-cell');
+    expect(gridCells).toHaveLength(2);
+
+    fireEvent.dragStart(gridCells[1]);
+
+    expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png');
   });
 });

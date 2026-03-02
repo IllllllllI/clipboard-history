@@ -12,7 +12,7 @@ import { PhysicalPosition } from '@tauri-apps/api/window';
 import { ClipItem, AppSettings, DownloadState, ImageType } from '../types';
 import { executeCopyStrategy, resolveCopyStrategy } from '../services/copyRouter';
 import { TauriService, isTauri } from '../services/tauri';
-import { detectType, detectImageType, detectContentType, normalizeFilePath, isFileList } from '../utils';
+import { detectType, detectImageType, detectContentType, normalizeFilePath, isFileList, encodeFileList } from '../utils';
 
 // ============================================================================
 // 过滤类型
@@ -198,7 +198,8 @@ async function dispatchDragCopy(
 
   // 4) 普通文件
   if (detectContentType(text) === 'file') {
-    await copyFallback(normalizeFilePath(text));
+    const singleFileListPayload = encodeFileList([normalizeFilePath(text)]);
+    await copyToClipboard(textFallbackItem(singleFileListPayload));
     return;
   }
 
