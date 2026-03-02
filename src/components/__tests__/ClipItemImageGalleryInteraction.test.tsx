@@ -78,6 +78,17 @@ const createMultiImageItem = (): ClipItem => ({
   picked_color: null,
 });
 
+const createFileListItem = (): ClipItem => ({
+  id: 77,
+  text: '[FILES]\nC:\\A\\one.txt\nC:\\B\\two.md',
+  timestamp: Date.now(),
+  is_pinned: 0,
+  is_snippet: 0,
+  is_favorite: 0,
+  tags: [],
+  picked_color: null,
+});
+
 describe('ClipItem + ImageGallery list interaction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -156,5 +167,32 @@ describe('ClipItem + ImageGallery list interaction', () => {
       }),
       { suppressCopiedIdFeedback: true },
     );
+  });
+
+  it('文件列表模式点击条目时复制单条文件路径并触发本地 copied 态', () => {
+    const mockCopyToClipboard = vi.fn();
+    const item = createFileListItem();
+    (useAppContext as any).mockReturnValue(
+      createMockContext({
+        selectedIndex: 0,
+        copyToClipboard: mockCopyToClipboard,
+      }),
+    );
+
+    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const fileRows = container.querySelectorAll('.file-list-item');
+    expect(fileRows).toHaveLength(2);
+
+    fireEvent.click(fileRows[0]);
+
+    expect(mockCopyToClipboard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: item.id,
+        text: 'C:\\A\\one.txt',
+      }),
+      { suppressCopiedIdFeedback: true },
+    );
+    expect(fileRows[0].getAttribute('data-copied')).toBe('true');
+    expect(container.querySelectorAll('.file-list-item__copy-mark[data-visible="true"]')).toHaveLength(1);
   });
 });

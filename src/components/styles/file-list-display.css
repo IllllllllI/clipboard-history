@@ -32,6 +32,11 @@
   transform: scale(0.99);
 }
 
+.file-list-item[data-copied='true'] {
+  border-color: rgb(99 102 241 / 0.34);
+  background: rgb(99 102 241 / 0.1);
+}
+
 .file-list-item[data-compact='true'] {
   padding: 0.25rem 0.5rem;
 }
@@ -145,6 +150,29 @@
 
 .file-list-item[data-selected='false'][data-theme='dark'] .file-list-item__name {
   color: #d4d4d4;
+}
+
+.file-list-item__copy-mark {
+  width: 0.875rem;
+  height: 0.875rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.file-list-item__copy-mark[data-visible='true'] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.file-list-item__copy-mark-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  color: #6366f1;
 }
 
 .file-list-item__status {

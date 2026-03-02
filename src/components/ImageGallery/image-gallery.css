@@ -452,7 +452,6 @@
 .img-gallery__list-row[data-copied='true'] {
   border-color: rgb(99 102 241 / 0.34);
   background: rgb(99 102 241 / 0.1);
-  animation: img-gallery-copy-pulse 300ms ease-out;
 }
 
 .img-gallery__list-row-index {

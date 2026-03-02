@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   File, FileText, FileCode2, FileImage, FileVideo2, FileAudio,
   FileArchive, FileSpreadsheet, FileType, Folder,
-  ExternalLink, FolderOpen, Loader2, CircleCheck, CircleAlert,
+  ExternalLink, FolderOpen, Loader2, CircleCheck, CircleAlert, Check,
 } from 'lucide-react';
 import { getFileName, getFileExtension, getFileCategory, type FileCategory } from '../utils';
 import { TauriService } from '../services/tauri';
+import { COPY_FEEDBACK_DURATION_MS } from '../constants';
 import './styles/file-list-display.css';
 
 // ============================================================================
@@ -136,6 +137,8 @@ interface FileItemProps {
   darkMode: boolean;
   showActions: boolean;
   compact?: boolean;
+  copied?: boolean;
+  onCopy?: (filePath: string) => void;
 }
 
 const FileItem = React.memo(function FileItem({
@@ -144,6 +147,8 @@ const FileItem = React.memo(function FileItem({
   darkMode,
   showActions,
   compact = false,
+  copied = false,
+  onCopy,
 }: FileItemProps) {
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'success' | 'error'>('idle');
   const openingDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -209,6 +214,18 @@ const FileItem = React.memo(function FileItem({
     TauriService.openFileLocation(filePath);
   };
 
+  const handleCopyItem = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    onCopy?.(filePath);
+  };
+
+  const handleCopyByKeyboard = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.stopPropagation();
+    onCopy?.(filePath);
+  };
+
   const handleFileDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -234,9 +251,14 @@ const FileItem = React.memo(function FileItem({
       data-theme={darkMode ? 'dark' : 'light'}
       data-selected={isSelected ? 'true' : 'false'}
       data-compact={compact ? 'true' : 'false'}
+      data-copied={copied ? 'true' : 'false'}
       data-openable="true"
       data-open-state={openState}
-      title={`${filePath}\n${statusTitle}`}
+      role="button"
+      tabIndex={0}
+      title={`${filePath}\n点击复制文件路径，双击打开文件\n${statusTitle}`}
+      onClick={handleCopyItem}
+      onKeyDown={handleCopyByKeyboard}
       onDoubleClick={handleFileDoubleClick}
     >
       {/* 系统图标优先，回退到 lucide 图标 */}
@@ -259,6 +281,10 @@ const FileItem = React.memo(function FileItem({
         title={filePath}
       >
         {fileName}
+      </span>
+
+      <span className="file-list-item__copy-mark" data-visible={copied ? 'true' : 'false'} aria-hidden="true">
+        <Check className="file-list-item__copy-mark-icon" />
       </span>
 
       <span className="file-list-item__status" data-state={openState} aria-hidden="true">
@@ -299,12 +325,35 @@ interface FileListDisplayProps {
   files: string[];
   isSelected: boolean;
   darkMode: boolean;
+  onItemCopy?: (filePath: string) => void;
 }
 
-export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode }: FileListDisplayProps) {
+export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode, onItemCopy }: FileListDisplayProps) {
   const isSingle = files.length === 1;
   const displayFiles = files.slice(0, 5); // 最多显示 5 个文件
   const remaining = files.length - displayFiles.length;
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleItemCopy = useCallback((index: number, filePath: string) => {
+    onItemCopy?.(filePath);
+    setCopiedIndex(index);
+    if (copiedTimerRef.current) {
+      clearTimeout(copiedTimerRef.current);
+    }
+    copiedTimerRef.current = setTimeout(() => {
+      setCopiedIndex(null);
+      copiedTimerRef.current = null;
+    }, COPY_FEEDBACK_DURATION_MS);
+  }, [onItemCopy]);
 
   return (
     <div
@@ -323,6 +372,8 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
             darkMode={darkMode}
             showActions={isSingle}
             compact={!isSingle}
+            copied={copiedIndex === i}
+            onCopy={(filePath) => handleItemCopy(i, filePath)}
           />
         ))}
       </div>
