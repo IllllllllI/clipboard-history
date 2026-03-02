@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 import { register, unregister, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -8,11 +8,17 @@ import type {
   ImageAdvancedConfig,
   ImageDownloadProgressEvent,
   ImagePerformanceProfile,
+  ClipItemHudActionEvent,
+  ClipItemHudSnapshot,
   WindowPlacementSettings,
 } from '../types';
 
 export const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 const IMAGE_DOWNLOAD_PROGRESS_EVENT = 'image-download-progress';
+const CLIPITEM_HUD_SNAPSHOT_EVENT = 'clipitem-hud-snapshot';
+const CLIPITEM_HUD_ACTION_EVENT = 'clipitem-hud-action';
+const MAIN_WINDOW_LABEL = 'main';
+const CLIPITEM_HUD_WINDOW_LABEL = 'clipitem-hud';
 
 // ============================================================================
 // 工具函数
@@ -95,6 +101,54 @@ export const TauriService = {
   async positionDownloadHudNearCursor(): Promise<void> {
     if (!isTauri) return;
     await invoke<void>('position_download_hud_near_cursor');
+  },
+
+  async showClipItemHud(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('show_clipitem_hud');
+  },
+
+  async hideClipItemHud(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('hide_clipitem_hud');
+  },
+
+  async positionClipItemHudNearCursor(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('position_clipitem_hud_near_cursor');
+  },
+
+  async setClipItemHudMousePassthrough(passthrough: boolean): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('set_clipitem_hud_mouse_passthrough', { passthrough });
+  },
+
+  async emitClipItemHudSnapshot(snapshot: ClipItemHudSnapshot): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(CLIPITEM_HUD_WINDOW_LABEL, CLIPITEM_HUD_SNAPSHOT_EVENT, snapshot);
+  },
+
+  async listenClipItemHudSnapshot(
+    handler: (payload: ClipItemHudSnapshot) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<ClipItemHudSnapshot>(CLIPITEM_HUD_SNAPSHOT_EVENT, (event) => {
+      handler(event.payload);
+    });
+  },
+
+  async emitClipItemHudAction(action: ClipItemHudActionEvent): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(MAIN_WINDOW_LABEL, CLIPITEM_HUD_ACTION_EVENT, action);
+  },
+
+  async listenClipItemHudAction(
+    handler: (payload: ClipItemHudActionEvent) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<ClipItemHudActionEvent>(CLIPITEM_HUD_ACTION_EVENT, (event) => {
+      handler(event.payload);
+    });
   },
 
   async handleGlobalShortcut(placement?: WindowPlacementSettings): Promise<void> {

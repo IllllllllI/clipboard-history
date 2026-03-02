@@ -1,6 +1,6 @@
 import React from 'react';
 import type { WindowSettingsPanelProps } from './types';
-import type { WindowPlacementMode, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode, CompactMetaDisplayMode } from '../../types';
+import type { WindowPlacementMode, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode, CompactMetaDisplayMode, ClipItemHudTriggerKey, ClipItemHudTriggerMouseButton, ClipItemHudTriggerMouseMode } from '../../types';
 
 export function WindowSettingsPanel({
   dark,
@@ -46,6 +46,22 @@ export function WindowSettingsPanel({
     { value: 'inside', label: '始终窗口内占位', desc: '时间与悬浮按钮始终占据条目右侧布局空间' },
     { value: 'auto', label: '自动（推荐）', desc: '空间充足时占位；窄宽度自动改为覆盖显示，释放内容区' },
     { value: 'overlay', label: '始终覆盖显示', desc: '时间与悬浮按钮始终覆盖在条目上，不占用内容布局宽度' },
+  ];
+
+  const clipItemHudTriggerKeyOptions: { value: ClipItemHudTriggerKey; label: string; desc: string }[] = [
+    { value: 'alt', label: 'Alt', desc: '按住 Alt 显示条目 HUD，松开立即隐藏' },
+    { value: 'ctrl', label: 'Ctrl', desc: '按住 Ctrl 显示条目 HUD，松开立即隐藏' },
+    { value: 'shift', label: 'Shift', desc: '按住 Shift 显示条目 HUD，松开立即隐藏' },
+  ];
+
+  const clipItemHudTriggerMouseButtonOptions: { value: ClipItemHudTriggerMouseButton; label: string; desc: string }[] = [
+    { value: 'middle', label: '中键（默认）', desc: '按住鼠标中键显示条目 HUD，松开关闭' },
+    { value: 'right', label: '右键', desc: '按住鼠标右键显示条目 HUD，松开关闭' },
+  ];
+
+  const clipItemHudTriggerMouseModeOptions: { value: ClipItemHudTriggerMouseMode; label: string; desc: string }[] = [
+    { value: 'press_release', label: '按下显示，松开触发', desc: '按住触发按钮显示 HUD，移动到按钮后松开即可触发该操作' },
+    { value: 'click', label: '点击显示', desc: '点击触发按钮显示 HUD，再点击 HUD 按钮执行操作' },
   ];
 
   return (
@@ -221,6 +237,104 @@ export function WindowSettingsPanel({
             );
           })}
         </div>
+
+        <p className="sm-panel__muted">条目 HUD 触发键</p>
+        <div className="sm-panel__option-grid">
+          {clipItemHudTriggerKeyOptions.map((opt) => {
+            const active = opt.value === settings.clipItemHudTriggerKey;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateSettings({ clipItemHudTriggerKey: opt.value })}
+                className="sm-panel__option-card"
+                data-active={active ? 'true' : 'false'}
+                data-theme={dark ? 'dark' : 'light'}
+              >
+                <div className="sm-panel__option-head">
+                  <div>
+                    <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                    <p className="sm-panel__option-desc">{opt.desc}</p>
+                  </div>
+                  <span
+                    className="sm-panel__option-indicator"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="sm-panel__muted">条目 HUD 鼠标触发按钮</p>
+        <div className="sm-panel__option-grid">
+          {clipItemHudTriggerMouseButtonOptions.map((opt) => {
+            const active = opt.value === settings.clipItemHudTriggerMouseButton;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateSettings({ clipItemHudTriggerMouseButton: opt.value })}
+                className="sm-panel__option-card"
+                data-active={active ? 'true' : 'false'}
+                data-theme={dark ? 'dark' : 'light'}
+              >
+                <div className="sm-panel__option-head">
+                  <div>
+                    <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                    <p className="sm-panel__option-desc">{opt.desc}</p>
+                  </div>
+                  <span
+                    className="sm-panel__option-indicator"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <p className="sm-panel__muted">条目 HUD 鼠标触发模式</p>
+        <div className="sm-panel__option-grid">
+          {clipItemHudTriggerMouseModeOptions.map((opt) => {
+            const active = opt.value === settings.clipItemHudTriggerMouseMode;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateSettings({ clipItemHudTriggerMouseMode: opt.value })}
+                className="sm-panel__option-card"
+                data-active={active ? 'true' : 'false'}
+                data-theme={dark ? 'dark' : 'light'}
+              >
+                <div className="sm-panel__option-head">
+                  <div>
+                    <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                    <p className="sm-panel__option-desc">{opt.desc}</p>
+                  </div>
+                  <span
+                    className="sm-panel__option-indicator"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <SettingRow
+          title="松开触发键时 HUD 保留策略"
+          desc="开启后：松开触发键时，若鼠标位于 HUD 内则不立即关闭；关闭后始终立即关闭"
+        >
+          <ToggleSwitch
+            dark={dark}
+            on={!!settings.clipItemHudKeepOpenOnHover}
+            onToggle={() => updateSettings({ clipItemHudKeepOpenOnHover: !settings.clipItemHudKeepOpenOnHover })}
+          />
+        </SettingRow>
       </section>
 
       <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>

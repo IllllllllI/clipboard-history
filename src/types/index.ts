@@ -26,6 +26,9 @@ export type GalleryDisplayMode = 'grid' | 'carousel' | 'list';
 export type GalleryScrollDirection = 'horizontal' | 'vertical';
 export type GalleryWheelMode = 'always' | 'ctrl';
 export type CompactMetaDisplayMode = 'inside' | 'auto' | 'overlay';
+export type ClipItemHudTriggerKey = 'alt' | 'ctrl' | 'shift';
+export type ClipItemHudTriggerMouseButton = 'middle' | 'right';
+export type ClipItemHudTriggerMouseMode = 'click' | 'press_release';
 
 export interface ImageAdvancedConfig {
   allow_private_network: boolean;
@@ -81,6 +84,10 @@ export interface AppSettings {
   galleryListMaxVisibleItems: number;
   fileListMaxVisibleItems: number;
   compactMetaDisplayMode: CompactMetaDisplayMode;
+  clipItemHudTriggerKey: ClipItemHudTriggerKey;
+  clipItemHudTriggerMouseButton: ClipItemHudTriggerMouseButton;
+  clipItemHudTriggerMouseMode: ClipItemHudTriggerMouseMode;
+  clipItemHudKeepOpenOnHover: boolean;
   windowPlacement: WindowPlacementSettings;
 }
 
@@ -123,4 +130,26 @@ export interface ImageDownloadProgressEvent {
   stage?: 'download' | 'format' | 'decode' | 'clipboard' | 'resource' | 'unknown';
   error_code?: ImageDownloadErrorCode;
   error_message?: string;
+}
+
+export type ClipItemHudActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete';
+
+export interface ClipItemHudSnapshot {
+  itemId: number;
+  dateLine: string;
+  timeLine: string;
+  isFavorite: boolean;
+  isPinned: boolean;
+  canEdit: boolean;
+  isCopied: boolean;
+  theme: 'light' | 'dark';
+  triggerKey: ClipItemHudTriggerKey;
+  triggerMouseButton: ClipItemHudTriggerMouseButton;
+  triggerMouseMode: ClipItemHudTriggerMouseMode;
+  keepOpenOnHover: boolean;
+}
+
+export interface ClipItemHudActionEvent {
+  itemId: number;
+  action: ClipItemHudActionType;
 }

@@ -5,6 +5,7 @@ import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection } from 
 import { formatDateParts, detectType, detectImageType, isFileList, decodeFileList, encodeFileList } from '../../utils';
 import { hexToRgba } from '../../utils/color';
 import { ClipboardDB } from '../../services/db';
+import { isTauri, TauriService } from '../../services/tauri';
 import { useAppContext } from '../../contexts/AppContext';
 import {
   TAG_LIST_ANIMATION_DURATION_MS,
@@ -60,6 +61,12 @@ export const ClipItemComponent = React.memo(
     const isSelected = selectedIndex === index;
     const [suppressActiveFeedback, setSuppressActiveFeedback] = useState(false);
     const [showFavoriteBurst, setShowFavoriteBurst] = useState(false);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const clipItemHudVisibleRef = useRef(false);
+    const clipItemHudAltPressedRef = useRef(false);
+    const clipItemHudMouseButtonPressedRef = useRef(false);
+    const clipItemHudMouseTriggerArmedRef = useRef(false);
+    const clipItemHudPointerInsideRef = useRef(false);
 
     // --- 衍生状态 ---
     const type = useMemo(() => detectType(item.text), [item.text]);
@@ -93,6 +100,36 @@ export const ClipItemComponent = React.memo(
         && filePaths.every((path) => detectImageType(path) === ImageType.LocalFile),
       [settings.showImagePreview, isFiles, filePaths],
     );
+    const shouldEnableClipItemHud = settings.compactMetaDisplayMode !== 'inside';
+    const triggerKey = settings.clipItemHudTriggerKey;
+    const triggerMouseButton = settings.clipItemHudTriggerMouseButton;
+    const triggerMouseMode = settings.clipItemHudTriggerMouseMode;
+    const triggerPointerButton = triggerMouseButton === 'right' ? 2 : 1;
+    const triggerPointerButtonMask = triggerMouseButton === 'right' ? 2 : 4;
+    const triggerKeyboardKey = useMemo(() => {
+      if (triggerKey === 'ctrl') return 'control';
+      return triggerKey;
+    }, [triggerKey]);
+
+    const canShowClipItemHud = useCallback(() => (
+      shouldEnableClipItemHud
+      && (clipItemHudAltPressedRef.current || clipItemHudMouseButtonPressedRef.current)
+      && clipItemHudPointerInsideRef.current
+    ), [shouldEnableClipItemHud]);
+
+    const isTriggerPressed = useCallback((event: Pick<KeyboardEvent, 'key'> | Pick<React.PointerEvent<HTMLDivElement>, 'altKey' | 'ctrlKey' | 'shiftKey'>) => {
+      if ('key' in event) {
+        return event.key.toLowerCase() === triggerKeyboardKey;
+      }
+
+      if (triggerKey === 'alt') return event.altKey;
+      if (triggerKey === 'ctrl') return event.ctrlKey;
+      return event.shiftKey;
+    }, [triggerKey, triggerKeyboardKey]);
+
+    const isTriggerMouseButtonPressed = useCallback((buttons: number) => (
+      (buttons & triggerPointerButtonMask) !== 0
+    ), [triggerPointerButtonMask]);
 
     // --- 图标 ---
     const IconComponent = useMemo(
@@ -214,17 +251,307 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
-    const handlePointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      const target = e.target as HTMLElement;
-      const isInteractiveTarget = Boolean(
-        target.closest('button, a, input, select, textarea, [role="button"]'),
-      );
-      setSuppressActiveFeedback(isInteractiveTarget);
-    }, []);
-
     const clearSuppressActiveFeedback = useCallback(() => {
       setSuppressActiveFeedback(false);
     }, []);
+
+    const { dateLine, timeLine } = useMemo(() => formatDateParts(item.timestamp), [item.timestamp]);
+
+    const emitClipItemHudSnapshot = useCallback(() => {
+      if (!isTauri || !shouldEnableClipItemHud) return;
+
+      void TauriService.emitClipItemHudSnapshot({
+        itemId: item.id,
+        dateLine,
+        timeLine,
+        isFavorite,
+        isPinned: Boolean(item.is_pinned),
+        canEdit: !isFiles && !isImage,
+        isCopied: copiedId === item.id,
+        theme: settings.darkMode ? 'dark' : 'light',
+        triggerKey,
+        triggerMouseButton,
+        triggerMouseMode,
+        keepOpenOnHover: settings.clipItemHudKeepOpenOnHover,
+      });
+    }, [
+      copiedId,
+      dateLine,
+      isFavorite,
+      isFiles,
+      isImage,
+      settings.clipItemHudKeepOpenOnHover,
+      item.id,
+      item.is_pinned,
+      settings.darkMode,
+      shouldEnableClipItemHud,
+      triggerKey,
+      triggerMouseButton,
+      triggerMouseMode,
+      timeLine,
+    ]);
+
+    useEffect(() => {
+      if (!clipItemHudVisibleRef.current) return;
+      emitClipItemHudSnapshot();
+    }, [emitClipItemHudSnapshot]);
+
+    const hideClipItemHud = useCallback(() => {
+      if (!isTauri) return;
+
+      clipItemHudVisibleRef.current = false;
+      void TauriService.hideClipItemHud();
+    }, []);
+
+    const showClipItemHudAtCursor = useCallback(() => {
+      if (!isTauri || !canShowClipItemHud()) return;
+
+      emitClipItemHudSnapshot();
+      void TauriService.setClipItemHudMousePassthrough(false);
+      void TauriService.showClipItemHud();
+      void TauriService.positionClipItemHudNearCursor();
+      clipItemHudVisibleRef.current = true;
+    }, [canShowClipItemHud, emitClipItemHudSnapshot]);
+
+    const syncClipItemHudAltState = useCallback((altPressed: boolean) => {
+      if (!isTauri) return;
+
+      clipItemHudAltPressedRef.current = altPressed;
+
+      if (altPressed) {
+        showClipItemHudAtCursor();
+      } else {
+        hideClipItemHud();
+      }
+    }, [hideClipItemHud, showClipItemHudAtCursor]);
+
+    const isInteractiveElementTarget = useCallback((target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return Boolean(target.closest('button, a, input, select, textarea, [role="button"]'));
+    }, []);
+
+    const isContentAreaTarget = useCallback((target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return Boolean(target.closest('.clip-item-content-wrap'));
+    }, []);
+
+    const isHudMouseTriggerEligibleTarget = useCallback((target: EventTarget | null) => (
+      isContentAreaTarget(target) && !isInteractiveElementTarget(target)
+    ), [isContentAreaTarget, isInteractiveElementTarget]);
+
+    const resetClipItemHudMouseTriggerState = useCallback(() => {
+      clipItemHudMouseTriggerArmedRef.current = false;
+      clipItemHudMouseButtonPressedRef.current = false;
+    }, []);
+
+    const handlePointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+      const isInteractiveTarget = isInteractiveElementTarget(e.target);
+      const isTriggerEligibleTarget = isHudMouseTriggerEligibleTarget(e.target);
+      const isTriggerButton = e.button === triggerPointerButton;
+
+      if (isTriggerButton) {
+        clipItemHudMouseTriggerArmedRef.current =
+          shouldEnableClipItemHud
+          && clipItemHudPointerInsideRef.current
+          && isTriggerEligibleTarget;
+
+        if (isInteractiveTarget) {
+          clipItemHudMouseButtonPressedRef.current = false;
+        }
+      }
+
+      if (
+        isTriggerButton
+        && clipItemHudMouseTriggerArmedRef.current
+      ) {
+        e.preventDefault();
+        if (triggerMouseMode === 'press_release') {
+          clipItemHudMouseButtonPressedRef.current = true;
+          showClipItemHudAtCursor();
+        }
+      }
+
+      setSuppressActiveFeedback(isInteractiveTarget);
+    }, [isHudMouseTriggerEligibleTarget, isInteractiveElementTarget, showClipItemHudAtCursor, shouldEnableClipItemHud, triggerMouseMode, triggerPointerButton]);
+
+    const handleMouseDownCapture = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      const isTriggerButton = e.button === triggerPointerButton;
+      if (!isTriggerButton) return;
+
+      if (!shouldEnableClipItemHud || !clipItemHudMouseTriggerArmedRef.current) return;
+
+      e.preventDefault();
+    }, [shouldEnableClipItemHud, triggerPointerButton]);
+
+    const handlePointerUpCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+      clearSuppressActiveFeedback();
+
+      if (e.button !== triggerPointerButton) return;
+
+      const triggerArmed = clipItemHudMouseTriggerArmedRef.current;
+      clipItemHudMouseTriggerArmedRef.current = false;
+
+      if (!triggerArmed) {
+        clipItemHudMouseButtonPressedRef.current = false;
+        return;
+      }
+
+      if (triggerMouseMode === 'click') {
+        if (clipItemHudVisibleRef.current) {
+          hideClipItemHud();
+        } else {
+          emitClipItemHudSnapshot();
+          void TauriService.setClipItemHudMousePassthrough(false);
+          void TauriService.showClipItemHud();
+          void TauriService.positionClipItemHudNearCursor();
+          clipItemHudVisibleRef.current = true;
+        }
+        return;
+      }
+
+      clipItemHudMouseButtonPressedRef.current = false;
+      if (!clipItemHudAltPressedRef.current) {
+        hideClipItemHud();
+      }
+    }, [clearSuppressActiveFeedback, emitClipItemHudSnapshot, hideClipItemHud, triggerMouseMode, triggerPointerButton]);
+
+    const handleRootPointerCancel = useCallback(() => {
+      resetClipItemHudMouseTriggerState();
+      clearSuppressActiveFeedback();
+    }, [clearSuppressActiveFeedback, resetClipItemHudMouseTriggerState]);
+
+    const handleRootPointerEnter = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+      clipItemHudPointerInsideRef.current = true;
+      syncClipItemHudAltState(isTriggerPressed(e));
+    }, [isTriggerPressed, syncClipItemHudAltState]);
+
+    const handleRootPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+      if (
+        triggerMouseMode === 'press_release'
+        && clipItemHudMouseButtonPressedRef.current
+        && !isTriggerMouseButtonPressed(e.buttons)
+      ) {
+        resetClipItemHudMouseTriggerState();
+        if (!clipItemHudAltPressedRef.current) {
+          hideClipItemHud();
+        }
+      }
+
+      const pressed = isTriggerPressed(e);
+      if (clipItemHudAltPressedRef.current === pressed) {
+        return;
+      }
+      syncClipItemHudAltState(pressed);
+    }, [hideClipItemHud, isTriggerMouseButtonPressed, isTriggerPressed, resetClipItemHudMouseTriggerState, syncClipItemHudAltState, triggerMouseMode]);
+
+    const handleRootPointerLeave = useCallback(() => {
+      clipItemHudPointerInsideRef.current = false;
+      clearSuppressActiveFeedback();
+
+      if (triggerMouseMode !== 'press_release') {
+        return;
+      }
+
+      if (clipItemHudMouseButtonPressedRef.current) {
+        return;
+      }
+
+      if (!clipItemHudAltPressedRef.current) {
+        hideClipItemHud();
+      }
+    }, [clearSuppressActiveFeedback, hideClipItemHud, triggerMouseMode]);
+
+    const handleRootContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      if (!shouldEnableClipItemHud || triggerMouseButton !== 'right') return;
+      e.preventDefault();
+    }, [shouldEnableClipItemHud, triggerMouseButton]);
+
+    const handleRootAuxClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      if (triggerMouseButton !== 'middle' || e.button !== 1) return;
+      if (!shouldEnableClipItemHud) return;
+      if (!isHudMouseTriggerEligibleTarget(e.target)) return;
+      e.preventDefault();
+    }, [isHudMouseTriggerEligibleTarget, shouldEnableClipItemHud, triggerMouseButton]);
+
+    useEffect(() => {
+      const handleGlobalPointerDone = (event: PointerEvent) => {
+        if (event.button !== triggerPointerButton) return;
+
+        const targetNode = event.target as Node | null;
+        const rootElement = rootRef.current;
+        if (rootElement && targetNode && rootElement.contains(targetNode)) {
+          return;
+        }
+
+        resetClipItemHudMouseTriggerState();
+      };
+
+      window.addEventListener('pointerup', handleGlobalPointerDone, true);
+      window.addEventListener('pointercancel', handleGlobalPointerDone, true);
+
+      return () => {
+        window.removeEventListener('pointerup', handleGlobalPointerDone, true);
+        window.removeEventListener('pointercancel', handleGlobalPointerDone, true);
+      };
+    }, [resetClipItemHudMouseTriggerState, triggerPointerButton]);
+
+    const handleRootFocusCapture = useCallback(() => {
+      showClipItemHudAtCursor();
+    }, [showClipItemHudAtCursor]);
+
+    const handleRootBlurCapture = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) {
+        return;
+      }
+
+      if (!e.relatedTarget) {
+        return;
+      }
+
+      hideClipItemHud();
+    }, [hideClipItemHud]);
+
+    useEffect(() => {
+      if (shouldEnableClipItemHud) return;
+      hideClipItemHud();
+    }, [shouldEnableClipItemHud, hideClipItemHud]);
+
+    useEffect(() => {
+      if (!isTauri) return;
+
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (!isTriggerPressed(event)) return;
+        if (event.repeat) return;
+        event.preventDefault();
+        syncClipItemHudAltState(true);
+      };
+
+      const onKeyUp = (event: KeyboardEvent) => {
+        if (!isTriggerPressed(event)) return;
+        event.preventDefault();
+
+        if (settings.clipItemHudKeepOpenOnHover && !clipItemHudPointerInsideRef.current) {
+          clipItemHudAltPressedRef.current = false;
+          return;
+        }
+
+        syncClipItemHudAltState(false);
+      };
+
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+
+      return () => {
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+      };
+    }, [isTriggerPressed, settings.clipItemHudKeepOpenOnHover, syncClipItemHudAltState]);
+
+    useEffect(() => {
+      return () => {
+        hideClipItemHud();
+      };
+    }, [hideClipItemHud]);
 
     useLayoutEffect(() => {
       if (isImage || !hasTags) {
@@ -248,19 +575,26 @@ export const ClipItemComponent = React.memo(
     }, [isImage, hasTags, item.tags]);
 
     const containerClass = 'clip-item-root';
-    const { dateLine, timeLine } = useMemo(() => formatDateParts(item.timestamp), [item.timestamp]);
 
     return (
       <div
+        ref={rootRef}
         draggable
         onDragStart={onDragStart}
         onDragEnd={handleDragEnd}
         onDoubleClick={handleDblClick}
         onClick={handleClick}
+        onAuxClick={handleRootAuxClick}
+        onContextMenu={handleRootContextMenu}
+        onMouseDownCapture={handleMouseDownCapture}
         onPointerDownCapture={handlePointerDownCapture}
-        onPointerUpCapture={clearSuppressActiveFeedback}
-        onPointerCancel={clearSuppressActiveFeedback}
-        onPointerLeave={clearSuppressActiveFeedback}
+        onPointerEnter={handleRootPointerEnter}
+        onPointerMove={handleRootPointerMove}
+        onPointerUpCapture={handlePointerUpCapture}
+        onPointerCancel={handleRootPointerCancel}
+        onPointerLeave={handleRootPointerLeave}
+        onFocusCapture={handleRootFocusCapture}
+        onBlurCapture={handleRootBlurCapture}
         className={containerClass}
         data-selected={isSelected ? 'true' : 'false'}
         data-theme={settings.darkMode ? 'dark' : 'light'}

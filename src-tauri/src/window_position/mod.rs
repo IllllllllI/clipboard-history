@@ -46,6 +46,9 @@ use std::time::Instant;
 const DOWNLOAD_HUD_WINDOW_LABEL: &str = "download-hud";
 const DOWNLOAD_HUD_OFFSET_X: i32 = 14;
 const DOWNLOAD_HUD_OFFSET_Y: i32 = 18;
+const CLIPITEM_HUD_WINDOW_LABEL: &str = "clipitem-hud";
+const CLIPITEM_HUD_OFFSET_X: i32 = 18;
+const CLIPITEM_HUD_OFFSET_Y: i32 = 18;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -435,6 +438,72 @@ pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), App
     window
         .set_position(target)
         .map_err(|e| AppError::Window(format!("移动 HUD 窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn show_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+
+    window
+        .show()
+        .map_err(|e| AppError::Window(format!("显示 ClipItem HUD 窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn hide_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+
+    window
+        .hide()
+        .map_err(|e| AppError::Window(format!("隐藏 ClipItem HUD 窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn position_clipitem_hud_near_cursor(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+
+    let current_monitor = window
+        .current_monitor()
+        .map_err(|e| AppError::Window(format!("读取 ClipItem HUD 当前显示器失败: {}", e)))?;
+
+    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
+
+    let target = PhysicalPosition::new(
+        cursor_pos.x.saturating_add(CLIPITEM_HUD_OFFSET_X),
+        cursor_pos.y.saturating_add(CLIPITEM_HUD_OFFSET_Y),
+    );
+
+    window
+        .set_position(target)
+        .map_err(|e| AppError::Window(format!("移动 ClipItem HUD 窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_clipitem_hud_mouse_passthrough(
+    app: AppHandle,
+    passthrough: bool,
+) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+
+    window
+        .set_ignore_cursor_events(passthrough)
+        .map_err(|e| AppError::Window(format!("设置 ClipItem HUD 鼠标穿透失败: {}", e)))?;
 
     Ok(())
 }

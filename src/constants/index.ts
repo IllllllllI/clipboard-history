@@ -33,6 +33,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   galleryListMaxVisibleItems: 6,
   fileListMaxVisibleItems: 5,
   compactMetaDisplayMode: 'auto',
+  clipItemHudTriggerKey: 'alt',
+  clipItemHudTriggerMouseButton: 'middle',
+  clipItemHudTriggerMouseMode: 'press_release',
+  clipItemHudKeepOpenOnHover: false,
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,

@@ -167,6 +167,33 @@ const MIGRATIONS: Migration[] = [
       data.compactMetaDisplayMode = 'auto';
     }
   },
+  // v0.15: 条目 HUD 触发键兜底
+  (data) => {
+    const allowedKeys = new Set(['alt', 'ctrl', 'shift']);
+    if (!allowedKeys.has(data.clipItemHudTriggerKey as string)) {
+      data.clipItemHudTriggerKey = 'alt';
+    }
+  },
+  // v0.16: 条目 HUD 悬停保留策略兜底
+  (data) => {
+    if (typeof data.clipItemHudKeepOpenOnHover !== 'boolean') {
+      data.clipItemHudKeepOpenOnHover = false;
+    }
+  },
+  // v0.17: 条目 HUD 鼠标触发按钮兜底
+  (data) => {
+    const allowedButtons = new Set(['middle', 'right']);
+    if (!allowedButtons.has(data.clipItemHudTriggerMouseButton as string)) {
+      data.clipItemHudTriggerMouseButton = 'middle';
+    }
+  },
+  // v0.18: 条目 HUD 鼠标触发模式兜底
+  (data) => {
+    const allowedModes = new Set(['click', 'press_release']);
+    if (!allowedModes.has(data.clipItemHudTriggerMouseMode as string)) {
+      data.clipItemHudTriggerMouseMode = 'press_release';
+    }
+  },
   // 后续迁移在此追加...
 ];
 

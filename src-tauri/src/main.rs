@@ -75,6 +75,23 @@ fn main() {
                 .build()
                 .map_err(|e| format!("创建下载 HUD 窗口失败: {}", e))?;
             }
+
+            if app.get_webview_window("clipitem-hud").is_none() {
+                let _clipitem_hud_window = WebviewWindowBuilder::new(
+                    app,
+                    "clipitem-hud",
+                    WebviewUrl::App("index.html?mode=clipitem-hud".into()),
+                )
+                .title("ClipItem HUD")
+                .inner_size(320.0, 120.0)
+                .resizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false)
+                .build()
+                .map_err(|e| format!("创建条目 HUD 窗口失败: {}", e))?;
+            }
             log::info!("setup: main window icon set");
 
             // 启动剪贴板监控
@@ -197,6 +214,10 @@ fn main() {
             window_position::show_download_hud,
             window_position::hide_download_hud,
             window_position::position_download_hud_near_cursor,
+            window_position::show_clipitem_hud,
+            window_position::hide_clipitem_hud,
+            window_position::position_clipitem_hud_near_cursor,
+            window_position::set_clipitem_hud_mouse_passthrough,
             // 数据库操作
             db::db_auto_clear,
             db::db_get_stats,

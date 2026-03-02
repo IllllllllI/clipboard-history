@@ -10,7 +10,7 @@
  * - 旧代码的 `useAppContext` 继续可用，无需修改
  */
 
-import React, { createContext, useContext, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useCallback, useEffect, useRef } from 'react';
 import { ClipItem, AppSettings, AppStats, DownloadState } from '../types';
 import { SettingsProvider, useSettingsContext } from './SettingsContext';
 import { ClipboardProvider, useClipboardContext } from './ClipboardContext';
@@ -18,7 +18,7 @@ import { UIProvider, useUIContext, FilterType } from './UIContext';
 import { useShortcuts } from '../hooks/useShortcuts';
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 import { confirm } from '@tauri-apps/plugin-dialog';
-import { isTauri } from '../services/tauri';
+import { isTauri, TauriService } from '../services/tauri';
 
 const toMsg = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
@@ -230,6 +230,67 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     toggleImmersiveMode,
     modalOpen: showSettings || showAddModal,
   });
+
+  const historyRef = useRef(history);
+  const copyToClipboardRef = useRef(copyToClipboard);
+  const handleToggleFavoriteRef = useRef(handleToggleFavorite);
+  const handleTogglePinRef = useRef(handleTogglePin);
+  const handleRemoveRef = useRef(handleRemove);
+  const setEditingClipRef = useRef(setEditingClip);
+
+  historyRef.current = history;
+  copyToClipboardRef.current = copyToClipboard;
+  handleToggleFavoriteRef.current = handleToggleFavorite;
+  handleTogglePinRef.current = handleTogglePin;
+  handleRemoveRef.current = handleRemove;
+  setEditingClipRef.current = setEditingClip;
+
+  useEffect(() => {
+    if (!isTauri) return;
+
+    let mounted = true;
+    let unlisten: (() => void) | null = null;
+
+    void TauriService.listenClipItemHudAction((payload) => {
+      if (!mounted) return;
+
+      const target = historyRef.current.find((item) => item.id === payload.itemId);
+      if (!target) return;
+
+      if (payload.action === 'copy') {
+        void copyToClipboardRef.current(target);
+        return;
+      }
+
+      if (payload.action === 'favorite') {
+        void handleToggleFavoriteRef.current(target);
+        return;
+      }
+
+      if (payload.action === 'pin') {
+        void handleTogglePinRef.current(target);
+        return;
+      }
+
+      if (payload.action === 'edit') {
+        setEditingClipRef.current(target);
+        return;
+      }
+
+      if (payload.action === 'delete') {
+        void handleRemoveRef.current(target.id);
+      }
+    }).then((dispose) => {
+      unlisten = dispose;
+    }).catch(() => {
+      // 忽略 HUD 监听初始化失败
+    });
+
+    return () => {
+      mounted = false;
+      if (unlisten) unlisten();
+    };
+  }, []);
 
   // 构造兼容层 value — 所有依赖都是稳定引用，不再依赖整个 context 对象
   const value: AppContextValue = useMemo(() => ({
