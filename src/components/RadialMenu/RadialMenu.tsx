@@ -10,16 +10,23 @@ interface RadialMenuProps {
 
 export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComplete, onCancel }) => {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const activeIndexRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const clipItem = { id: snapshot.itemId, favorite: snapshot.isFavorite, pinned: snapshot.isPinned };
+  const clipItemRef = useRef({ id: snapshot.itemId, favorite: snapshot.isFavorite, pinned: snapshot.isPinned });
 
-  const actions = [
+  const actionsRef = useRef([
     { id: 'copy', label: '复制', angle: 0, icon: '📋' },
     { id: 'delete', label: '删除', angle: 72, icon: '🗑️' },
-    { id: 'pin', label: clipItem.pinned ? '取消置顶' : '置顶', angle: 144, icon: '📌' },
-    { id: 'favorite', label: clipItem.favorite ? '取消收藏' : '收藏', angle: 216, icon: '⭐' },
+    { id: 'pin', label: clipItemRef.current.pinned ? '取消置顶' : '置顶', angle: 144, icon: '📌' },
+    { id: 'favorite', label: clipItemRef.current.favorite ? '取消收藏' : '收藏', angle: 216, icon: '⭐' },
     { id: 'paste', label: '粘贴', angle: 288, icon: '📥' },
-  ];
+  ]);
+  const actions = actionsRef.current;
+
+  // Sync ref
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
 
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
@@ -58,10 +65,10 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
     };
 
     const handlePointerUp = async (e: PointerEvent) => {
-      // console.log('[RadialMenu] pointerup', activeIndex);
-      if (activeIndex !== null) {
-        const action = actions[activeIndex];
-        await executeAction(action.id, clipItem);
+      // console.log('[RadialMenu] pointerup', activeIndexRef.current);
+      if (activeIndexRef.current !== null) {
+        const action = actions[activeIndexRef.current];
+        await executeAction(action.id, clipItemRef.current);
       } else {
         onCancel();
       }
@@ -69,14 +76,16 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
 
     const executeAction = async (actionId: string, item: any) => { onActionComplete(actionId); };
 
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('mouseup', handlePointerUp, true);
 
     return () => {
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('mouseup', handlePointerUp, true);
     };
-  }, [activeIndex, clipItem, actions, onActionComplete, onCancel]);
+  }, [actions, onActionComplete, onCancel]);
 
   return (
     <div className='radial-menu-container' ref={containerRef}>
