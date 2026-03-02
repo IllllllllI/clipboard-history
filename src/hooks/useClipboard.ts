@@ -3,7 +3,8 @@ import { listen } from '@tauri-apps/api/event';
 import { ClipboardDB } from '../services/db';
 import { TauriService, isTauri } from '../services/tauri';
 import { ClipItem, AppSettings, ImageType } from '../types';
-import { isFileList, detectImageType, normalizeFilePath } from '../utils';
+import { isFileList, decodeFileList, detectImageType, normalizeFilePath } from '../utils';
+import { COPY_FEEDBACK_DURATION_MS } from '../constants';
 
 /** 后端发送的剪贴板变化事件负载 */
 interface ClipboardEventPayload {
@@ -23,7 +24,7 @@ const COPY_STRATEGIES: {
     // 文件列表
     match: isFileList,
     action: async (text) => {
-      const files = text.slice('[FILES]\n'.length).split('\n').filter(Boolean);
+      const files = decodeFileList(text);
       if (files.length > 0) await TauriService.copyFilesToClipboard(files);
     },
   },
@@ -174,20 +175,26 @@ export function useClipboard(
 
   // ---- 复制操作（useCallback 稳定引用）----
 
-  const copyToClipboard = useCallback(async (item: ClipItem) => {
+  const copyToClipboard = useCallback(async (
+    item: ClipItem,
+    options?: { suppressCopiedIdFeedback?: boolean },
+  ) => {
     try {
       // 如果条目有调色板选中的颜色，优先复制该颜色
       const textToCopy = item.picked_color || item.text;
       lastCopiedRef.current = textToCopy;
       await dispatchCopy(textToCopy);
-      setCopiedId(item.id);
-      if (copiedIdTimerRef.current) {
-        clearTimeout(copiedIdTimerRef.current);
+
+      if (!options?.suppressCopiedIdFeedback) {
+        setCopiedId(item.id);
+        if (copiedIdTimerRef.current) {
+          clearTimeout(copiedIdTimerRef.current);
+        }
+        copiedIdTimerRef.current = setTimeout(() => {
+          setCopiedId(null);
+          copiedIdTimerRef.current = null;
+        }, COPY_FEEDBACK_DURATION_MS);
       }
-      copiedIdTimerRef.current = setTimeout(() => {
-        setCopiedId(null);
-        copiedIdTimerRef.current = null;
-      }, 2000);
     } catch (err) {
       onError(`复制失败: ${toMsg(err)}`);
     }

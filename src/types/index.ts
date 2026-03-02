@@ -22,6 +22,10 @@ export interface WindowPlacementSettings {
 
 export type ImagePerformanceProfile = 'quality' | 'balanced' | 'speed';
 
+export type GalleryDisplayMode = 'grid' | 'carousel' | 'list';
+export type GalleryScrollDirection = 'horizontal' | 'vertical';
+export type GalleryWheelMode = 'always' | 'ctrl';
+
 export interface ImageAdvancedConfig {
   allow_private_network: boolean;
   resolve_dns_for_url_safety: boolean;
@@ -70,6 +74,9 @@ export interface AppSettings {
   imageClipboardRetryMaxTotalMs: number;
   imageClipboardRetryMaxDelayMs: number;
   clipboardEventMinIntervalMs: number;
+  galleryDisplayMode: GalleryDisplayMode;
+  galleryScrollDirection: GalleryScrollDirection;
+  galleryWheelMode: GalleryWheelMode;
   windowPlacement: WindowPlacementSettings;
 }
 

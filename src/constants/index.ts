@@ -1,5 +1,7 @@
 import { AppSettings } from '../types';
 
+export const COPY_FEEDBACK_DURATION_MS = 2000;
+
 export const DEFAULT_SETTINGS: AppSettings = {
   autoCapture: true,
   maxItems: 100,
@@ -25,6 +27,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   imageClipboardRetryMaxTotalMs: 1_800,
   imageClipboardRetryMaxDelayMs: 900,
   clipboardEventMinIntervalMs: 80,
+  galleryDisplayMode: 'carousel',
+  galleryScrollDirection: 'horizontal',
+  galleryWheelMode: 'ctrl',
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,

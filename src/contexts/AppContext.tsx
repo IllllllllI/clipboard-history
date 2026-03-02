@@ -84,7 +84,7 @@ export interface AppContextValue {
   clearDownloadState: () => void;
 
   // 剪贴板操作
-  copyToClipboard: (item: ClipItem) => Promise<void>;
+  copyToClipboard: (item: ClipItem, options?: { suppressCopiedIdFeedback?: boolean }) => Promise<void>;
   copyText: (text: string) => Promise<void>;
   copiedId: number | null;
 

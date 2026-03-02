@@ -26,7 +26,7 @@ export interface ClipboardContextValue {
   tags: Tag[];
   loadHistory: () => Promise<void>;
   loadTags: () => Promise<void>;
-  copyToClipboard: (item: ClipItem) => Promise<void>;
+  copyToClipboard: (item: ClipItem, options?: { suppressCopiedIdFeedback?: boolean }) => Promise<void>;
   copyText: (text: string) => Promise<void>;
   copiedId: number | null;
   stats: AppStats;

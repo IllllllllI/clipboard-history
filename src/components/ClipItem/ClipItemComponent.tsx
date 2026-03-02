@@ -1,8 +1,8 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
-import { ClipItem, ImageType } from '../../types';
-import { formatDate, detectType, detectImageType, isFileList } from '../../utils';
+import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection } from '../../types';
+import { formatDate, detectType, detectImageType, isFileList, decodeFileList } from '../../utils';
 import { hexToRgba } from '../../utils/color';
 import { ClipboardDB } from '../../services/db';
 import { useAppContext } from '../../contexts/AppContext';
@@ -35,6 +35,7 @@ export const ClipItemComponent = React.memo(
     const {
       selectedIndex,
       settings,
+      updateSettings,
       searchQuery,
       copiedId,
       loadHistory,
@@ -79,6 +80,17 @@ export const ClipItemComponent = React.memo(
           : [item.text],
       [type, item.text],
     );
+    const filePaths = useMemo(
+      () => (isFiles ? decodeFileList(item.text) : []),
+      [isFiles, item.text],
+    );
+    const isFilesGallery = useMemo(
+      () => settings.showImagePreview
+        && isFiles
+        && filePaths.length > 0
+        && filePaths.every((path) => detectImageType(path) === ImageType.LocalFile),
+      [settings.showImagePreview, isFiles, filePaths],
+    );
 
     // --- 图标 ---
     const IconComponent = useMemo(
@@ -95,6 +107,28 @@ export const ClipItemComponent = React.memo(
       if (type === 'color') return 'color';
       return 'default';
     }, [type, isImage, isFiles]);
+
+    const handleGalleryDisplayModeChange = useCallback((mode: GalleryDisplayMode) => {
+      updateSettings({ galleryDisplayMode: mode });
+    }, [updateSettings]);
+
+    const handleGalleryScrollDirectionChange = useCallback((dir: GalleryScrollDirection) => {
+      updateSettings({ galleryScrollDirection: dir });
+    }, [updateSettings]);
+
+    const handleGalleryListItemClick = useCallback((url: string) => {
+      void copyToClipboard(
+        { ...item, text: url },
+        { suppressCopiedIdFeedback: true },
+      );
+    }, [copyToClipboard, item]);
+
+    const handleGalleryCopyImage = useCallback((url: string) => {
+      void copyToClipboard(
+        { ...item, text: url },
+        { suppressCopiedIdFeedback: true },
+      );
+    }, [copyToClipboard, item]);
 
     const handleCopyAsNewColor = useCallback(
       async (color: string) => {
@@ -171,6 +205,7 @@ export const ClipItemComponent = React.memo(
         data-selected={isSelected ? 'true' : 'false'}
         data-theme={settings.darkMode ? 'dark' : 'light'}
         data-files={isFiles ? 'true' : 'false'}
+        data-files-gallery={isFilesGallery ? 'true' : 'false'}
         data-press-feedback={suppressActiveFeedback ? 'off' : 'on'}
       >
         {/* 语义化颜色指示线 */}
@@ -194,6 +229,13 @@ export const ClipItemComponent = React.memo(
             setPreviewImageUrl={setPreviewImageUrl}
             isSelected={isSelected}
             darkMode={settings.darkMode}
+            galleryDisplayMode={settings.galleryDisplayMode}
+            galleryScrollDirection={settings.galleryScrollDirection}
+            galleryWheelMode={settings.galleryWheelMode}
+            onGalleryDisplayModeChange={handleGalleryDisplayModeChange}
+            onGalleryScrollDirectionChange={handleGalleryScrollDirectionChange}
+            onGalleryListItemClick={handleGalleryListItemClick}
+            onGalleryCopyImage={handleGalleryCopyImage}
             onUpdatePickedColor={handleUpdatePickedColor}
             onCopyAsNewColor={handleCopyAsNewColor}
             copyText={copyText}

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { WindowSettingsPanelProps } from './types';
-import type { WindowPlacementMode } from '../../types';
+import type { WindowPlacementMode, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode } from '../../types';
 
 export function WindowSettingsPanel({
   dark,
@@ -22,8 +22,128 @@ export function WindowSettingsPanel({
     (item) => item.key === 'showDragDownloadHud' || item.key === 'prefetchImageOnDragStart'
   );
 
+  const imagePreviewItem = toggleSettingsAfterShortcut.find(
+    (item) => item.key === 'showImagePreview',
+  );
+
+  const galleryDisplayOptions: { value: GalleryDisplayMode; label: string; desc: string }[] = [
+    { value: 'grid',     label: '紧凑宫格', desc: '最多 4 张总览，2 列紧凑显示' },
+    { value: 'carousel', label: '轮播相册', desc: '主图预览 + 轮播切换 + 浮动计数' },
+    { value: 'list',     label: '列表模式', desc: '缩略行排列，hover 预览，交替底色' },
+  ];
+
+  const galleryDirectionOptions: { value: GalleryScrollDirection; label: string; desc: string }[] = [
+    { value: 'horizontal', label: '水平方向', desc: '← → 左右切换，缩略图横向排列' },
+    { value: 'vertical',   label: '垂直方向', desc: '↑ ↓ 上下切换，时钟式滚动' },
+  ];
+
+  const galleryWheelModeOptions: { value: GalleryWheelMode; label: string; desc: string }[] = [
+    { value: 'ctrl', label: '仅 Ctrl+滚轮切图', desc: '不按 Ctrl 时，滚轮用于页面滚动' },
+    { value: 'always', label: '总是滚轮切图', desc: '鼠标位于相册上时直接切图并阻断页面滚动' },
+  ];
+
   return (
     <div className="sm-panel__stack">
+      <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
+        <h3 className="sm-panel__section-title">图片显示</h3>
+        {imagePreviewItem && (
+          <SettingRow title={imagePreviewItem.title} desc={imagePreviewItem.desc}>
+            <ToggleSwitch dark={dark} on={!!settings.showImagePreview} onToggle={() => updateSettings({ showImagePreview: !settings.showImagePreview })} />
+          </SettingRow>
+        )}
+
+        <p className="sm-panel__muted">多图相册显示模式</p>
+        <div className="sm-panel__option-grid">
+          {galleryDisplayOptions.map((opt) => {
+            const active = opt.value === settings.galleryDisplayMode;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateSettings({ galleryDisplayMode: opt.value })}
+                className="sm-panel__option-card"
+                data-active={active ? 'true' : 'false'}
+                data-theme={dark ? 'dark' : 'light'}
+              >
+                <div className="sm-panel__option-head">
+                  <div>
+                    <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                    <p className="sm-panel__option-desc">{opt.desc}</p>
+                  </div>
+                  <span
+                    className="sm-panel__option-indicator"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {settings.galleryDisplayMode === 'carousel' && (
+          <>
+            <p className="sm-panel__muted">轮播滚动方向</p>
+            <div className="sm-panel__option-grid">
+              {galleryDirectionOptions.map((opt) => {
+                const active = opt.value === settings.galleryScrollDirection;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateSettings({ galleryScrollDirection: opt.value })}
+                    className="sm-panel__option-card"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  >
+                    <div className="sm-panel__option-head">
+                      <div>
+                        <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                        <p className="sm-panel__option-desc">{opt.desc}</p>
+                      </div>
+                      <span
+                        className="sm-panel__option-indicator"
+                        data-active={active ? 'true' : 'false'}
+                        data-theme={dark ? 'dark' : 'light'}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="sm-panel__muted">滚轮触发方式</p>
+            <div className="sm-panel__option-grid">
+              {galleryWheelModeOptions.map((opt) => {
+                const active = opt.value === settings.galleryWheelMode;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => updateSettings({ galleryWheelMode: opt.value })}
+                    className="sm-panel__option-card"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  >
+                    <div className="sm-panel__option-head">
+                      <div>
+                        <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                        <p className="sm-panel__option-desc">{opt.desc}</p>
+                      </div>
+                      <span
+                        className="sm-panel__option-indicator"
+                        data-active={active ? 'true' : 'false'}
+                        data-theme={dark ? 'dark' : 'light'}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
+
       <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
         <h3 className="sm-panel__section-title">窗口行为</h3>
         <p className="sm-panel__muted">常用行为</p>

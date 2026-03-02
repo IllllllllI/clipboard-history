@@ -7,8 +7,8 @@
 
 import { ImageType } from '../types';
 import { IMAGE_EXTENSIONS } from './imageUrl';
+import { isFileList } from './filePath';
 
-const FILES_PREFIX = '[FILES]\n';
 const HTTP_PREFIX = 'http://';
 const HTTPS_PREFIX = 'https://';
 const DATA_IMAGE_PREFIX = 'data:image/';
@@ -94,7 +94,16 @@ function hasCodePatterns(text: string): boolean {
 
 /** 判断文本是否为本地文件路径（Unix / Windows / file URI） */
 function isFilePath(text: string): boolean {
-  return text.startsWith('/') || /^[a-zA-Z]:\\/.test(text) || text.startsWith(FILE_PROTOCOL);
+  const value = text.trim();
+
+  if (value.startsWith(FILE_PROTOCOL)) return true;
+  if (/^[a-zA-Z]:\\/.test(value)) return true;
+  if (value.startsWith('/')) {
+    if (value.startsWith('//') || value.startsWith('/*')) return false;
+    return true;
+  }
+
+  return false;
 }
 
 /** 判断扩展名是否为支持的图片格式 */
@@ -165,7 +174,7 @@ function isKnownImageCdnUrl(url: string): boolean {
  * @returns 'files' | 'image' | 'image-url' | 'multi-image' | 'url' | 'color' | 'text'
  */
 export function detectType(text: string): string {
-  if (text.startsWith(FILES_PREFIX)) return 'files';
+  if (isFileList(text)) return 'files';
   if (text.startsWith(DATA_IMAGE_PREFIX)) return 'image';
 
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -215,13 +224,13 @@ export function detectImageType(text: string): ImageType {
     return ImageType.None;
   }
 
-  // 排除代码片段
-  if (hasCodePatterns(text)) return ImageType.None;
-
-  // 本地文件路径
+  // 本地文件路径（优先于代码特征检测，避免 `xxx (1).jpg` 被误判）
   if (isFilePath(text)) {
     return isImageExtension(extractExtension(text)) ? ImageType.LocalFile : ImageType.None;
   }
+
+  // 排除代码片段
+  if (hasCodePatterns(text)) return ImageType.None;
 
   return ImageType.None;
 }

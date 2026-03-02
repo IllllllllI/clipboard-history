@@ -1,6 +1,51 @@
 import { describe, it, expect } from 'vitest';
-import { detectImageType, detectType } from './index';
+import { decodeFileList, detectImageType, detectType, isFileList } from './index';
 import { ImageType } from '../types';
+
+describe('decodeFileList', () => {
+  it('should recognize CRLF [FILES] prefix as file-list payload', () => {
+    const text = '[FILES]\r\nC:\\A\\1.jpg\r\n';
+    expect(isFileList(text)).toBe(true);
+    expect(detectType(text)).toBe('files');
+  });
+
+  it('should recognize [FILES] payload with BOM and leading whitespace', () => {
+    const text = '\uFEFF   [FILES]\nC:\\A\\1.jpg\n';
+    expect(isFileList(text)).toBe(true);
+    expect(detectType(text)).toBe('files');
+    expect(decodeFileList(text)).toEqual(['C:\\A\\1.jpg']);
+  });
+
+  it('should recognize lowercase [files] prefix', () => {
+    const text = '[files]\nC:\\A\\1.jpg\n';
+    expect(isFileList(text)).toBe(true);
+    expect(detectType(text)).toBe('files');
+  });
+
+  it('should recognize prefix with spaces before newline', () => {
+    const text = '[FILES]   \r\nC:\\A\\1.jpg\r\n';
+    expect(isFileList(text)).toBe(true);
+    expect(detectType(text)).toBe('files');
+    expect(decodeFileList(text)).toEqual(['C:\\A\\1.jpg']);
+  });
+
+  it('should decode payload that uses visible arrow separator', () => {
+    const text = '[FILES] ↵ C:\\A\\1.jpg ↵ C:\\B\\2.jpg';
+    expect(isFileList(text)).toBe(true);
+    expect(detectType(text)).toBe('files');
+    expect(decodeFileList(text)).toEqual(['C:\\A\\1.jpg', 'C:\\B\\2.jpg']);
+  });
+
+  it('should trim CRLF lines and keep valid file paths', () => {
+    const text = '[FILES]\nC:\\A\\1.jpg\r\nC:\\B\\2.png\r\n';
+    expect(decodeFileList(text)).toEqual(['C:\\A\\1.jpg', 'C:\\B\\2.png']);
+  });
+
+  it('should ignore empty or whitespace-only lines', () => {
+    const text = '[FILES]\n\r\n   \nC:\\A\\1.jpg\n';
+    expect(decodeFileList(text)).toEqual(['C:\\A\\1.jpg']);
+  });
+});
 
 describe('detectImageType - HTTP/HTTPS Link Detection', () => {
   describe('HTTP URLs', () => {
@@ -185,6 +230,7 @@ describe('detectImageType - HTTP/HTTPS Link Detection', () => {
       const testCases = [
         '/home/user/pictures/photo.jpg',
         'C:\\Users\\User\\Pictures\\photo.png',
+        'C:\\Users\\User\\Pictures\\剪贴板图片 (1).jpg',
         'file:///home/user/image.gif',
       ];
 

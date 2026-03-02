@@ -23,3 +23,18 @@
 - 复用逻辑优先下沉到子模块，`ClipItemComponent` 保持“编排层”职责。
 - 新增子能力时优先在目录内按职责拆分，不回填到单文件巨型组件。
 - 样式命名遵循 `docs/clipitem-style-naming.md`，提交前建议运行 `npm run audit:clipitem-style`。
+
+## ImageGallery 列表交互约定
+
+- `ImageGallery` 在 `list` 模式下采用“操作分离”策略：
+	- 点击缩略图：仅打开大图预览（调用 `onImageClick`）。
+	- 点击整行条目：仅执行单条目复制（调用 `onListItemClick`，由上层接到 `copyToClipboard(item)`）。
+- `ImageGallery` 在 `carousel` 模式下提供“复制当前图片”按钮：
+	- 始终复制当前激活索引对应的单张图片 URL。
+	- 上层通过 `onCopyImage(url)` 复用 `copyToClipboard({ ...item, text: url })`，不改变原条目 id。
+- `ImageGallery` 在 `grid` 模式下同样提供“复制当前图片”按钮：
+	- 每个宫格图片提供悬浮“复制此图”按钮，点击即复制对应单图。
+- 为避免嵌套交互元素冲突，列表行容器使用带 `role="button"` 的可聚焦行，并支持 `Enter` / `Space` 触发复制。
+- 该约定由以下测试覆盖：
+	- `src/components/ImageGallery/ImageGallery.test.tsx`
+	- `src/components/__tests__/ClipItemImageGalleryInteraction.test.tsx`

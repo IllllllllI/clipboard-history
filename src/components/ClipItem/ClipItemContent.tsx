@@ -1,12 +1,13 @@
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { Globe, HardDrive, FileCode2, Images, ExternalLink, Check, Loader2, CircleCheck, CircleAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ClipItem, ImageType } from '../../types';
-import { decodeFileList, findDateTimesInText, normalizeFilePath } from '../../utils';
+import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode } from '../../types';
+import { decodeFileList, detectImageType, findDateTimesInText, normalizeFilePath } from '../../utils';
 import { expandHex } from '../../utils/colorConvert';
 import { TauriService } from '../../services/tauri';
 import { ImageDisplay } from '../ImageDisplay';
 import { FileListDisplay } from '../FileListDisplay';
+import { ImageGallery } from '../ImageGallery';
 import { ImagePreview } from './ImagePreview';
 import { HighlightText } from './HighlightText';
 import { HighlightDateTimeText } from './DateTimeChip';
@@ -34,6 +35,13 @@ interface ClipItemContentProps {
   setPreviewImageUrl: (url: string) => void;
   isSelected: boolean;
   darkMode: boolean;
+  galleryDisplayMode: GalleryDisplayMode;
+  galleryScrollDirection: GalleryScrollDirection;
+  galleryWheelMode: GalleryWheelMode;
+  onGalleryDisplayModeChange: (mode: GalleryDisplayMode) => void;
+  onGalleryScrollDirectionChange: (dir: GalleryScrollDirection) => void;
+  onGalleryListItemClick: (url: string) => void;
+  onGalleryCopyImage: (url: string) => void;
   onUpdatePickedColor: (id: number, color: string | null) => Promise<void>;
   onCopyAsNewColor: (color: string) => Promise<void>;
   copyText: (text: string) => Promise<void>;
@@ -51,6 +59,13 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   setPreviewImageUrl,
   isSelected,
   darkMode,
+  galleryDisplayMode,
+  galleryScrollDirection,
+  galleryWheelMode,
+  onGalleryDisplayModeChange,
+  onGalleryScrollDirectionChange,
+  onGalleryListItemClick,
+  onGalleryCopyImage,
   onUpdatePickedColor,
   onCopyAsNewColor,
   copyText,
@@ -126,6 +141,18 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   const hasDateTime = dtMatches.length > 0;
   const isUrl = useMemo(() => /^https?:\/\/\S+$/i.test(trimmedText), [trimmedText]);
   const files = useMemo(() => (type === 'files' ? decodeFileList(item.text) : []), [type, item.text]);
+  const fileImageUrls = useMemo(
+    () => files.filter((path) => detectImageType(path) === ImageType.LocalFile),
+    [files],
+  );
+  const showFilesAsGallery = useMemo(
+    () => showImagePreview && type === 'files' && files.length > 0 && fileImageUrls.length === files.length,
+    [showImagePreview, type, files.length, fileImageUrls.length],
+  );
+  const galleryImageUrls = useMemo(
+    () => (type === 'multi-image' ? imageUrls : showFilesAsGallery ? fileImageUrls : []),
+    [type, imageUrls, showFilesAsGallery, fileImageUrls],
+  );
 
   const openUrlWithStatus = useCallback(async () => {
     clearUrlStateTimers();
@@ -185,7 +212,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   }, [copyText, showCopiedFeedback]);
 
   // --- 文件列表 ---
-  if (type === 'files') {
+  if (type === 'files' && !showFilesAsGallery) {
     return <FileListDisplay files={files} isSelected={isSelected} darkMode={darkMode} />;
   }
 
@@ -308,24 +335,28 @@ export const ClipItemContent = React.memo(function ClipItemContent({
     );
   }
 
+  // --- 文件图片相册 / 多图相册 ---
+  if (showFilesAsGallery || (showImagePreview && isImage && type === 'multi-image')) {
+    return (
+      <ImageGallery
+        imageUrls={galleryImageUrls}
+        baseItem={item}
+        darkMode={darkMode}
+        onImageClick={setPreviewImageUrl}
+        displayMode={galleryDisplayMode}
+        scrollDirection={galleryScrollDirection}
+        wheelMode={galleryWheelMode}
+        isFileGallery={showFilesAsGallery}
+        onCopyImage={onGalleryCopyImage}
+        onListItemClick={onGalleryListItemClick}
+        onDisplayModeChange={onGalleryDisplayModeChange}
+        onScrollDirectionChange={onGalleryScrollDirectionChange}
+      />
+    );
+  }
+
   // --- 图片（预览开启） ---
   if (showImagePreview && isImage) {
-    if (type === 'multi-image') {
-      return (
-        <div className="clip-item-content-image-list">
-          <div className="clip-item-content-image-list-track custom-scrollbar">
-            {imageUrls.map((url, i) => (
-              <ImagePreview key={i} url={url} darkMode={darkMode} onClick={() => setPreviewImageUrl(url)} />
-            ))}
-          </div>
-          <div className="clip-item-content-image-list-meta" data-theme={darkMode ? 'dark' : 'light'}>
-            <Images className="clip-item-content-icon-12" />
-            <span>包含 {imageUrls.length} 张图片</span>
-          </div>
-        </div>
-      );
-    }
-
     // 单张图片
     return (
       <div className="clip-item-content-image-single">

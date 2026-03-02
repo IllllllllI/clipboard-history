@@ -21,7 +21,7 @@
     "audit:all": "npm run audit:settings-style && npm run audit:clipitem-style && npm run audit:tagmanager-style && npm run audit:filelist-style && npm run audit:docs-links",
     "check:all": "npm run audit:all && npm run lint",
     "test:settings": "vitest run src/hooks/useSettings.test.ts",
-    "test:critical": "vitest run src/utils/index.test.ts src/contexts/UIContext.drag.test.tsx src/components/ImageDisplay.test.tsx src/components/DownloadProgressIndicator.test.tsx src/hooks/useClipboard.test.ts",
+    "test:critical": "vitest run src/utils/index.test.ts src/contexts/UIContext.drag.test.tsx src/components/ImageDisplay.test.tsx src/components/DownloadProgressIndicator.test.tsx src/hooks/useClipboard.test.ts src/components/ImageGallery/ImageGallery.test.tsx src/components/__tests__/ClipItemImageGalleryInteraction.test.tsx",
     "test:ui": "vitest --ui",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

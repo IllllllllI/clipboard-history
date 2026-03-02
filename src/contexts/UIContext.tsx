@@ -148,14 +148,12 @@ async function dispatchDragCopy(
   text: string,
   setDownloadState: React.Dispatch<React.SetStateAction<DownloadState>>,
   activeDownloadRequestIdRef: React.MutableRefObject<string | null>,
+  copyToClipboard: (item: ClipItem) => Promise<void>,
   copyFallback: CopyTextFallback,
 ): Promise<void> {
   // 1) 文件列表
   if (isFileList(text)) {
-    const files = text.slice('[FILES]\n'.length).split('\n').filter(Boolean);
-    if (files.length > 0) {
-      await copyFallback(files.join('\n'));
-    }
+    await copyToClipboard(textFallbackItem(text));
     return;
   }
 
@@ -614,7 +612,7 @@ export function UIProvider({
             resetPrefetchState();
           }
         } else {
-          await dispatchDragCopy(text, setDownloadState, activeDownloadRequestIdRef, copyFallback);
+          await dispatchDragCopy(text, setDownloadState, activeDownloadRequestIdRef, copyToClipboard, copyFallback);
         }
       }
 

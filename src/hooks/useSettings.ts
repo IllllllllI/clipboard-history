@@ -125,6 +125,24 @@ const MIGRATIONS: Migration[] = [
         ? Math.min(5000, Math.max(20, Math.trunc(interval)))
         : 80;
   },
+  // v0.10: 多图相册显示模式 / 滚动方向兜底
+  (data) => {
+    const allowedModes = new Set(['grid', 'carousel', 'list']);
+    const allowedDirs = new Set(['horizontal', 'vertical']);
+    if (!allowedModes.has(data.galleryDisplayMode as string)) {
+      data.galleryDisplayMode = 'carousel';
+    }
+    if (!allowedDirs.has(data.galleryScrollDirection as string)) {
+      data.galleryScrollDirection = 'horizontal';
+    }
+  },
+  // v0.11: 多图相册滚轮触发方式兜底
+  (data) => {
+    const allowedWheelModes = new Set(['always', 'ctrl']);
+    if (!allowedWheelModes.has(data.galleryWheelMode as string)) {
+      data.galleryWheelMode = 'ctrl';
+    }
+  },
   // 后续迁移在此追加...
 ];
 

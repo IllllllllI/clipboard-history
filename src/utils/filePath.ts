@@ -10,6 +10,9 @@
 
 /** 文件列表存储格式标记：文件列表以此前缀开头，每行一个路径 */
 export const FILES_PREFIX = '[FILES]\n';
+const FILES_PREFIX_DETECT_PATTERN = /^\uFEFF?\s*\[FILES\]/i;
+const FILES_PREFIX_STRIP_PATTERN = /^\uFEFF?\s*\[FILES\](?:\s*\r?\n|\s*↵\s*)?/i;
+const FILES_LINE_SPLIT_PATTERN = /\r?\n|\s*↵\s*/;
 
 /** 将文件路径数组编码为存储格式 */
 export function encodeFileList(files: string[]): string {
@@ -18,13 +21,17 @@ export function encodeFileList(files: string[]): string {
 
 /** 从存储格式解码文件路径数组 */
 export function decodeFileList(text: string): string[] {
-  if (!text.startsWith(FILES_PREFIX)) return [];
-  return text.slice(FILES_PREFIX.length).split('\n').filter(Boolean);
+  if (!isFileList(text)) return [];
+  return text
+    .replace(FILES_PREFIX_STRIP_PATTERN, '')
+    .split(FILES_LINE_SPLIT_PATTERN)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 /** 检查文本是否为文件列表 */
 export function isFileList(text: string): boolean {
-  return text.startsWith(FILES_PREFIX);
+  return FILES_PREFIX_DETECT_PATTERN.test(text);
 }
 
 // ============================================================================

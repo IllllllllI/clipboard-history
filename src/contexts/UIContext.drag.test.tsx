@@ -88,20 +88,23 @@ describe('UIContext drag flow', () => {
     return ctx;
   }
 
-  it('文件列表拖拽不走 copyFileToClipboard，只走模拟按键粘贴链路', async () => {
+  it('文件列表拖拽应复用注入 copyToClipboard 策略并走模拟按键粘贴链路', async () => {
     const ctx = renderWithProbe();
+    const mockCopyToClipboard = vi.fn().mockResolvedValue(undefined);
 
     await act(async () => {
       await ctx.handleDragStart(
         {} as React.DragEvent,
         '[FILES]\nC:\\A\\one.png\nC:\\B\\two.jpg',
-        vi.fn().mockResolvedValue(undefined),
+        mockCopyToClipboard,
       );
       await ctx.handleDragEnd();
     });
 
     expect(mockTauriService.copyFileToClipboard).not.toHaveBeenCalled();
-    expect(mockTauriService.writeClipboard).toHaveBeenCalledWith('C:\\A\\one.png\nC:\\B\\two.jpg');
+    expect(mockCopyToClipboard).toHaveBeenCalledWith(expect.objectContaining({
+      text: '[FILES]\nC:\\A\\one.png\nC:\\B\\two.jpg',
+    }));
     expect(mockTauriService.clickAndPaste).toHaveBeenCalledTimes(1);
   });
 
