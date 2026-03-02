@@ -130,6 +130,13 @@ export const ClipItemComponent = React.memo(
       );
     }, [copyToClipboard, item]);
 
+    const handleFileListItemClick = useCallback((filePath: string) => {
+      void copyToClipboard(
+        { ...item, text: filePath },
+        { suppressCopiedIdFeedback: true },
+      );
+    }, [copyToClipboard, item]);
+
     const handleCopyAsNewColor = useCallback(
       async (color: string) => {
         await copyText(color);
@@ -233,6 +240,8 @@ export const ClipItemComponent = React.memo(
             galleryScrollDirection={settings.galleryScrollDirection}
             galleryWheelMode={settings.galleryWheelMode}
             galleryListMaxVisibleItems={settings.galleryListMaxVisibleItems}
+            fileListMaxVisibleItems={settings.fileListMaxVisibleItems}
+            onFileListItemClick={handleFileListItemClick}
             onGalleryDisplayModeChange={handleGalleryDisplayModeChange}
             onGalleryScrollDirectionChange={handleGalleryScrollDirectionChange}
             onGalleryListItemClick={handleGalleryListItemClick}

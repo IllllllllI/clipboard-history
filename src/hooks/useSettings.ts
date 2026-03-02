@@ -151,6 +151,14 @@ const MIGRATIONS: Migration[] = [
         ? Math.min(30, Math.max(1, Math.trunc(maxVisible)))
         : 6;
   },
+  // v0.13: 文件列表最大显示条目兜底
+  (data) => {
+    const maxVisible = Number(data.fileListMaxVisibleItems);
+    data.fileListMaxVisibleItems =
+      Number.isFinite(maxVisible)
+        ? Math.min(30, Math.max(1, Math.trunc(maxVisible)))
+        : 5;
+  },
   // 后续迁移在此追加...
 ];
 

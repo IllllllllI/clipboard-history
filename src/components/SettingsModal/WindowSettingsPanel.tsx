@@ -164,6 +164,28 @@ export function WindowSettingsPanel({
             data-theme={dark ? 'dark' : 'light'}
           />
         </SettingRow>
+
+        <SettingRow
+          title="文件列表最大条目"
+          desc="文件列表默认显示条目数，超出后可展开"
+        >
+          <input
+            type="number"
+            min={1}
+            max={30}
+            step={1}
+            value={settings.fileListMaxVisibleItems}
+            onChange={(e) => {
+              const next = Number.parseInt(e.target.value || '1', 10);
+              const clamped = Number.isFinite(next)
+                ? Math.min(30, Math.max(1, next))
+                : 5;
+              updateSettings({ fileListMaxVisibleItems: clamped });
+            }}
+            className="sm-field__number"
+            data-theme={dark ? 'dark' : 'light'}
+          />
+        </SettingRow>
       </section>
 
       <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>

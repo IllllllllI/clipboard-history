@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   galleryScrollDirection: 'horizontal',
   galleryWheelMode: 'ctrl',
   galleryListMaxVisibleItems: 6,
+  fileListMaxVisibleItems: 5,
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,

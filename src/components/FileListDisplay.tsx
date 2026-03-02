@@ -326,14 +326,24 @@ interface FileListDisplayProps {
   isSelected: boolean;
   darkMode: boolean;
   onItemCopy?: (filePath: string) => void;
+  maxVisibleItems?: number;
 }
 
-export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode, onItemCopy }: FileListDisplayProps) {
+export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode, onItemCopy, maxVisibleItems = 5 }: FileListDisplayProps) {
   const isSingle = files.length === 1;
-  const displayFiles = files.slice(0, 5); // 最多显示 5 个文件
+  const normalizedMaxVisibleItems = Math.min(30, Math.max(1, Math.trunc(maxVisibleItems)));
+  const [expanded, setExpanded] = useState(false);
+  const canExpand = files.length > normalizedMaxVisibleItems;
+  const displayFiles = canExpand && !expanded
+    ? files.slice(0, normalizedMaxVisibleItems)
+    : files;
   const remaining = files.length - displayFiles.length;
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [files.length, normalizedMaxVisibleItems]);
 
   useEffect(() => {
     return () => {
@@ -378,10 +388,20 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
         ))}
       </div>
 
-      {/* 剩余文件提示 */}
-      {remaining > 0 && (
-        <div className="file-list-display__remaining">
-          还有 {remaining} 个文件...
+      {canExpand && (
+        <div className="file-list-display__toggle-wrap">
+          <button
+            type="button"
+            className="file-list-display__toggle-btn"
+            data-theme={darkMode ? 'dark' : 'light'}
+            aria-expanded={expanded ? 'true' : 'false'}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((prev) => !prev);
+            }}
+          >
+            {expanded ? '收起列表' : `展开剩余 ${files.length - normalizedMaxVisibleItems} 项`}
+          </button>
         </div>
       )}
 

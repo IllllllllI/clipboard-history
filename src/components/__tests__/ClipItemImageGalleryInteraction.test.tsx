@@ -40,6 +40,8 @@ const defaultSettings = {
   galleryDisplayMode: 'list',
   galleryScrollDirection: 'horizontal',
   galleryWheelMode: 'ctrl',
+  galleryListMaxVisibleItems: 6,
+  fileListMaxVisibleItems: 5,
 };
 
 const createMockContext = (overrides: Record<string, any> = {}) => ({
@@ -81,6 +83,17 @@ const createMultiImageItem = (): ClipItem => ({
 const createFileListItem = (): ClipItem => ({
   id: 77,
   text: '[FILES]\nC:\\A\\one.txt\nC:\\B\\two.md',
+  timestamp: Date.now(),
+  is_pinned: 0,
+  is_snippet: 0,
+  is_favorite: 0,
+  tags: [],
+  picked_color: null,
+});
+
+const createLargeFileListItem = (): ClipItem => ({
+  id: 78,
+  text: '[FILES]\nC:\\A\\one.txt\nC:\\B\\two.md\nC:\\C\\three.pdf',
   timestamp: Date.now(),
   is_pinned: 0,
   is_snippet: 0,
@@ -194,5 +207,27 @@ describe('ClipItem + ImageGallery list interaction', () => {
     );
     expect(fileRows[0].getAttribute('data-copied')).toBe('true');
     expect(container.querySelectorAll('.file-list-item__copy-mark[data-visible="true"]')).toHaveLength(1);
+  });
+
+  it('文件列表支持按设置折叠并可展开/收起', () => {
+    const item = createLargeFileListItem();
+    (useAppContext as any).mockReturnValue(
+      createMockContext({
+        selectedIndex: 0,
+        settings: {
+          ...defaultSettings,
+          fileListMaxVisibleItems: 1,
+        },
+      }),
+    );
+
+    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    expect(container.querySelectorAll('.file-list-item')).toHaveLength(1);
+
+    fireEvent.click(container.querySelector('.file-list-display__toggle-btn')!);
+    expect(container.querySelectorAll('.file-list-item')).toHaveLength(3);
+
+    fireEvent.click(container.querySelector('.file-list-display__toggle-btn')!);
+    expect(container.querySelectorAll('.file-list-item')).toHaveLength(1);
   });
 });

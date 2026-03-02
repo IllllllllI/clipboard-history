@@ -39,6 +39,8 @@ interface ClipItemContentProps {
   galleryScrollDirection: GalleryScrollDirection;
   galleryWheelMode: GalleryWheelMode;
   galleryListMaxVisibleItems: number;
+  fileListMaxVisibleItems: number;
+  onFileListItemClick: (filePath: string) => void;
   onGalleryDisplayModeChange: (mode: GalleryDisplayMode) => void;
   onGalleryScrollDirectionChange: (dir: GalleryScrollDirection) => void;
   onGalleryListItemClick: (url: string) => void;
@@ -64,6 +66,8 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   galleryScrollDirection,
   galleryWheelMode,
   galleryListMaxVisibleItems,
+  fileListMaxVisibleItems,
+  onFileListItemClick,
   onGalleryDisplayModeChange,
   onGalleryScrollDirectionChange,
   onGalleryListItemClick,
@@ -215,7 +219,15 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
   // --- 文件列表 ---
   if (type === 'files' && !showFilesAsGallery) {
-    return <FileListDisplay files={files} isSelected={isSelected} darkMode={darkMode} />;
+    return (
+      <FileListDisplay
+        files={files}
+        isSelected={isSelected}
+        darkMode={darkMode}
+        onItemCopy={onFileListItemClick}
+        maxVisibleItems={fileListMaxVisibleItems}
+      />
+    );
   }
 
   // --- 颜色值 ---
