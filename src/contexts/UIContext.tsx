@@ -10,6 +10,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { PhysicalPosition } from '@tauri-apps/api/window';
 import { ClipItem, AppSettings, DownloadState, ImageType } from '../types';
+import { executeCopyStrategy, resolveCopyStrategy } from '../services/copyRouter';
 import { TauriService, isTauri } from '../services/tauri';
 import { detectType, detectImageType, detectContentType, normalizeFilePath, isFileList } from '../utils';
 
@@ -118,29 +119,6 @@ const textFallbackItem = (text: string): ClipItem => ({
   id: 0, text, timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null,
 });
 
-// ============================================================================
-// 图片拖拽复制策略表（模块级常量，避免每次调用重建）
-// ============================================================================
-
-interface ImageCopyStrategy {
-  label: string;
-  action: (
-    text: string,
-    setDownloadState: React.Dispatch<React.SetStateAction<DownloadState>>,
-  ) => Promise<void>;
-}
-
-const IMAGE_COPY_STRATEGIES: Partial<Record<ImageType, ImageCopyStrategy>> = {
-  [ImageType.Base64]: {
-    label: 'Base64图片处理失败',
-    action: (text) => TauriService.copyBase64Image(text),
-  },
-  [ImageType.LocalFile]: {
-    label: '本地图片处理失败',
-    action: (text) => TauriService.copyLocalImage(normalizeFilePath(text)),
-  },
-};
-
 /**
  * 按内容类型分派拖拽复制策略，消除原来 70 行 if/else 嵌套。
  */
@@ -195,10 +173,10 @@ async function dispatchDragCopy(
     return;
   }
 
-  // 3) 图片类型策略表
-  const strategy = IMAGE_COPY_STRATEGIES[detectImageType(text)];
-  if (strategy) {
-    try { await strategy.action(text, setDownloadState); }
+  // 3) 统一路由中的本地图片 / base64 / svg 策略
+  const strategy = resolveCopyStrategy(text);
+  if (strategy === 'base64-image' || strategy === 'local-image' || strategy === 'svg-file') {
+    try { await executeCopyStrategy(strategy, text); }
     catch (err) {
       const commandError = parseImageCommandError(err);
       const msg = commandError?.message ?? toMsg(err);

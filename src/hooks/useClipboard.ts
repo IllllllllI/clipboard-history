@@ -2,78 +2,13 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { ClipboardDB } from '../services/db';
 import { TauriService, isTauri } from '../services/tauri';
-import { ClipItem, AppSettings, ImageType } from '../types';
-import { isFileList, decodeFileList, detectImageType, normalizeFilePath } from '../utils';
+import { dispatchCopyByStrategy } from '../services/copyRouter';
+import { ClipItem, AppSettings } from '../types';
 import { COPY_FEEDBACK_DURATION_MS } from '../constants';
 
 /** 后端发送的剪贴板变化事件负载 */
 interface ClipboardEventPayload {
   source: 'external' | 'internal';
-}
-
-// ============================================================================
-// 复制策略表（消除 if/else 链，复用项目工具函数）
-// ============================================================================
-
-/** 剪贴板写入策略：按内容类型分派到不同 TauriService 方法 */
-const COPY_STRATEGIES: {
-  match: (text: string) => boolean;
-  action: (text: string) => Promise<void>;
-}[] = [
-  {
-    // 文件列表
-    match: isFileList,
-    action: async (text) => {
-      const files = decodeFileList(text);
-      if (files.length > 0) await TauriService.copyFilesToClipboard(files);
-    },
-  },
-  {
-    // Base64 图片
-    match: (text) => text.startsWith('data:image/'),
-    action: (text) => TauriService.writeImageBase64(text),
-  },
-  {
-    // 网络图片链接：优先下载并复制图片，失败时回退复制原链接文本
-    match: (text) => detectImageType(text) === ImageType.HttpUrl,
-    action: async (text) => {
-      const requestId = TauriService.createImageDownloadRequestId();
-      try {
-        await TauriService.downloadAndCopyImage(text, requestId);
-      } catch {
-        await TauriService.writeClipboard(text);
-      }
-    },
-  },
-  {
-    // SVG 文件路径
-    match: (text) => /\.svg$/i.test(text) && (text.includes('/') || text.includes('\\')),
-    action: (text) => TauriService.copySvgFromFile(text),
-  },
-  {
-    // 本地图片文件路径（使用项目工具函数）
-    match: (text) => detectImageType(text) === ImageType.LocalFile,
-    action: async (text) => {
-      const normalizedPath = normalizeFilePath(text);
-      try {
-        await TauriService.copyLocalImage(normalizedPath);
-      } catch {
-        await TauriService.copyImageFromFile(normalizedPath);
-      }
-    },
-  },
-  {
-    // 纯文本（兜底）
-    match: () => true,
-    action: (text) => TauriService.writeClipboard(text),
-  },
-];
-
-/** 根据内容类型执行对应的复制策略 */
-async function dispatchCopy(text: string): Promise<void> {
-  const strategy = COPY_STRATEGIES.find(s => s.match(text));
-  // 兜底策略 match 永远为 true，不会返回 undefined
-  await strategy!.action(text);
 }
 
 // ============================================================================
@@ -183,7 +118,7 @@ export function useClipboard(
       // 如果条目有调色板选中的颜色，优先复制该颜色
       const textToCopy = item.picked_color || item.text;
       lastCopiedRef.current = textToCopy;
-      await dispatchCopy(textToCopy);
+      await dispatchCopyByStrategy(textToCopy);
 
       if (!options?.suppressCopiedIdFeedback) {
         setCopiedId(item.id);
