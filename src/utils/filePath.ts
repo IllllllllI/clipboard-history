@@ -57,6 +57,16 @@ function convertAssetUrlToPath(url: string): string {
   }
 }
 
+/** 安全 URI 解码（失败时返回原值） */
+function safeDecodeURIComponent(value: string): string {
+  if (!/%[0-9a-fA-F]{2}/.test(value)) return value;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 /** 移除 file:// 前缀并做 URI 解码 */
 function stripFileProtocol(path: string): string {
   if (!path.startsWith('file://')) return path;
@@ -68,12 +78,15 @@ function stripFileProtocol(path: string): string {
  * 规范化文件路径：移除 file:// 前缀、处理 asset.localhost、转换斜杠
  */
 export function normalizeFilePath(text: string): string {
-  let path = text;
+  let path = text.trim();
 
   // Handle asset.localhost URLs
   if (isAssetLocalhostUrl(path)) {
     return convertAssetUrlToPath(path);
   }
+
+  // Handle percent-encoded absolute paths (e.g. C%3A%5CUsers%5C...)
+  path = safeDecodeURIComponent(path);
 
   // Remove file:// prefix
   path = stripFileProtocol(path);

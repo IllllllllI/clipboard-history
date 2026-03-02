@@ -5,6 +5,7 @@
  */
 
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { normalizeFilePath } from './filePath';
 
 const DATA_IMAGE_PREFIX = 'data:image/';
 
@@ -18,11 +19,20 @@ export const IMAGE_EXTENSIONS = [
  * 判断路径是否为本地文件路径
  */
 export function isLocalFilePath(text: string): boolean {
+  const decodedText = (() => {
+    if (!/%[0-9a-fA-F]{2}/.test(text)) return text;
+    try {
+      return decodeURIComponent(text);
+    } catch {
+      return text;
+    }
+  })();
+
   return (
-    text.startsWith('file://') ||
-    text.startsWith('\\\\') ||
-    text.startsWith('/') ||
-    /^[a-zA-Z]:\\/.test(text)
+    decodedText.startsWith('file://') ||
+    decodedText.startsWith('\\') ||
+    decodedText.startsWith('/') ||
+    /^[a-zA-Z]:[\\/]/.test(decodedText)
   );
 }
 
@@ -33,8 +43,9 @@ export function resolveImageSrc(url: string): string {
   if (url.startsWith(DATA_IMAGE_PREFIX)) {
     return url;
   }
-  if (isLocalFilePath(url)) {
-    const path = url.replace(/^file:\/\//, '');
+  const normalized = normalizeFilePath(url);
+  if (isLocalFilePath(normalized)) {
+    const path = normalized.replace(/^file:\/\//, '');
     return convertFileSrc(path);
   }
   return url;

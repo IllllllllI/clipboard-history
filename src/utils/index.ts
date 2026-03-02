@@ -18,5 +18,5 @@ export { ImageLRUCache, getImageCache, fetchAndCacheImage } from './imageCache';
 
 // 通用工具
 export { escapeRegExp } from './stringUtils';
-export { formatDate } from './formatDate';
+export { formatDate, formatDateParts } from './formatDate';
 export { normalizeShortcut, areShortcutsEquivalent, getGlobalShortcutConflict, getImmersiveShortcutConflict, getLikelySystemShortcutWarning } from './shortcut';

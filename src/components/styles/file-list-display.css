@@ -11,9 +11,57 @@
 }
 
 .file-list-display__items {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.3125rem;
+}
+
+.file-list-display__hover-actions {
+  position: absolute;
+  right: 0.375rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  z-index: 5;
+  pointer-events: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.98;
+}
+
+.file-list-display__hover-actions[data-theme='light'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+.file-list-display__hover-actions[data-theme='dark'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+.file-list-display__hover-actions .file-list-item__action-btn {
+  width: 1.625rem;
+  height: 1.625rem;
+}
+
+.file-list-display__hover-actions[data-theme='light'] .file-list-item__action-btn {
+  color: #737373;
+}
+
+.file-list-display__hover-actions[data-theme='dark'] .file-list-item__action-btn {
+  color: #a3a3a3;
+}
+
+.file-list-display__hover-actions[data-theme='light'] .file-list-item__action-btn:hover {
+  background: rgb(0 0 0 / 0.1);
+}
+
+.file-list-display__hover-actions[data-theme='dark'] .file-list-item__action-btn:hover {
+  background: rgb(255 255 255 / 0.1);
 }
 
 .file-list-item {
@@ -428,6 +476,10 @@
   .file-list-item__action-btn {
     width: 1.625rem;
     height: 1.625rem;
+  }
+
+  .file-list-display__hover-actions {
+    right: 0.25rem;
   }
 
   .file-list-display__remaining,

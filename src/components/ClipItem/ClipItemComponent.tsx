@@ -1,8 +1,8 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Tag as TagIcon } from 'lucide-react';
+import { Tag as TagIcon, Star } from 'lucide-react';
 import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection } from '../../types';
-import { formatDate, detectType, detectImageType, isFileList, decodeFileList, encodeFileList } from '../../utils';
+import { formatDateParts, detectType, detectImageType, isFileList, decodeFileList, encodeFileList } from '../../utils';
 import { hexToRgba } from '../../utils/color';
 import { ClipboardDB } from '../../services/db';
 import { useAppContext } from '../../contexts/AppContext';
@@ -16,7 +16,8 @@ import {
 } from '../ClipListParts/constants';
 import { getItemIcon } from './constants';
 import { ClipItemContent } from './ClipItemContent';
-import { ActionButtons } from './ActionButtons';
+import ActionButtons from './ActionButtons';
+import TagDropdown from './TagDropdown';
 import './styles/clip-item.css';
 
 interface ClipItemProps {
@@ -58,6 +59,7 @@ export const ClipItemComponent = React.memo(
 
     const isSelected = selectedIndex === index;
     const [suppressActiveFeedback, setSuppressActiveFeedback] = useState(false);
+    const [showFavoriteBurst, setShowFavoriteBurst] = useState(false);
 
     // --- 衍生状态 ---
     const type = useMemo(() => detectType(item.text), [item.text]);
@@ -154,6 +156,48 @@ export const ClipItemComponent = React.memo(
       [copyText, loadHistory],
     );
 
+    const handleTimeQuickAction = useCallback((usePinAction: boolean) => {
+      if (usePinAction) {
+        handleTogglePin(item);
+        return;
+      }
+      handleToggleFavorite(item);
+    }, [handleToggleFavorite, handleTogglePin, item]);
+
+    const handleTimeClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      handleTimeQuickAction(e.altKey);
+    }, [handleTimeQuickAction]);
+
+    const handleTimeKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleTimeQuickAction(e.altKey);
+    }, [handleTimeQuickAction]);
+
+    const isFavorite = Boolean(item.is_favorite);
+    const previousFavoriteRef = useRef(isFavorite);
+
+    useEffect(() => {
+      const wasFavorite = previousFavoriteRef.current;
+      if (!wasFavorite && isFavorite) {
+        setShowFavoriteBurst(true);
+      }
+      if (wasFavorite && !isFavorite) {
+        setShowFavoriteBurst(false);
+      }
+      previousFavoriteRef.current = isFavorite;
+    }, [isFavorite]);
+
+    useEffect(() => {
+      if (!showFavoriteBurst) return;
+      const timer = setTimeout(() => {
+        setShowFavoriteBurst(false);
+      }, 560);
+      return () => clearTimeout(timer);
+    }, [showFavoriteBurst]);
+
     // --- 事件 ---
     const handleClick = useCallback(() => setSelectedIndex(index), [setSelectedIndex, index]);
     const handleDblClick = useCallback(
@@ -204,6 +248,7 @@ export const ClipItemComponent = React.memo(
     }, [isImage, hasTags, item.tags]);
 
     const containerClass = 'clip-item-root';
+    const { dateLine, timeLine } = useMemo(() => formatDateParts(item.timestamp), [item.timestamp]);
 
     return (
       <div
@@ -221,15 +266,26 @@ export const ClipItemComponent = React.memo(
         data-theme={settings.darkMode ? 'dark' : 'light'}
         data-files={isFiles ? 'true' : 'false'}
         data-files-gallery={isFilesGallery ? 'true' : 'false'}
+        data-meta-display={settings.compactMetaDisplayMode}
         data-press-feedback={suppressActiveFeedback ? 'off' : 'on'}
       >
         {/* 语义化颜色指示线 */}
         <div className="clip-item-accent" data-type={accentType} />
 
-        {/* 左侧图标 */}
-        <div className="clip-item-icon-wrap" data-selected={isSelected ? 'true' : 'false'}>
-          <IconComponent className="clip-item-icon-16" />
-        </div>
+        {/* 左侧图标（标签入口） */}
+        <TagDropdown
+          item={item}
+          tags={tags}
+          darkMode={settings.darkMode}
+          onAddTag={handleAddTagToItem}
+          onRemoveTag={handleRemoveTagFromItem}
+          triggerClassName="clip-item-icon-wrap"
+          triggerVariant="icon"
+          triggerSelected={isSelected}
+          showSelectedCount
+          triggerTitle="标签管理（点击选择标签，Alt+点击快速切换最近标签）"
+          triggerContent={<IconComponent className="clip-item-icon-16" />}
+        />
 
         {/* 主体内容 */}
         <div className="clip-item-content-wrap">
@@ -369,9 +425,48 @@ export const ClipItemComponent = React.memo(
 
         {/* 右侧：时间 + 操作 */}
         <div className="clip-item-side-meta" data-theme={settings.darkMode ? 'dark' : 'light'}>
-          <span className="clip-item-time" data-selected={isSelected ? 'true' : 'false'}>
-            {formatDate(item.timestamp)}
-          </span>
+          <div className="clip-item-time-wrap">
+            <span className="clip-item-time-favorite-slot" aria-hidden="true">
+              <motion.span
+                className="clip-item-time-favorite"
+                data-active={isFavorite ? 'true' : 'false'}
+                initial={false}
+                animate={isFavorite
+                  ? { opacity: 1, scale: 1, y: 0 }
+                  : { opacity: 0, scale: 0.82, y: 1 }}
+                transition={{ duration: 0.18, ease: 'easeOut' }}
+              >
+                <Star className="clip-item-time-favorite-icon" />
+              </motion.span>
+            </span>
+
+            <button
+              type="button"
+              className="clip-item-time"
+              data-selected={isSelected ? 'true' : 'false'}
+              title="点击收藏，Alt+点击置顶"
+              aria-label="点击收藏，Alt+点击置顶"
+              onClick={handleTimeClick}
+              onKeyDown={handleTimeKeyDown}
+              onDoubleClick={(e) => e.stopPropagation()}
+            >
+              <span className="clip-item-time-date">{dateLine}</span>
+              <span className="clip-item-time-clock">{timeLine}</span>
+            </button>
+
+            {showFavoriteBurst && (
+              <span className="clip-item-time-favorite-burst" aria-hidden="true">
+                <Star className="clip-item-time-favorite-burst-core" />
+                {Array.from({ length: 10 }).map((_, index) => (
+                  <span
+                    key={index}
+                    className="clip-item-time-favorite-burst-particle"
+                    style={{ '--burst-angle': `${(360 / 10) * index}deg` } as React.CSSProperties}
+                  />
+                ))}
+              </span>
+            )}
+          </div>
 
           <ActionButtons
             item={item}
@@ -380,14 +475,9 @@ export const ClipItemComponent = React.memo(
             isImage={isImage}
             darkMode={settings.darkMode}
             copiedId={copiedId}
-            tags={tags}
-            onTogglePin={handleTogglePin}
-            onToggleFavorite={handleToggleFavorite}
             onCopy={copyToClipboard}
             onRemove={handleRemove}
             onEdit={setEditingClip}
-            onAddTag={handleAddTagToItem}
-            onRemoveTag={handleRemoveTagFromItem}
           />
         </div>
       </div>

@@ -193,23 +193,24 @@ interface FileItemProps {
   filePath: string;
   isSelected: boolean;
   darkMode: boolean;
-  showActions: boolean;
   compact?: boolean;
   copied?: boolean;
   onCopy?: (filePath: string) => void;
   onDragStartItem?: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
+  onHoverChange?: (payload: { filePath: string; rowEl: HTMLDivElement } | null) => void;
 }
 
 const FileItem = React.memo(function FileItem({
   filePath,
   isSelected,
   darkMode,
-  showActions,
   compact = false,
   copied = false,
   onCopy,
   onDragStartItem,
+  onHoverChange,
 }: FileItemProps) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
   const [openState, setOpenState] = useState<'idle' | 'opening' | 'success' | 'error'>('idle');
   const openingDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resetStateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -264,16 +265,6 @@ const FileItem = React.memo(function FileItem({
     }
   }, [clearStatusTimers, filePath]);
 
-  const handleOpenFile = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    void openFileWithStatus();
-  };
-
-  const handleOpenLocation = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    TauriService.openFileLocation(filePath);
-  };
-
   const handleCopyItem = (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation();
     onCopy?.(filePath);
@@ -312,6 +303,7 @@ const FileItem = React.memo(function FileItem({
 
   return (
     <div
+      ref={rowRef}
       className="file-list-item"
       data-theme={darkMode ? 'dark' : 'light'}
       data-selected={isSelected ? 'true' : 'false'}
@@ -327,6 +319,16 @@ const FileItem = React.memo(function FileItem({
       onKeyDown={handleCopyByKeyboard}
       onDragStart={handleDragStartItem}
       onDoubleClick={handleFileDoubleClick}
+      onMouseEnter={() => {
+        if (rowRef.current) {
+          onHoverChange?.({ filePath, rowEl: rowRef.current });
+        }
+      }}
+      onFocus={() => {
+        if (rowRef.current) {
+          onHoverChange?.({ filePath, rowEl: rowRef.current });
+        }
+      }}
     >
       {/* 系统图标优先，回退到 lucide 图标 */}
       {systemIcon ? (
@@ -360,26 +362,6 @@ const FileItem = React.memo(function FileItem({
         {openState === 'error' && <CircleAlert className="file-list-item__status-icon" />}
       </span>
 
-      {showActions && (
-        <div className="file-list-item__actions">
-          <button
-            type="button"
-            onClick={handleOpenFile}
-            className="file-list-item__action-btn"
-            title="打开文件"
-          >
-            <ExternalLink className="file-list-item__action-icon" />
-          </button>
-          <button
-            type="button"
-            onClick={handleOpenLocation}
-            className="file-list-item__action-btn"
-            title="打开文件位置"
-          >
-            <FolderOpen className="file-list-item__action-icon" />
-          </button>
-        </div>
-      )}
     </div>
   );
 });
@@ -399,8 +381,10 @@ interface FileListDisplayProps {
 
 export const FileListDisplay = React.memo(function FileListDisplay({ files, isSelected, darkMode, onItemCopy, onItemDragStart, maxVisibleItems = 5 }: FileListDisplayProps) {
   const isSingle = files.length === 1;
+  const itemsRef = useRef<HTMLDivElement | null>(null);
   const normalizedMaxVisibleItems = Math.min(30, Math.max(1, Math.trunc(maxVisibleItems)));
   const [expanded, setExpanded] = useState(false);
+  const [hoveredAction, setHoveredAction] = useState<{ filePath: string; top: number } | null>(null);
   const canExpand = files.length > normalizedMaxVisibleItems;
   const displayFiles = canExpand && !expanded
     ? files.slice(0, normalizedMaxVisibleItems)
@@ -433,6 +417,22 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
     }, COPY_FEEDBACK_DURATION_MS);
   }, [onItemCopy]);
 
+  const handleHoverChange = useCallback((payload: { filePath: string; rowEl: HTMLDivElement } | null) => {
+    if (!payload) {
+      setHoveredAction(null);
+      return;
+    }
+
+    const listEl = itemsRef.current;
+    if (!listEl) return;
+
+    const listRect = listEl.getBoundingClientRect();
+    const rowRect = payload.rowEl.getBoundingClientRect();
+    const top = rowRect.top - listRect.top + rowRect.height / 2;
+
+    setHoveredAction({ filePath: payload.filePath, top });
+  }, []);
+
   return (
     <div
       className="file-list-display"
@@ -441,20 +441,51 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
       data-single={isSingle ? 'true' : 'false'}
     >
       {/* 文件列表 */}
-      <div className="file-list-display__items">
+      <div
+        ref={itemsRef}
+        className="file-list-display__items"
+        onMouseLeave={() => setHoveredAction(null)}
+      >
         {displayFiles.map((file, i) => (
           <FileItem
             key={i}
             filePath={file}
             isSelected={isSelected}
             darkMode={darkMode}
-            showActions={isSingle}
             compact={!isSingle}
             copied={copiedIndex === i}
             onCopy={(filePath) => handleItemCopy(i, filePath)}
             onDragStartItem={onItemDragStart}
+            onHoverChange={handleHoverChange}
           />
         ))}
+
+        {hoveredAction && (
+          <div
+            className="file-list-display__hover-actions"
+            style={{ top: `${hoveredAction.top}px` }}
+            data-theme={darkMode ? 'dark' : 'light'}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="file-list-item__action-btn"
+              title="打开文件"
+              onClick={() => { void TauriService.openFile(hoveredAction.filePath); }}
+            >
+              <ExternalLink className="file-list-item__action-icon" />
+            </button>
+            <button
+              type="button"
+              className="file-list-item__action-btn"
+              title="打开文件位置"
+              onClick={() => { void TauriService.openFileLocation(hoveredAction.filePath); }}
+            >
+              <FolderOpen className="file-list-item__action-icon" />
+            </button>
+          </div>
+        )}
       </div>
 
       {canExpand && (

@@ -19,7 +19,7 @@ import { ClipItem, GalleryWheelMode } from '../../types';
 import { resolveImageSrc } from '../../utils/imageUrl';
 import { ImageDisplay } from '../ImageDisplay';
 import { COPY_FEEDBACK_DURATION_MS } from '../../constants';
-import './image-gallery.css';
+import './styles/image-gallery.css';
 
 // ============================================================================
 // 类型

@@ -25,6 +25,7 @@ export type ImagePerformanceProfile = 'quality' | 'balanced' | 'speed';
 export type GalleryDisplayMode = 'grid' | 'carousel' | 'list';
 export type GalleryScrollDirection = 'horizontal' | 'vertical';
 export type GalleryWheelMode = 'always' | 'ctrl';
+export type CompactMetaDisplayMode = 'inside' | 'auto' | 'overlay';
 
 export interface ImageAdvancedConfig {
   allow_private_network: boolean;
@@ -79,6 +80,7 @@ export interface AppSettings {
   galleryWheelMode: GalleryWheelMode;
   galleryListMaxVisibleItems: number;
   fileListMaxVisibleItems: number;
+  compactMetaDisplayMode: CompactMetaDisplayMode;
   windowPlacement: WindowPlacementSettings;
 }
 

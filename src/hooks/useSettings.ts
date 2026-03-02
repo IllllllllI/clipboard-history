@@ -5,6 +5,7 @@ import { DEFAULT_SETTINGS } from '../constants';
 import { TauriService } from '../services/tauri';
 
 const SAVE_DEBOUNCE_MS = 300;
+const THEME_TRANSITION_MS = 240;
 
 // ============================================================================
 // 声明式迁移管道 — 新增迁移只需加一条记录，符合开闭原则
@@ -159,6 +160,13 @@ const MIGRATIONS: Migration[] = [
         ? Math.min(30, Math.max(1, Math.trunc(maxVisible)))
         : 5;
   },
+  // v0.14: 窄宽度工具区显示策略兜底
+  (data) => {
+    const allowedModes = new Set(['inside', 'auto', 'overlay']);
+    if (!allowedModes.has(data.compactMetaDisplayMode as string)) {
+      data.compactMetaDisplayMode = 'auto';
+    }
+  },
   // 后续迁移在此追加...
 ];
 
@@ -218,16 +226,37 @@ export function useSettings() {
 
   // 同步窗口标题栏主题和 HTML 根节点暗黑模式类
   useEffect(() => {
-    if (settings.darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    const root = document.documentElement;
+    const hadDarkMode = root.classList.contains('dark');
+    const hasThemeChanged = hadDarkMode !== settings.darkMode;
+    let transitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+    if (hasThemeChanged) {
+      root.classList.add('theme-switching');
+      transitionTimer = setTimeout(() => {
+        root.classList.remove('theme-switching');
+      }, THEME_TRANSITION_MS);
     }
+
+    if (settings.darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+
     try {
       getCurrentWindow().setTheme(settings.darkMode ? 'dark' : 'light');
     } catch {
       // 非 Tauri 环境下忽略
     }
+
+    return () => {
+      if (transitionTimer) {
+        clearTimeout(transitionTimer);
+        transitionTimer = null;
+      }
+      root.classList.remove('theme-switching');
+    };
   }, [settings.darkMode]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { WindowSettingsPanelProps } from './types';
-import type { WindowPlacementMode, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode } from '../../types';
+import type { WindowPlacementMode, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode, CompactMetaDisplayMode } from '../../types';
 
 export function WindowSettingsPanel({
   dark,
@@ -40,6 +40,12 @@ export function WindowSettingsPanel({
   const galleryWheelModeOptions: { value: GalleryWheelMode; label: string; desc: string }[] = [
     { value: 'ctrl', label: '仅 Ctrl+滚轮切图', desc: '不按 Ctrl 时，滚轮用于页面滚动' },
     { value: 'always', label: '总是滚轮切图', desc: '鼠标位于相册上时直接切图并阻断页面滚动' },
+  ];
+
+  const compactMetaDisplayOptions: { value: CompactMetaDisplayMode; label: string; desc: string }[] = [
+    { value: 'inside', label: '始终窗口内占位', desc: '时间与悬浮按钮始终占据条目右侧布局空间' },
+    { value: 'auto', label: '自动（推荐）', desc: '空间充足时占位；窄宽度自动改为覆盖显示，释放内容区' },
+    { value: 'overlay', label: '始终覆盖显示', desc: '时间与悬浮按钮始终覆盖在条目上，不占用内容布局宽度' },
   ];
 
   return (
@@ -186,6 +192,35 @@ export function WindowSettingsPanel({
             data-theme={dark ? 'dark' : 'light'}
           />
         </SettingRow>
+
+        <p className="sm-panel__muted">窄宽度工具区显示策略</p>
+        <div className="sm-panel__option-grid">
+          {compactMetaDisplayOptions.map((opt) => {
+            const active = opt.value === settings.compactMetaDisplayMode;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => updateSettings({ compactMetaDisplayMode: opt.value })}
+                className="sm-panel__option-card"
+                data-active={active ? 'true' : 'false'}
+                data-theme={dark ? 'dark' : 'light'}
+              >
+                <div className="sm-panel__option-head">
+                  <div>
+                    <p className="sm-panel__option-title" data-active={active ? 'true' : 'false'}>{opt.label}</p>
+                    <p className="sm-panel__option-desc">{opt.desc}</p>
+                  </div>
+                  <span
+                    className="sm-panel__option-indicator"
+                    data-active={active ? 'true' : 'false'}
+                    data-theme={dark ? 'dark' : 'light'}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>

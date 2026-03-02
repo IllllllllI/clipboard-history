@@ -140,8 +140,8 @@ export const ImageDisplay = React.memo(function ImageDisplay({
                 onLoad={onImageLoad}
                 onError={onImageError}
                 onClick={handleClick}
-                loading="lazy"
-                decoding="async"
+                loading={disableLazyLoad ? 'eager' : 'lazy'}
+                decoding={disableLazyLoad ? 'sync' : 'async'}
               />
               {!isLoading && imageSize && (() => {
                 const fmt = extractFormatLabel(item.text);

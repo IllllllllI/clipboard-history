@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   galleryWheelMode: 'ctrl',
   galleryListMaxVisibleItems: 6,
   fileListMaxVisibleItems: 5,
+  compactMetaDisplayMode: 'auto',
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,
