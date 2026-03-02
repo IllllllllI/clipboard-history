@@ -402,3 +402,4 @@ export const TauriService = {
     return await invoke<{ path: string; size: number }>('db_move_database', { newDir });
   },
 };
+

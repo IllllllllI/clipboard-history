@@ -146,10 +146,12 @@ export interface ClipItemHudSnapshot {
   triggerKey: ClipItemHudTriggerKey;
   triggerMouseButton: ClipItemHudTriggerMouseButton;
   triggerMouseMode: ClipItemHudTriggerMouseMode;
-  keepOpenOnHover: boolean;
+  keepOpenOnHover: boolean;  triggerSource?: 'mouse' | 'keyboard';
 }
 
 export interface ClipItemHudActionEvent {
   itemId: number;
   action: ClipItemHudActionType;
 }
+
+

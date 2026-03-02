@@ -1,7 +1,9 @@
+import { invoke } from '@tauri-apps/api/core';
 import React, { useEffect, useState } from 'react';
 import { Copy, Edit3, Pin, Star, Trash2 } from 'lucide-react';
 import { TauriService } from './services/tauri';
 import type { ClipItemHudActionType, ClipItemHudSnapshot } from './types';
+import { RadialMenu } from './components/RadialMenu/RadialMenu';
 
 export default function ClipItemHudApp() {
   const [snapshot, setSnapshot] = useState<ClipItemHudSnapshot | null>(null);
@@ -41,6 +43,7 @@ export default function ClipItemHudApp() {
     void TauriService.listenClipItemHudSnapshot((payload) => {
       if (!mounted) return;
       setSnapshot(payload);
+      setHoveredAction(null);
     }).then((dispose) => {
       unlisten = dispose;
     }).catch(() => {
@@ -59,21 +62,32 @@ export default function ClipItemHudApp() {
       itemId: snapshot.itemId,
       action,
     });
+    closeHud();
   };
 
   useEffect(() => {
-    if (!snapshot || snapshot.triggerMouseMode !== 'press_release') return;
+    if (!snapshot || snapshot.triggerMouseMode !== 'press_release' || snapshot.triggerSource !== 'mouse') return;
 
     const triggerButton = snapshot.triggerMouseButton === 'right' ? 2 : 1;
 
     const onPointerUp = (event: PointerEvent) => {
       if (event.button !== triggerButton) return;
-      if (!hoveredAction) return;
-      if (hoveredAction === 'edit' && !snapshot.canEdit) return;
+      
+      const currentAction = hoveredAction;
+      console.log('[HUD] pointerup Global', event.button, currentAction);
+      
+      if (!currentAction) {
+        closeHud();
+        return;
+      }
+      
+      if (currentAction === 'edit' && !snapshot.canEdit) {
+        closeHud();
+        return;
+      }
 
-      sendAction(hoveredAction);
+      sendAction(currentAction);
       setHoveredAction(null);
-      closeHud();
     };
 
     window.addEventListener('pointerup', onPointerUp, true);
@@ -82,35 +96,43 @@ export default function ClipItemHudApp() {
     };
   }, [hoveredAction, snapshot]);
 
+  if (!snapshot) return null;
+
+  if (snapshot.triggerSource === 'mouse' && snapshot.triggerMouseMode === 'press_release') {
+    return (
+      <RadialMenu snapshot={snapshot} onActionComplete={() => invoke('close_clipitem_hud')} onCancel={() => invoke('close_clipitem_hud')} />
+    );
+  }
+
   return (
     <div
       className="clipitem-hud-root"
       onMouseDown={(event) => {
-        if (!snapshot || snapshot.triggerMouseMode !== 'click') return;
+        if (snapshot.triggerMouseMode !== 'click') return;
         if (event.target !== event.currentTarget) return;
         closeHud();
       }}
       onContextMenu={(event) => {
-        if (snapshot?.triggerMouseButton === 'right') {
+        if (snapshot.triggerMouseButton === 'right') {
           event.preventDefault();
         }
       }}
-      onMouseEnter={() => setIsHoveringHud(true)}
+      onMouseEnter={() => { console.log('[HUD] onMouseEnter'); setIsHoveringHud(true); }}
       onMouseLeave={() => setIsHoveringHud(false)}
     >
       <div
         className="clipitem-hud-card"
         role="status"
         aria-live="polite"
-        data-theme={snapshot?.theme ?? 'dark'}
+        data-theme={snapshot.theme ?? 'dark'}
       >
         <div className="clipitem-hud-time-wrap">
           <span className="clipitem-hud-fav-slot" aria-hidden="true">
-            <Star className="clipitem-hud-fav-icon" data-active={snapshot?.isFavorite ? 'true' : 'false'} />
+            <Star className="clipitem-hud-fav-icon" data-active={snapshot.isFavorite ? 'true' : 'false'} />
           </span>
           <div className="clipitem-hud-text-wrap">
-            <p className="clipitem-hud-date">{snapshot?.dateLine ?? '--/--'}</p>
-            <p className="clipitem-hud-time">{snapshot?.timeLine ?? '--:--'}</p>
+            <p className="clipitem-hud-date">{snapshot.dateLine ?? '--/--'}</p>
+            <p className="clipitem-hud-time">{snapshot.timeLine ?? '--:--'}</p>
           </div>
         </div>
 
@@ -123,7 +145,7 @@ export default function ClipItemHudApp() {
             onPointerEnter={() => setHoveredAction('copy')}
             onPointerLeave={() => setHoveredAction((value) => (value === 'copy' ? null : value))}
           >
-            <Copy className="clipitem-hud-btn-icon" data-active={snapshot?.isCopied ? 'true' : 'false'} />
+            <Copy className="clipitem-hud-btn-icon" data-active={snapshot.isCopied ? 'true' : 'false'} />
           </button>
           <button
             type="button"
@@ -133,7 +155,7 @@ export default function ClipItemHudApp() {
             onPointerEnter={() => setHoveredAction('favorite')}
             onPointerLeave={() => setHoveredAction((value) => (value === 'favorite' ? null : value))}
           >
-            <Star className="clipitem-hud-btn-icon" data-active={snapshot?.isFavorite ? 'true' : 'false'} />
+            <Star className="clipitem-hud-btn-icon" data-active={snapshot.isFavorite ? 'true' : 'false'} />
           </button>
           <button
             type="button"
@@ -143,16 +165,16 @@ export default function ClipItemHudApp() {
             onPointerEnter={() => setHoveredAction('pin')}
             onPointerLeave={() => setHoveredAction((value) => (value === 'pin' ? null : value))}
           >
-            <Pin className="clipitem-hud-btn-icon" data-active={snapshot?.isPinned ? 'true' : 'false'} />
+            <Pin className="clipitem-hud-btn-icon" data-active={snapshot.isPinned ? 'true' : 'false'} />
           </button>
           <button
             type="button"
             className="clipitem-hud-btn"
             title="编辑"
-            disabled={!snapshot?.canEdit}
+            disabled={!snapshot.canEdit}
             onClick={() => sendAction('edit')}
             onPointerEnter={() => {
-              if (snapshot?.canEdit) {
+              if (snapshot.canEdit) {
                 setHoveredAction('edit');
               }
             }}
@@ -175,3 +197,5 @@ export default function ClipItemHudApp() {
     </div>
   );
 }
+
+

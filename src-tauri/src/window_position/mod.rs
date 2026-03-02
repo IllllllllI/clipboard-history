@@ -469,7 +469,10 @@ pub async fn hide_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub async fn position_clipitem_hud_near_cursor(app: AppHandle) -> Result<(), AppError> {
+pub async fn position_clipitem_hud_near_cursor(
+    app: AppHandle,
+    mode: Option<String>,
+) -> Result<(), AppError> {
     let window = app
         .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
         .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
@@ -480,9 +483,18 @@ pub async fn position_clipitem_hud_near_cursor(app: AppHandle) -> Result<(), App
 
     let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
 
+    let mut offset_x = CLIPITEM_HUD_OFFSET_X;
+    let mut offset_y = CLIPITEM_HUD_OFFSET_Y;
+    if let Some(m) = mode {
+        if m == "radial" {
+            offset_x = -160;
+            offset_y = -160;
+        }
+    }
+
     let target = PhysicalPosition::new(
-        cursor_pos.x.saturating_add(CLIPITEM_HUD_OFFSET_X),
-        cursor_pos.y.saturating_add(CLIPITEM_HUD_OFFSET_Y),
+        cursor_pos.x.saturating_add(offset_x),
+        cursor_pos.y.saturating_add(offset_y),
     );
 
     window
@@ -510,3 +522,4 @@ pub async fn set_clipitem_hud_mouse_passthrough(
 
 // 重新导出 Monitor 类型，方便上层统一引用
 pub use tauri::Monitor;
+

@@ -1,0 +1,67 @@
+.radial-menu-container {
+  position: relative;
+  width: 320px;
+  height: 320px;
+  pointer-events: none;
+  font-family: system-ui, sans-serif;
+  z-index: 9999;
+}
+
+.radial-menu-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
+  margin-left: -10px;
+  background-color: var(--thm-bg-color, #2b2b2b);
+  border: 2px solid var(--thm-border-color, #444);
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.radial-menu-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  margin-top: -30px;
+  margin-left: -30px;
+  background-color: var(--thm-bg-color, #3a3a3a);
+  color: var(--thm-text-color, #eee);
+  border: 1px solid var(--thm-border-color, #555);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  pointer-events: none;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+.radial-menu-item.active {
+  background-color: var(--thm-primary-color, #0078d4);
+  color: white;
+  border-color: var(--thm-primary-color, #0078d4);
+  z-index: 10;
+}
+
+.radial-menu-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.radial-menu-label {
+  font-size: 0.65rem;
+  margin-top: 3px;
+  opacity: 0.8;
+}
+
+.radial-menu-item.active .radial-menu-label {
+  opacity: 1;
+  font-weight: bold;
+}

@@ -63,6 +63,7 @@ export const ClipItemComponent = React.memo(
     const [showFavoriteBurst, setShowFavoriteBurst] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
     const clipItemHudVisibleRef = useRef(false);
+    const clipItemHudTriggerSourceRef = useRef<'mouse' | 'keyboard'>('keyboard');
     const clipItemHudAltPressedRef = useRef(false);
     const clipItemHudMouseButtonPressedRef = useRef(false);
     const clipItemHudMouseTriggerArmedRef = useRef(false);
@@ -799,3 +800,4 @@ export const ClipItemComponent = React.memo(
   },
   (prev, next) => prev.item === next.item && prev.index === next.index,
 );
+

@@ -83,7 +83,8 @@ fn main() {
                     WebviewUrl::App("index.html?mode=clipitem-hud".into()),
                 )
                 .title("ClipItem HUD")
-                .inner_size(320.0, 120.0)
+                .inner_size(320.0, 320.0)
+                .transparent(true)
                 .resizable(false)
                 .decorations(false)
                 .always_on_top(true)
@@ -252,3 +253,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("运行 Tauri 应用时出错");
 }
+
