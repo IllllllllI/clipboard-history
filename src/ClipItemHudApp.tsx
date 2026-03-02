@@ -66,7 +66,8 @@ export default function ClipItemHudApp() {
   };
 
   useEffect(() => {
-    if (!snapshot || snapshot.triggerMouseMode !== 'press_release' || snapshot.triggerSource !== 'mouse') return;
+    // For radial menu (triggerSource === 'mouse'), RadialMenu.tsx handles pointer up internally.
+    if (!snapshot || snapshot.triggerMouseMode !== 'press_release' || snapshot.triggerSource === 'mouse') return;
 
     const triggerButton = snapshot.triggerMouseButton === 'right' ? 2 : 1;
 
@@ -100,7 +101,7 @@ export default function ClipItemHudApp() {
 
   if (snapshot.triggerSource === 'mouse') {
     return (
-      <RadialMenu snapshot={snapshot} onActionComplete={(id) => sendAction(id)} onCancel={() => invoke('close_clipitem_hud')} />
+      <RadialMenu snapshot={snapshot} onActionComplete={(id) => sendAction(id)} onCancel={() => closeHud()} />
     );
   }
 

@@ -25,8 +25,8 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
     const handlePointerMove = (e: PointerEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
       const dx = e.clientX - centerX;
       const dy = e.clientY - centerY;
       

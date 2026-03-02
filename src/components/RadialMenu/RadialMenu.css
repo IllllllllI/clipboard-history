@@ -2,7 +2,8 @@
   position: relative;
   width: 320px;
   height: 320px;
-  pointer-events: none;
+  pointer-events: auto;
+  background-color: rgba(0, 0, 0, 0.01);
   font-family: system-ui, sans-serif;
   z-index: 9999;
 }
