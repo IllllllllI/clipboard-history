@@ -98,9 +98,9 @@ export default function ClipItemHudApp() {
 
   if (!snapshot) return null;
 
-  if (snapshot.triggerSource === 'mouse' && snapshot.triggerMouseMode === 'press_release') {
+  if (snapshot.triggerSource === 'mouse') {
     return (
-      <RadialMenu snapshot={snapshot} onActionComplete={() => invoke('close_clipitem_hud')} onCancel={() => invoke('close_clipitem_hud')} />
+      <RadialMenu snapshot={snapshot} onActionComplete={(id) => sendAction(id)} onCancel={() => invoke('close_clipitem_hud')} />
     );
   }
 

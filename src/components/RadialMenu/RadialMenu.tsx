@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import './RadialMenu.css';
 import { ClipItem, ClipItemHudSnapshot } from '../../types';
-import { performActionOnClipItem } from '../../utils/hudActions';
 
 interface RadialMenuProps {
   snapshot: ClipItemHudSnapshot;
-  onActionComplete: () => void;
+  onActionComplete: (actionId: any) => void;
   onCancel: () => void;
 }
 
@@ -66,15 +65,7 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, onActionComple
       }
     };
 
-    const executeAction = async (actionId: string, item: any) => {
-      try {
-        await performActionOnClipItem(actionId, item);
-        onActionComplete();
-      } catch (err) {
-        console.error('Failed to execute radial action:', err);
-        onCancel();
-      }
-    };
+    const executeAction = async (actionId: string, item: any) => { onActionComplete(actionId); };
 
     document.addEventListener('pointermove', handlePointerMove);
     document.addEventListener('pointerup', handlePointerUp);
