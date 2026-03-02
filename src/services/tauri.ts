@@ -113,9 +113,9 @@ export const TauriService = {
     await invoke<void>('hide_clipitem_hud');
   },
 
-  async positionClipItemHudNearCursor(): Promise<void> {
+  async positionClipItemHudNearCursor(mode?: 'linear' | 'radial'): Promise<void> {
     if (!isTauri) return;
-    await invoke<void>('position_clipitem_hud_near_cursor');
+    await invoke<void>('position_clipitem_hud_near_cursor', { mode: mode || 'linear' });
   },
 
   async setClipItemHudMousePassthrough(passthrough: boolean): Promise<void> {
@@ -402,4 +402,6 @@ export const TauriService = {
     return await invoke<{ path: string; size: number }>('db_move_database', { newDir });
   },
 };
+
+
 
