@@ -24,13 +24,25 @@ const COPY_STRATEGIES: {
     match: isFileList,
     action: async (text) => {
       const files = text.slice('[FILES]\n'.length).split('\n').filter(Boolean);
-      if (files.length > 0) await TauriService.copyFileToClipboard(files[0]);
+      if (files.length > 0) await TauriService.copyFilesToClipboard(files);
     },
   },
   {
     // Base64 图片
     match: (text) => text.startsWith('data:image/'),
     action: (text) => TauriService.writeImageBase64(text),
+  },
+  {
+    // 网络图片链接：优先下载并复制图片，失败时回退复制原链接文本
+    match: (text) => detectImageType(text) === ImageType.HttpUrl,
+    action: async (text) => {
+      const requestId = TauriService.createImageDownloadRequestId();
+      try {
+        await TauriService.downloadAndCopyImage(text, requestId);
+      } catch {
+        await TauriService.writeClipboard(text);
+      }
+    },
   },
   {
     // SVG 文件路径
@@ -40,7 +52,14 @@ const COPY_STRATEGIES: {
   {
     // 本地图片文件路径（使用项目工具函数）
     match: (text) => detectImageType(text) === ImageType.LocalFile,
-    action: (text) => TauriService.copyImageFromFile(normalizeFilePath(text)),
+    action: async (text) => {
+      const normalizedPath = normalizeFilePath(text);
+      try {
+        await TauriService.copyLocalImage(normalizedPath);
+      } catch {
+        await TauriService.copyImageFromFile(normalizedPath);
+      }
+    },
   },
   {
     // 纯文本（兜底）

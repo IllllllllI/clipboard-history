@@ -40,7 +40,7 @@ export function GeneralSettingsPanel({
         <h3 className="sm-panel__section-title">历史记录</h3>
         <div className="sm-panel__fields-grid">
           <div className="sm-panel__block--tight">
-            <p className="sm-panel__label">历史记录上限</p>
+            <p className="sm-panel__label">历史记录容量上限</p>
             <input
               type="range"
               min="10"
@@ -56,10 +56,11 @@ export function GeneralSettingsPanel({
               <span className="sm-panel__range-current">{settings.maxItems}</span>
               <span>500</span>
             </div>
+            <p className="sm-panel__muted">超过上限后会按时间自动淘汰最旧记录（不影响置顶/收藏状态本身）</p>
           </div>
 
           <div className="sm-panel__block--tight">
-            <p className="sm-panel__label">自动清理（天）</p>
+            <p className="sm-panel__label">自动清理周期（天）</p>
             <select
               value={settings.autoClearDays}
               onChange={(e) => updateSettings({ autoClearDays: Number.parseInt(e.target.value, 10) })}
@@ -70,6 +71,7 @@ export function GeneralSettingsPanel({
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
+            <p className="sm-panel__muted">按最后更新时间清理历史记录；选择“从不清理”将关闭自动清理</p>
           </div>
         </div>
       </section>

@@ -1,0 +1,89 @@
+.hud-root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+}
+
+.hud-card {
+  width: 260px;
+  min-height: 74px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(24, 24, 27, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  color: #f4f4f5;
+}
+
+.hud-card[data-status='failed'],
+.hud-card[data-status='cancelled'] {
+  background: rgba(40, 24, 24, 0.94);
+  border-color: rgba(248, 113, 113, 0.45);
+}
+
+.hud-icon-wrap {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hud-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.hud-spin {
+  animation: hud-spin 0.95s linear infinite;
+}
+
+.hud-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.hud-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hud-meter-bg {
+  margin-top: 6px;
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+.hud-meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #60a5fa, #6366f1);
+  transition: width 120ms ease;
+}
+
+.hud-subtitle {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.2;
+  color: rgba(244, 244, 245, 0.92);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+@keyframes hud-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

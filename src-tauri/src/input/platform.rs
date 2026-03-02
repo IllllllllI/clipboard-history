@@ -84,7 +84,6 @@ static FILE_ICON_CACHE: Lazy<Mutex<IconCache>> = Lazy::new(|| Mutex::new(IconCac
 #[cfg(target_os = "windows")]
 pub fn open_file(path: &str) -> Result<(), AppError> {
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
@@ -93,7 +92,7 @@ pub fn open_file(path: &str) -> Result<(), AppError> {
 
     let result = unsafe {
         ShellExecuteW(
-            HWND(0),
+            None,
             PCWSTR(op.as_ptr()),
             PCWSTR(path_wide.as_ptr()),
             PCWSTR::null(),
@@ -152,12 +151,11 @@ pub fn open_file_location(path: &str) -> Result<(), AppError> {
     let mut need_uninit = false;
 
     unsafe {
-        match CoInitializeEx(None, COINIT_APARTMENTTHREADED) {
-            Ok(()) => need_uninit = true,
-            Err(e) if e.code() == RPC_E_CHANGED_MODE => {}
-            Err(e) => {
-                return Err(AppError::Input(format!("初始化 COM 失败: {}", e)));
-            }
+        let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        if hr.is_ok() {
+            need_uninit = true;
+        } else if hr != RPC_E_CHANGED_MODE {
+            return Err(AppError::Input(format!("初始化 COM 失败: {:?}", hr)));
         }
 
         let parse_folder = SHParseDisplayName(
@@ -179,13 +177,13 @@ pub fn open_file_location(path: &str) -> Result<(), AppError> {
         let select_result = if parse_folder.is_ok() && parse_item.is_ok() && !folder_pidl.is_null() && !item_pidl.is_null() {
             let child = ILFindLastID(item_pidl as *const ITEMIDLIST) as *const ITEMIDLIST;
             if child.is_null() {
-                Err(windows::core::Error::from_win32())
+                Err(windows::core::Error::empty())
             } else {
                 let children = [child];
                 SHOpenFolderAndSelectItems(folder_pidl as *const ITEMIDLIST, Some(&children), 0)
             }
         } else {
-            Err(windows::core::Error::from_win32())
+            Err(windows::core::Error::empty())
         };
 
         if !folder_pidl.is_null() {
@@ -221,7 +219,6 @@ pub fn open_file_location(path: &str) -> Result<(), AppError> {
 #[cfg(target_os = "windows")]
 fn open_file_location_fallback(path: &str) -> Result<(), AppError> {
     use windows::core::PCWSTR;
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
@@ -230,7 +227,7 @@ fn open_file_location_fallback(path: &str) -> Result<(), AppError> {
 
     let result = unsafe {
         ShellExecuteW(
-            HWND(0),
+            None,
             PCWSTR::null(),
             PCWSTR(explorer.as_ptr()),
             PCWSTR(params.as_ptr()),
@@ -261,9 +258,19 @@ fn open_file_location_fallback(path: &str) -> Result<(), AppError> {
 
 #[cfg(target_os = "windows")]
 pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
+    copy_files_to_clipboard(vec![path])
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn copy_file_to_clipboard(_path: String) -> Result<(), AppError> {
+    Err(AppError::Input("文件剪贴板复制仅在 Windows 上支持".to_string()))
+}
+
+#[cfg(target_os = "windows")]
+pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), AppError> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
-    use windows::Win32::Foundation::{GlobalFree, HWND};
+    use windows::Win32::Foundation::GlobalFree;
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
@@ -271,10 +278,24 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
     use windows::Win32::System::Ole::CF_HDROP;
     use windows::Win32::UI::Shell::DROPFILES;
 
+    if paths.is_empty() {
+        return Err(AppError::Clipboard("没有可复制的文件路径".to_string()));
+    }
+
+    let encoded_paths: Vec<Vec<u16>> = paths
+        .iter()
+        .map(|path| {
+            OsStr::new(path)
+                .encode_wide()
+                .chain(std::iter::once(0))
+                .collect::<Vec<u16>>()
+        })
+        .collect();
+
     let _guard = crate::clipboard::IgnoreGuard::new();
 
     unsafe {
-        OpenClipboard(HWND(0)).map_err(|e| AppError::Clipboard(format!("打开剪贴板失败：{:?}", e)))?;
+        OpenClipboard(None).map_err(|e| AppError::Clipboard(format!("打开剪贴板失败：{:?}", e)))?;
 
         EmptyClipboard().map_err(|e| {
             let _ = CloseClipboard();
@@ -282,8 +303,11 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
         })?;
 
         let mut size = std::mem::size_of::<DROPFILES>();
-        size += (path.len() + 1) * 2;
-        size += 2;
+        size += encoded_paths
+            .iter()
+            .map(|wide| wide.len() * std::mem::size_of::<u16>())
+            .sum::<usize>();
+        size += std::mem::size_of::<u16>();
 
         let hglobal = GlobalAlloc(GMEM_MOVEABLE, size).map_err(|e| {
             let _ = CloseClipboard();
@@ -292,11 +316,11 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
 
         let ptr = GlobalLock(hglobal) as *mut u8;
         if ptr.is_null() {
-            let _ = GlobalFree(hglobal);
+            let _ = GlobalFree(Some(hglobal));
             let _ = CloseClipboard();
             log::warn!(
-                "copy_file_to_clipboard 失败: 锁定内存失败 ({})",
-                format_sensitive_path_for_log(&path)
+                "copy_files_to_clipboard 失败: 锁定内存失败 (count={})",
+                paths.len()
             );
             return Err(AppError::Clipboard("锁定内存失败".to_string()));
         }
@@ -306,41 +330,41 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
         (*drop_files).pFiles = std::mem::size_of::<DROPFILES>() as u32;
         (*drop_files).pt.x = 0;
         (*drop_files).pt.y = 0;
-        (*drop_files).fNC = windows::Win32::Foundation::BOOL(0);
-        (*drop_files).fWide = windows::Win32::Foundation::BOOL(1);
+        (*drop_files).fNC = false.into();
+        (*drop_files).fWide = true.into();
 
         let mut file_ptr = ptr.add(std::mem::size_of::<DROPFILES>()) as *mut u16;
-        let wide: Vec<u16> = OsStr::new(&path)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        std::ptr::copy_nonoverlapping(wide.as_ptr(), file_ptr, wide.len());
-        file_ptr = file_ptr.add(wide.len());
+        for wide in &encoded_paths {
+            std::ptr::copy_nonoverlapping(wide.as_ptr(), file_ptr, wide.len());
+            file_ptr = file_ptr.add(wide.len());
+        }
         *file_ptr = 0;
 
         let _ = GlobalUnlock(hglobal);
 
         if let Err(e) = SetClipboardData(
             CF_HDROP.0 as u32,
-            windows::Win32::Foundation::HANDLE(hglobal.0 as isize),
+            Some(windows::Win32::Foundation::HANDLE(hglobal.0)),
         ) {
-            let _ = GlobalFree(hglobal);
+            let _ = GlobalFree(Some(hglobal));
             let _ = CloseClipboard();
+            let first_path = paths.first().map(String::as_str).unwrap_or("");
             log::warn!(
-                "copy_file_to_clipboard 失败: SetClipboardData ({})",
-                format_sensitive_path_for_log(&path)
+                "copy_files_to_clipboard 失败: SetClipboardData (count={}, first={})",
+                paths.len(),
+                format_sensitive_path_for_log(first_path)
             );
             return Err(AppError::Clipboard(format!("设置剪贴板数据失败：{:?}", e)));
         }
 
         let _ = CloseClipboard();
-        log::info!("文件已复制到剪贴板：{}", format_sensitive_path_for_log(&path));
+        log::info!("文件已复制到剪贴板：{} 个", paths.len());
         Ok(())
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn copy_file_to_clipboard(_path: String) -> Result<(), AppError> {
+pub fn copy_files_to_clipboard(_paths: Vec<String>) -> Result<(), AppError> {
     Err(AppError::Input("文件剪贴板复制仅在 Windows 上支持".to_string()))
 }
 
@@ -376,7 +400,7 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
-    use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+    use windows::Win32::Foundation::{COLORREF, RECT};
     use windows::Win32::Graphics::Gdi::*;
     use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
     use windows::Win32::UI::Shell::{
@@ -444,15 +468,15 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
             }
         }
 
-        if result == 0 || shfi.hIcon.0 == 0 {
+        if result == 0 || shfi.hIcon.0.is_null() {
             return Ok(None);
         }
 
         let size: i32 = GetSystemMetrics(SM_CXICON).max(32);
         let pixel_count = (size * size) as usize;
 
-        let hdc_screen = GetDC(HWND(0));
-        let hdc_mem = CreateCompatibleDC(hdc_screen);
+        let hdc_screen = GetDC(None);
+        let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
 
         let mut bmi_header = BITMAPINFOHEADER::default();
         bmi_header.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
@@ -467,15 +491,15 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
         };
 
         let mut bits_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
-        let dib = CreateDIBSection(hdc_mem, &bmi, DIB_RGB_COLORS, &mut bits_ptr, None, 0);
+        let dib = CreateDIBSection(Some(hdc_mem), &bmi, DIB_RGB_COLORS, &mut bits_ptr, None, 0);
         if dib.is_err() || bits_ptr.is_null() {
             let _ = DeleteDC(hdc_mem);
-            let _ = ReleaseDC(HWND(0), hdc_screen);
+            let _ = ReleaseDC(None, hdc_screen);
             let _ = DestroyIcon(shfi.hIcon);
             return Ok(None);
         }
         let dib = dib.unwrap();
-        let old_bmp = SelectObject(hdc_mem, dib);
+        let old_bmp = SelectObject(hdc_mem, dib.into());
 
         let rect = RECT {
             left: 0,
@@ -486,7 +510,7 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
 
         let black_brush = CreateSolidBrush(COLORREF(0x00000000));
         FillRect(hdc_mem, &rect, black_brush);
-        let _ = DeleteObject(black_brush);
+        let _ = DeleteObject(black_brush.into());
 
         let _ = DrawIconEx(
             hdc_mem,
@@ -496,7 +520,7 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
             size,
             size,
             0,
-            HBRUSH::default(),
+            Some(HBRUSH::default()),
             DI_NORMAL,
         );
 
@@ -505,7 +529,7 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
 
         let white_brush = CreateSolidBrush(COLORREF(0x00FFFFFF));
         FillRect(hdc_mem, &rect, white_brush);
-        let _ = DeleteObject(white_brush);
+        let _ = DeleteObject(white_brush.into());
 
         let _ = DrawIconEx(
             hdc_mem,
@@ -515,7 +539,7 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
             size,
             size,
             0,
-            HBRUSH::default(),
+            Some(HBRUSH::default()),
             DI_NORMAL,
         );
 
@@ -523,9 +547,9 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
         let pass_white: Vec<u8> = src_w.to_vec();
 
         SelectObject(hdc_mem, old_bmp);
-        let _ = DeleteObject(dib);
+        let _ = DeleteObject(dib.into());
         let _ = DeleteDC(hdc_mem);
-        let _ = ReleaseDC(HWND(0), hdc_screen);
+        let _ = ReleaseDC(None, hdc_screen);
         let _ = DestroyIcon(shfi.hIcon);
 
         let mut rgba = vec![0u8; pixel_count * 4];
@@ -570,7 +594,7 @@ fn get_file_icon_blocking(input: String) -> Result<Option<String>, AppError> {
             .ok_or_else(|| AppError::Input("创建图标缓冲区失败".to_string()))?;
 
         let mut buf = std::io::Cursor::new(Vec::new());
-        img.write_to(&mut buf, image::ImageOutputFormat::Png)
+        img.write_to(&mut buf, image::ImageFormat::Png)
             .map_err(|e| AppError::Input(format!("编码图标 PNG 失败: {}", e)))?;
 
         let b64 = general_purpose::STANDARD.encode(buf.into_inner());

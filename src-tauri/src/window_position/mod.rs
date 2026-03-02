@@ -39,9 +39,13 @@ pub mod monitor;
 pub mod window_state;
 
 use serde::Deserialize;
-use tauri::Window;
+use tauri::{AppHandle, Manager, PhysicalPosition, Window};
 use crate::error::AppError;
 use std::time::Instant;
+
+const DOWNLOAD_HUD_WINDOW_LABEL: &str = "download-hud";
+const DOWNLOAD_HUD_OFFSET_X: i32 = 14;
+const DOWNLOAD_HUD_OFFSET_Y: i32 = 18;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -383,6 +387,56 @@ pub async fn handle_global_shortcut(
     log::debug!("全局快捷键触发，开始切换窗口状态");
     let config = placement.unwrap_or_else(default_placement_config);
     toggle_window_with_config(window, config).await
+}
+
+#[tauri::command]
+pub async fn show_download_hud(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(DOWNLOAD_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
+
+    window
+        .show()
+        .map_err(|e| AppError::Window(format!("显示 HUD 窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn hide_download_hud(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(DOWNLOAD_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
+
+    window
+        .hide()
+        .map_err(|e| AppError::Window(format!("隐藏 HUD 窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(DOWNLOAD_HUD_WINDOW_LABEL)
+        .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
+
+    let current_monitor = window
+        .current_monitor()
+        .map_err(|e| AppError::Window(format!("读取 HUD 当前显示器失败: {}", e)))?;
+
+    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
+
+    let target = PhysicalPosition::new(
+        cursor_pos.x.saturating_add(DOWNLOAD_HUD_OFFSET_X),
+        cursor_pos.y.saturating_add(DOWNLOAD_HUD_OFFSET_Y),
+    );
+
+    window
+        .set_position(target)
+        .map_err(|e| AppError::Window(format!("移动 HUD 窗口失败: {}", e)))?;
+
+    Ok(())
 }
 
 // 重新导出 Monitor 类型，方便上层统一引用

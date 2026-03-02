@@ -14,6 +14,10 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
     services::copy_file_to_clipboard(path)
 }
 
+pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), AppError> {
+    services::copy_files_to_clipboard(paths)
+}
+
 pub async fn open_file(path: String) -> Result<(), AppError> {
     services::open_file(path).await
 }

@@ -48,18 +48,22 @@ export const TagDropdown = React.memo(function TagDropdown({
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+
       if (
         popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node) &&
+        !popoverRef.current.contains(target) &&
         btnRef.current &&
-        !btnRef.current.contains(e.target as Node)
+        !btnRef.current.contains(target)
       ) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+
+    document.addEventListener('pointerdown', handler, true);
+    return () => document.removeEventListener('pointerdown', handler, true);
   }, [open, popoverRef]);
 
   const containerVariants = {

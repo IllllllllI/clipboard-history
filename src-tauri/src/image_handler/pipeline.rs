@@ -14,7 +14,7 @@
 //! 5. 转换 RGBA，并校验字节长度一致性
 
 use fast_image_resize as fr;
-use image::{DynamicImage, GenericImageView, ImageBuffer, ImageFormat, Rgba};
+use image::{DynamicImage, GenericImageView, ImageBuffer, ImageFormat, ImageReader, Rgba};
 use std::io::Cursor;
 
 use super::source::{PreparedClipboardImage, RawImageData};
@@ -77,7 +77,7 @@ impl ImageHandler {
     /// 用于在完整解码前做像素限制检查。
     fn inspect_dimensions_from_memory(bytes: &[u8]) -> Result<(u32, u32), ImageError> {
         let cursor = Cursor::new(bytes);
-        let reader = image::io::Reader::new(cursor)
+        let reader = ImageReader::new(cursor)
             .with_guessed_format()
             .map_err(|e| ImageError::InvalidFormat(format!("无法识别图片格式：{}", e)))?;
 

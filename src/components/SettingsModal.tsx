@@ -47,20 +47,20 @@ const AUTO_CLEAR_OPTIONS = [
 ] as const;
 
 const IMAGE_PERFORMANCE_OPTIONS = [
-  { value: 'quality', label: '质量优先', desc: '尽量保留原图，适合清晰度要求高的场景' },
-  { value: 'balanced', label: '平衡', desc: '默认推荐，兼顾清晰度与写入速度' },
-  { value: 'speed', label: '速度优先', desc: '优先降低写入耗时，可能牺牲部分清晰度' },
+  { value: 'quality', label: '质量优先', desc: '尽量保留原图细节，适合截图、设计稿等清晰度优先场景' },
+  { value: 'balanced', label: '平衡', desc: '默认方案，兼顾清晰度与复制响应速度' },
+  { value: 'speed', label: '速度优先', desc: '优先降低复制耗时，可能牺牲部分细节' },
 ] as const;
 
 const WINDOW_PLACEMENT_OPTIONS: { value: WindowPlacementMode; label: string; desc: string }[] = [
-  { value: 'smart_near_cursor', label: '智能贴近鼠标', desc: '按当前算法靠近鼠标并自动避免超出屏幕' },
-  { value: 'cursor_top_left', label: '窗口左上角对齐鼠标', desc: '窗口左上角对齐到鼠标位置（会做边界修正）' },
-  { value: 'cursor_center', label: '窗口中心对齐鼠标', desc: '窗口中心对齐鼠标位置（会做边界修正）' },
-  { value: 'custom_anchor', label: '窗口内自定义锚点', desc: '指定窗口内某像素点对齐鼠标位置' },
-  { value: 'monitor_center', label: '当前屏幕中心', desc: '显示到鼠标所在屏幕的中心位置' },
-  { value: 'screen_center', label: '主屏幕中心', desc: '显示到主显示器（首屏）中心位置' },
-  { value: 'custom', label: '自定义坐标', desc: '使用你指定的屏幕绝对坐标（X,Y）' },
-  { value: 'last_position', label: '保持上次位置', desc: '不重算位置，保持窗口当前坐标' },
+  { value: 'smart_near_cursor', label: '智能贴近鼠标', desc: '根据鼠标位置自动计算弹出点，并避免窗口超出屏幕边界' },
+  { value: 'cursor_top_left', label: '窗口左上角对齐鼠标', desc: '以窗口左上角贴到鼠标位置（自动做边界修正）' },
+  { value: 'cursor_center', label: '窗口中心对齐鼠标', desc: '以窗口中心对齐鼠标位置（自动做边界修正）' },
+  { value: 'custom_anchor', label: '窗口内自定义锚点', desc: '指定窗口内部某个像素点，对齐到鼠标位置' },
+  { value: 'monitor_center', label: '当前屏幕中心', desc: '始终弹到鼠标所在屏幕中心' },
+  { value: 'screen_center', label: '主屏幕中心', desc: '始终弹到主显示器中心' },
+  { value: 'custom', label: '固定坐标', desc: '使用你指定的屏幕绝对坐标（X, Y）' },
+  { value: 'last_position', label: '保持上次位置', desc: '不重新计算，沿用窗口上一次显示位置' },
 ];
 
 const MIN_DECODED_MB = 8;
@@ -260,14 +260,16 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
   // ── 开关设置配置 ──
 
   const toggleSettings: SettingToggle[] = [
-    { key: 'autoCapture',     title: '自动捕获',     desc: '实时监听剪切板变化并保存' },
-    { key: 'doubleClickPaste', title: '双击粘贴',     desc: '双击记录项自动复制并粘贴到当前应用' },
+    { key: 'autoCapture',     title: '自动记录剪贴板',     desc: '检测到外部剪贴板变化后自动写入历史记录' },
+    { key: 'doubleClickPaste', title: '双击记录后立即粘贴',     desc: '双击某条记录时，自动复制并向当前窗口发送粘贴操作' },
   ];
 
   const toggleSettingsAfterShortcut: SettingToggle[] = [
-    { key: 'hideOnAction',     title: '双击后隐藏',   desc: '双击粘贴后自动隐藏窗口' },
-    { key: 'hideOnDrag',       title: '拖拽时隐藏',   desc: '开始拖拽时隐藏窗口，防止拖拽被取消' },
-    { key: 'hideAfterDrag',    title: '拖拽后隐藏',   desc: '拖拽粘贴完成后保持窗口隐藏' },
+    { key: 'hideOnAction',     title: '双击动作后自动隐藏',   desc: '双击记录触发复制/粘贴后，自动隐藏主窗口' },
+    { key: 'hideOnDrag',       title: '开始拖拽时隐藏窗口',   desc: '进入拖拽后立即隐藏主窗口，减少遮挡和误操作' },
+    { key: 'hideAfterDrag',    title: '拖拽完成后保持隐藏',   desc: '拖拽结束后不自动回显窗口，保持后台状态' },
+    { key: 'showDragDownloadHud', title: '显示拖拽下载悬浮提示', desc: '拖拽 URL 图片时显示跟随鼠标的下载进度提示' },
+    { key: 'prefetchImageOnDragStart', title: '拖拽开始即预下载图片', desc: '对 URL 图片在拖拽开始时先下载，提高放下后粘贴命中率' },
     { key: 'showImagePreview', title: '显示图片预览', desc: '在列表中显示图片或图片链接的预览' },
   ];
 

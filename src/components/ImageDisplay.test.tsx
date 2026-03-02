@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ImageDisplay } from './ImageDisplay';
 import { ClipItem, ImageType } from '../types';
@@ -8,10 +8,7 @@ import * as imageCache from '../utils/imageCache';
 // Mock IntersectionObserver
 class MockIntersectionObserver {
   constructor(callback: IntersectionObserverCallback) {
-    // Immediately trigger the callback with intersecting entry
-    setTimeout(() => {
-      callback([{ isIntersecting: true } as IntersectionObserverEntry], this as any);
-    }, 0);
+    callback([{ isIntersecting: true } as IntersectionObserverEntry], this as any);
   }
   observe() {}
   disconnect() {}
@@ -25,9 +22,24 @@ class MockIntersectionObserver {
 global.IntersectionObserver = MockIntersectionObserver as any;
 
 describe('ImageDisplay - Link URL Display', () => {
+  const ecombdimgUrl = 'https://p3-aio.ecombdimg.com/obj/ecom-shop-material/png_m_02e078bc29d0cdc128c63939651a6737_sx_1153226_www1440-1440';
+
+  beforeEach(() => {
+    vi.spyOn(imageCache, 'fetchAndCacheImage').mockImplementation(() => new Promise<string>(() => {}));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('should detect HTTP URL images correctly', () => {
     const httpUrl = 'https://example.com/image.png';
     const imageType = detectImageType(httpUrl);
+    expect(imageType).toBe(ImageType.HttpUrl);
+  });
+
+  it('should detect extensionless ecombdimg material URLs as HTTP image', () => {
+    const imageType = detectImageType(ecombdimgUrl);
     expect(imageType).toBe(ImageType.HttpUrl);
   });
 
@@ -51,6 +63,24 @@ describe('ImageDisplay - Link URL Display', () => {
       expect(imageType).toBe(ImageType.HttpUrl);
     });
   });
+
+  it('should render extensionless ecombdimg image URL as clickable link', () => {
+    const item = {
+      id: 1,
+      text: ecombdimgUrl,
+      timestamp: Date.now(),
+      is_pinned: 0,
+      is_snippet: 0,
+      is_favorite: 0,
+      tags: [],
+      picked_color: null,
+    } as ClipItem;
+
+    render(<ImageDisplay item={item} showLinkInfo={true} />);
+
+    const link = screen.getByRole('link');
+    expect(link.getAttribute('href')).toBe(ecombdimgUrl);
+  });
 });
 
 describe('ImageDisplay - URL Click Functionality', () => {
@@ -63,6 +93,14 @@ describe('ImageDisplay - URL Click Functionality', () => {
     is_favorite: 0,
     tags: [],
     picked_color: null,
+  });
+
+  beforeEach(() => {
+    vi.spyOn(imageCache, 'fetchAndCacheImage').mockImplementation(() => new Promise<string>(() => {}));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('should render clickable link for HTTP URL images', () => {

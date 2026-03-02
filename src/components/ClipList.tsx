@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppContext } from '../contexts/AppContext';
 import { KEYBOARD_NAV_SCROLL_EVENT } from '../hooks/useKeyboardNavigation';
@@ -13,6 +13,8 @@ import { EmptyState, VirtualizedClipRow } from './ClipListParts';
 export function ClipList() {
   const { filteredHistory } = useAppContext();
   const parentRef = useRef<HTMLDivElement>(null);
+  const pendingMeasureElementsRef = useRef<Set<HTMLDivElement>>(new Set());
+  const measureRafRef = useRef<number | null>(null);
 
   const virtualizer = useVirtualizer({
     count: filteredHistory.length,
@@ -21,6 +23,33 @@ export function ClipList() {
     overscan: 5,
     getItemKey: (index) => filteredHistory[index].id, // 用稳定 ID 作为键，避免删除项后缓存高度错位
   });
+
+  const flushMeasureQueue = useCallback(() => {
+    measureRafRef.current = null;
+    pendingMeasureElementsRef.current.forEach((element) => {
+      virtualizer.measureElement(element);
+    });
+    pendingMeasureElementsRef.current.clear();
+  }, [virtualizer]);
+
+  const scheduleMeasure = useCallback((element: HTMLDivElement | null) => {
+    if (!element) return;
+
+    pendingMeasureElementsRef.current.add(element);
+
+    if (measureRafRef.current !== null) return;
+    measureRafRef.current = window.requestAnimationFrame(flushMeasureQueue);
+  }, [flushMeasureQueue]);
+
+  useEffect(() => {
+    return () => {
+      if (measureRafRef.current !== null) {
+        window.cancelAnimationFrame(measureRafRef.current);
+      }
+      measureRafRef.current = null;
+      pendingMeasureElementsRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyboardNavScroll = (event: Event) => {
@@ -59,11 +88,7 @@ export function ClipList() {
                 item={item}
                 index={virtualRow.index}
                 start={virtualRow.start}
-                onMeasure={(element) => {
-                  if (element) {
-                    virtualizer.measureElement(element);
-                  }
-                }}
+                onMeasure={scheduleMeasure}
               />
             );
           })}

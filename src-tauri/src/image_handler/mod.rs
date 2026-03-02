@@ -56,6 +56,7 @@ mod service;
 mod source;
 
 pub use commands::{
+    cancel_image_download,
     copy_base64_image_to_clipboard,
     copy_image_to_clipboard,
     download_and_copy_image,
@@ -67,6 +68,7 @@ pub use commands::{
 pub use config::{ImageConfig, ImagePerformanceProfile};
 pub use error::ImageError;
 pub use service::ImageAdvancedConfig;
+pub use service::IMAGE_DOWNLOAD_PROGRESS_EVENT;
 pub use service::ImageServiceState;
 pub use source::ImageSource;
 

@@ -14,11 +14,27 @@ export function WindowSettingsPanel({
   ToggleSwitch,
   SettingRow,
 }: WindowSettingsPanelProps) {
+  const commonBehaviorItems = toggleSettingsAfterShortcut.filter(
+    (item) => item.key === 'hideOnAction' || item.key === 'hideOnDrag' || item.key === 'hideAfterDrag'
+  );
+
+  const advancedBehaviorItems = toggleSettingsAfterShortcut.filter(
+    (item) => item.key === 'showDragDownloadHud' || item.key === 'prefetchImageOnDragStart'
+  );
+
   return (
     <div className="sm-panel__stack">
       <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
         <h3 className="sm-panel__section-title">窗口行为</h3>
-        {toggleSettingsAfterShortcut.filter((item) => item.key !== 'showImagePreview').map(({ key, title, desc }) => (
+        <p className="sm-panel__muted">常用行为</p>
+        {commonBehaviorItems.map(({ key, title, desc }) => (
+          <SettingRow key={String(key)} title={title} desc={desc}>
+            <ToggleSwitch dark={dark} on={!!settings[key]} onToggle={() => updateSettings({ [key]: !settings[key] })} />
+          </SettingRow>
+        ))}
+
+        <p className="sm-panel__muted">拖拽高级行为（按需开启）</p>
+        {advancedBehaviorItems.map(({ key, title, desc }) => (
           <SettingRow key={String(key)} title={title} desc={desc}>
             <ToggleSwitch dark={dark} on={!!settings[key]} onToggle={() => updateSettings({ [key]: !settings[key] })} />
           </SettingRow>
@@ -28,6 +44,7 @@ export function WindowSettingsPanel({
       <section className="sm-panel__section" data-theme={dark ? 'dark' : 'light'}>
         <h3 className="sm-panel__section-title">窗口位置</h3>
         <div className="sm-panel__stack">
+          <p className="sm-panel__muted">该设置决定“通过快捷键唤起窗口”时的弹出位置策略</p>
           <div className="sm-panel__option-grid">
             {windowPlacementOptions.map((opt) => {
               const active = opt.value === settings.windowPlacement.mode;
@@ -119,7 +136,7 @@ export function WindowSettingsPanel({
               <p className="sm-panel__note--tiny">
                 {isCustomAnchorPlacement
                   ? '窗口内偏移量：该像素点将对齐鼠标位置。如 (0,0) 等同于左上角对齐，(400,300) 表示窗口内 400×300 处对准鼠标'
-                  : '示例：`120,120` 表示窗口左上角位于屏幕坐标 (120,120)'}
+                  : '示例：120,120 表示窗口左上角固定在屏幕坐标 (120,120)'}
               </p>
             </div>
           )}

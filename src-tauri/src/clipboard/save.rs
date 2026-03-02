@@ -102,13 +102,12 @@ fn save_svg_text(app: &tauri::AppHandle, custom_dir: Option<String>, text: &str)
 fn read_clipboard_files_sync() -> Result<Option<Vec<String>>, AppError> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard};
     use windows::Win32::System::Ole::CF_HDROP;
     use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
     unsafe {
-        if OpenClipboard(HWND(0)).is_err() {
+        if OpenClipboard(None).is_err() {
             return Ok(None);
         }
 

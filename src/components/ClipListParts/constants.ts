@@ -3,3 +3,11 @@ export const ROW_POSITION_CACHE_TTL_MS = 10 * 60 * 1000;
 
 export const ROW_MOVE_ANIMATION_DURATION_MS = 300;
 export const ROW_MOVE_ANIMATION_EASING = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+export const TAG_LIST_ANIMATION_DURATION_MS = 280;
+export const TAG_LIST_OPACITY_DURATION_MS = 200;
+export const TAG_LIST_ANIMATION_EASING = 'easeOut';
+export const TAG_LIST_MARGIN_TOP_PX = 6;
+
+export const TAG_PILL_SPRING_STIFFNESS = 320;
+export const TAG_PILL_SPRING_DAMPING = 28;

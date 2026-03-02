@@ -81,6 +81,7 @@ export interface AppContextValue {
 
   // 下载状态
   downloadState: DownloadState;
+  clearDownloadState: () => void;
 
   // 剪贴板操作
   copyToClipboard: (item: ClipItem) => Promise<void>;
@@ -161,6 +162,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
     downloadState,
+    clearDownloadState,
     handleDragStart: dragStartRaw,
     handleDragEnd,
     handleDoubleClick: doubleClickRaw,
@@ -248,6 +250,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
     downloadState,
+    clearDownloadState,
     copyToClipboard, copyText, copiedId,
     handleDoubleClick, handleDragStart, handleDragEnd,
     handleTogglePin, handleRemove, handleClearAll,
@@ -273,6 +276,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
     downloadState,
+    clearDownloadState,
     copyToClipboard, copyText, copiedId,
     handleDoubleClick, handleDragStart, handleDragEnd,
     handleTogglePin, handleRemove, handleClearAll,

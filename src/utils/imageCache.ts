@@ -197,6 +197,19 @@ export function resetImageCache(): void {
 export async function fetchAndCacheImage(url: string, timeoutMs: number = 10000): Promise<string> {
   const cache = getImageCache();
 
+  // Cross-origin images: avoid fetch() to prevent CORS-blocked requests in browser context.
+  // Let <img src="..."> handle loading directly and rely on browser HTTP cache.
+  try {
+    if (typeof window !== 'undefined') {
+      const parsed = new URL(url, window.location.href);
+      if (parsed.origin !== window.location.origin) {
+        return url;
+      }
+    }
+  } catch {
+    // Keep original fetch path for non-standard/relative URLs.
+  }
+
   // Check if already cached
   const cachedUrl = cache.get(url);
   if (cachedUrl) {

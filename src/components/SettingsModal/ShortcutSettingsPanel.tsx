@@ -16,6 +16,7 @@ export function ShortcutSettingsPanel({
         <h3 className="sm-panel__section-title">快捷键设置</h3>
         <div className="sm-panel__block">
           <p className="sm-panel__label">全局唤起快捷键</p>
+          <p className="sm-panel__muted">在任何应用中按下后唤起主窗口（若被其他软件占用会提示冲突）</p>
           <ShortcutRecorder
             dark={dark}
             value={settings.globalShortcut}
@@ -28,6 +29,7 @@ export function ShortcutSettingsPanel({
 
         <div className="sm-panel__block">
           <p className="sm-panel__label">沉浸模式快捷键</p>
+          <p className="sm-panel__muted">用于切换沉浸模式，不会影响全局唤起快捷键</p>
           <ShortcutRecorder
             dark={dark}
             value={settings.immersiveShortcut}

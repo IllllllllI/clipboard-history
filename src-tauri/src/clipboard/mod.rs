@@ -15,17 +15,17 @@
 //! - `IgnoreGuard` 采用 RAII 模式：构造时设置标志，`Drop` 时自动清除。
 //! - 监控器运行在独立线程中，通过 Tauri 事件通知前端。
 //! - 事件携带 `source` 字段区分外部变化与内部操作。
-//! - `Handler` 为内部实现细节，对外仅暴露 `start_monitoring()` 工厂函数。
+//! - `listener` 子模块承载监听器实现，对外仅暴露 `start_monitoring()` 工厂函数。
 //! - 子模块按职责拆分：检测归 `code_detection`，持久化归 `save`。
 
 pub mod code_detection;
 pub mod save;
+mod listener;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
 use once_cell::sync::Lazy;
-use tauri::{AppHandle, Emitter, Wry};
-use clipboard_master::{ClipboardHandler, CallbackResult, Master};
+
+pub use listener::start_monitoring;
 
 // ============================================================================
 // 剪贴板忽略标志
@@ -80,65 +80,23 @@ impl IgnoreGuard {
     }
 }
 
-// ============================================================================
-// 剪贴板监控
-// ============================================================================
-
-/// 剪贴板事件处理器（内部实现）
-///
-/// 监听系统剪贴板变化，过滤应用自身触发的变化，
-/// 将有效变化通过 Tauri 事件通知前端。
-struct Handler {
-    app: AppHandle<Wry>,
+pub(crate) fn apply_runtime_settings(settings: &serde_json::Value) {
+    listener::apply_event_min_interval_from_settings(settings);
 }
 
-/// 剪贴板变化事件的负载
-///
-/// 前端通过 `source` 字段区分变化来源，无需维护独立的忽略标志。
-#[derive(serde::Serialize, Clone)]
-struct ClipboardEventPayload {
-    /// 变化来源：`"external"` 表示外部应用，`"internal"` 表示本应用
-    source: &'static str,
-}
-
-impl ClipboardHandler for Handler {
-    fn on_clipboard_change(&mut self) -> CallbackResult {
-        let mut current_budget = IGNORE_CLIPBOARD_CHANGE_BUDGET.load(Ordering::SeqCst);
-        while current_budget > 0 {
-            match IGNORE_CLIPBOARD_CHANGE_BUDGET.compare_exchange(
-                current_budget,
-                current_budget - 1,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
-                Ok(_) => {
-                    log::debug!("⏭️  忽略应用主动触发的剪贴板变化，剩余预算: {}", current_budget - 1);
-                    return CallbackResult::Next;
-                }
-                Err(actual) => {
-                    current_budget = actual;
-                }
-            }
+pub(crate) fn try_consume_ignore_budget() -> Option<usize> {
+    let mut current_budget = IGNORE_CLIPBOARD_CHANGE_BUDGET.load(Ordering::SeqCst);
+    while current_budget > 0 {
+        match IGNORE_CLIPBOARD_CHANGE_BUDGET.compare_exchange(
+            current_budget,
+            current_budget - 1,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => return Some(current_budget - 1),
+            Err(actual) => current_budget = actual,
         }
-
-        let _ = self.app.emit("clipboard-changed", ClipboardEventPayload { source: "external" });
-        CallbackResult::Next
     }
 
-    fn on_clipboard_error(&mut self, error: std::io::Error) -> CallbackResult {
-        log::error!("剪贴板错误：{}", error);
-        CallbackResult::Next
-    }
-}
-
-/// 在后台线程启动剪贴板监控
-///
-/// # 参数
-/// * `app` - Tauri 应用句柄，用于向前端发送事件
-pub fn start_monitoring(app: AppHandle<Wry>) {
-    thread::spawn(move || {
-        let _ = Master::new(Handler { app })
-            .expect("创建剪贴板监控器失败")
-            .run();
-    });
+    None
 }

@@ -30,6 +30,7 @@ function AppLayout() {
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
     downloadState,
+    clearDownloadState,
   } = useAppContext();
 
   // 鼠标悬停在顶部时临时显示 Header
@@ -125,7 +126,11 @@ function AppLayout() {
         onClose={() => setPreviewImageUrl(null)}
       />
 
-      <DownloadProgressIndicator downloadState={downloadState} darkMode={settings.darkMode} />
+      <DownloadProgressIndicator
+        downloadState={downloadState}
+        darkMode={settings.darkMode}
+        onClose={clearDownloadState}
+      />
       <ToastContainer />
     </div>
   );

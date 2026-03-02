@@ -114,6 +114,7 @@ describe('detectImageType - HTTP/HTTPS Link Detection', () => {
         'https://static.example.com/assets/logo.svg',
         'https://s3.amazonaws.com/bucket/image.webp',
         'https://img95.699pic.com/photo/50059/8720.jpg_wh300.jpg!/fh/300/quality/90',
+        'https://p3-aio.ecombdimg.com/obj/ecom-shop-material/png_m_02e078bc29d0cdc128c63939651a6737_sx_1153226_www1440-1440',
       ];
 
       testCases.forEach(url => {
@@ -123,6 +124,11 @@ describe('detectImageType - HTTP/HTTPS Link Detection', () => {
 
     it('should classify CDN-style transformed links as image-url type', () => {
       const url = 'https://img95.699pic.com/photo/50059/8720.jpg_wh300.jpg!/fh/300/quality/90';
+      expect(detectType(url)).toBe('image-url');
+    });
+
+    it('should classify extensionless ecombdimg material links as image-url type', () => {
+      const url = 'https://p3-aio.ecombdimg.com/obj/ecom-shop-material/png_m_02e078bc29d0cdc128c63939651a6737_sx_1153226_www1440-1440';
       expect(detectType(url)).toBe('image-url');
     });
 

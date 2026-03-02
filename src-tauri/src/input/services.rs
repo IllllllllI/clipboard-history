@@ -1,4 +1,8 @@
-use enigo::{Enigo, Key, KeyboardControllable};
+use enigo::{
+    Button,
+    Direction::{Click, Press, Release},
+    Enigo, Key, Keyboard, Mouse, Settings,
+};
 use tauri::Manager;
 
 use crate::error::AppError;
@@ -6,7 +10,8 @@ use crate::error::AppError;
 use super::platform;
 
 pub async fn paste_text(app: tauri::AppHandle, hide_on_action: bool) -> Result<(), AppError> {
-    let mut enigo = Enigo::new();
+    let mut enigo = Enigo::new(&Settings::default())
+        .map_err(|e| AppError::Input(format!("初始化输入模拟失败: {}", e)))?;
 
     if hide_on_action {
         if let Some(window) = app.get_webview_window("main") {
@@ -17,15 +22,19 @@ pub async fn paste_text(app: tauri::AppHandle, hide_on_action: bool) -> Result<(
 
     #[cfg(target_os = "macos")]
     {
-        enigo.key_down(Key::Meta);
-        enigo.key_click(Key::Layout('v'));
-        enigo.key_up(Key::Meta);
+        enigo
+            .key(Key::Meta, Press)
+            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
+            .and_then(|_| enigo.key(Key::Meta, Release))
+            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
     }
     #[cfg(not(target_os = "macos"))]
     {
-        enigo.key_down(Key::Control);
-        enigo.key_click(Key::Layout('v'));
-        enigo.key_up(Key::Control);
+        enigo
+            .key(Key::Control, Press)
+            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
+            .and_then(|_| enigo.key(Key::Control, Release))
+            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
     }
 
     Ok(())
@@ -38,12 +47,14 @@ pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
 
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    let mut enigo = Enigo::new();
+    let mut enigo = Enigo::new(&Settings::default())
+        .map_err(|e| AppError::Input(format!("初始化输入模拟失败: {}", e)))?;
 
     #[cfg(target_os = "windows")]
     {
-        use enigo::{MouseButton, MouseControllable};
-        enigo.mouse_click(MouseButton::Left);
+        enigo
+            .button(Button::Left, Click)
+            .map_err(|e| AppError::Input(format!("模拟鼠标点击失败: {}", e)))?;
         log::debug!("已模拟鼠标点击");
     }
 
@@ -51,15 +62,19 @@ pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
 
     #[cfg(target_os = "macos")]
     {
-        enigo.key_down(Key::Meta);
-        enigo.key_click(Key::Layout('v'));
-        enigo.key_up(Key::Meta);
+        enigo
+            .key(Key::Meta, Press)
+            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
+            .and_then(|_| enigo.key(Key::Meta, Release))
+            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
     }
     #[cfg(not(target_os = "macos"))]
     {
-        enigo.key_down(Key::Control);
-        enigo.key_click(Key::Layout('v'));
-        enigo.key_up(Key::Control);
+        enigo
+            .key(Key::Control, Press)
+            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
+            .and_then(|_| enigo.key(Key::Control, Release))
+            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
     }
 
     log::debug!("已点击并粘贴");
@@ -68,6 +83,10 @@ pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
 
 pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
     platform::copy_file_to_clipboard(path)
+}
+
+pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), AppError> {
+    platform::copy_files_to_clipboard(paths)
 }
 
 #[cfg(target_os = "windows")]

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { ClipItem, ImageType } from '../../types';
@@ -6,6 +6,14 @@ import { formatDate, detectType, detectImageType, isFileList } from '../../utils
 import { hexToRgba } from '../../utils/color';
 import { ClipboardDB } from '../../services/db';
 import { useAppContext } from '../../contexts/AppContext';
+import {
+  TAG_LIST_ANIMATION_DURATION_MS,
+  TAG_LIST_ANIMATION_EASING,
+  TAG_LIST_MARGIN_TOP_PX,
+  TAG_LIST_OPACITY_DURATION_MS,
+  TAG_PILL_SPRING_DAMPING,
+  TAG_PILL_SPRING_STIFFNESS,
+} from '../ClipListParts/constants';
 import { getItemIcon } from './constants';
 import { ClipItemContent } from './ClipItemContent';
 import { ActionButtons } from './ActionButtons';
@@ -48,6 +56,7 @@ export const ClipItemComponent = React.memo(
     } = useAppContext();
 
     const isSelected = selectedIndex === index;
+    const [suppressActiveFeedback, setSuppressActiveFeedback] = useState(false);
 
     // --- 衍生状态 ---
     const type = useMemo(() => detectType(item.text), [item.text]);
@@ -57,6 +66,9 @@ export const ClipItemComponent = React.memo(
       [isFiles, item.text],
     );
     const isImage = imageType !== ImageType.None;
+    const hasTags = (item.tags?.length ?? 0) > 0;
+    const tagListRef = useRef<HTMLDivElement>(null);
+    const [tagListHeight, setTagListHeight] = useState(0);
     const imageUrls = useMemo(
       () =>
         type === 'multi-image'
@@ -109,6 +121,39 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
+    const handlePointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      const isInteractiveTarget = Boolean(
+        target.closest('button, a, input, select, textarea, [role="button"]'),
+      );
+      setSuppressActiveFeedback(isInteractiveTarget);
+    }, []);
+
+    const clearSuppressActiveFeedback = useCallback(() => {
+      setSuppressActiveFeedback(false);
+    }, []);
+
+    useLayoutEffect(() => {
+      if (isImage || !hasTags) {
+        setTagListHeight(0);
+        return;
+      }
+
+      const element = tagListRef.current;
+      if (!element) return;
+
+      const syncHeight = () => {
+        setTagListHeight(element.scrollHeight);
+      };
+
+      syncHeight();
+
+      const observer = new ResizeObserver(syncHeight);
+      observer.observe(element);
+
+      return () => observer.disconnect();
+    }, [isImage, hasTags, item.tags]);
+
     const containerClass = 'clip-item-root';
 
     return (
@@ -118,10 +163,15 @@ export const ClipItemComponent = React.memo(
         onDragEnd={handleDragEnd}
         onDoubleClick={handleDblClick}
         onClick={handleClick}
+        onPointerDownCapture={handlePointerDownCapture}
+        onPointerUpCapture={clearSuppressActiveFeedback}
+        onPointerCancel={clearSuppressActiveFeedback}
+        onPointerLeave={clearSuppressActiveFeedback}
         className={containerClass}
         data-selected={isSelected ? 'true' : 'false'}
         data-theme={settings.darkMode ? 'dark' : 'light'}
         data-files={isFiles ? 'true' : 'false'}
+        data-press-feedback={suppressActiveFeedback ? 'off' : 'on'}
       >
         {/* 语义化颜色指示线 */}
         <div className="clip-item-accent" data-type={accentType} />
@@ -150,10 +200,14 @@ export const ClipItemComponent = React.memo(
           />
 
           {/* 标签列表 */}
-          {item.tags && item.tags.length > 0 && (
-            <motion.div layout className="clip-item-tag-list">
+          {isImage ? (
+            <div
+              className="clip-item-tag-list"
+              data-has-tags={hasTags ? 'true' : 'false'}
+              data-image-slot="true"
+            >
               <AnimatePresence>
-                {item.tags.map((tag) => {
+                {(item.tags ?? []).map((tag) => {
                   const tagStyle = tag.color
                     ? {
                         backgroundColor: hexToRgba(tag.color, settings.darkMode ? 0.2 : 0.12),
@@ -168,7 +222,11 @@ export const ClipItemComponent = React.memo(
                       initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
                       animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
                       exit={{ opacity: 0, scale: 0.8 }}
-                      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      transition={{
+                        type: 'spring',
+                        stiffness: TAG_PILL_SPRING_STIFFNESS,
+                        damping: TAG_PILL_SPRING_DAMPING,
+                      }}
                       key={tag.id}
                       className="clip-item-tag-pill"
                       data-default={!tag.color ? 'true' : 'false'}
@@ -181,7 +239,69 @@ export const ClipItemComponent = React.memo(
                   );
                 })}
               </AnimatePresence>
-            </motion.div>
+            </div>
+          ) : (
+            <AnimatePresence initial={false}>
+              {hasTags && (
+                <motion.div
+                  key="clip-item-tag-list-shell"
+                  className="clip-item-tag-list-shell"
+                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                  animate={{ opacity: 1, height: tagListHeight, marginTop: TAG_LIST_MARGIN_TOP_PX }}
+                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                  transition={{
+                    opacity: {
+                      duration: TAG_LIST_OPACITY_DURATION_MS / 1000,
+                      ease: TAG_LIST_ANIMATION_EASING,
+                    },
+                    height: {
+                      duration: TAG_LIST_ANIMATION_DURATION_MS / 1000,
+                      ease: TAG_LIST_ANIMATION_EASING,
+                    },
+                    marginTop: {
+                      duration: TAG_LIST_ANIMATION_DURATION_MS / 1000,
+                      ease: TAG_LIST_ANIMATION_EASING,
+                    },
+                  }}
+                >
+                  <div ref={tagListRef} className="clip-item-tag-list" data-has-tags="true">
+                    <AnimatePresence>
+                      {(item.tags ?? []).map((tag) => {
+                        const tagStyle = tag.color
+                          ? {
+                              backgroundColor: hexToRgba(tag.color, settings.darkMode ? 0.2 : 0.12),
+                              color: tag.color,
+                              borderColor: hexToRgba(tag.color, settings.darkMode ? 0.4 : 0.28),
+                            }
+                          : {};
+
+                        return (
+                          <motion.span
+                            layout
+                            initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
+                            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{
+                              type: 'spring',
+                              stiffness: TAG_PILL_SPRING_STIFFNESS,
+                              damping: TAG_PILL_SPRING_DAMPING,
+                            }}
+                            key={tag.id}
+                            className="clip-item-tag-pill"
+                            data-default={!tag.color ? 'true' : 'false'}
+                            data-theme={settings.darkMode ? 'dark' : 'light'}
+                            style={tagStyle}
+                          >
+                            <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
+                            {tag.name}
+                          </motion.span>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           )}
         </div>
 

@@ -117,6 +117,15 @@ function isKnownImageCdnUrl(url: string): boolean {
     const host = u.hostname;
     const params = u.searchParams;
 
+    // 抖音电商素材 CDN：常见为无后缀路径，格式名体现在路径 token（如 /png_m_xxx）
+    if (
+      host.endsWith('ecombdimg.com')
+      && /\/obj\//i.test(u.pathname)
+      && /\/(jpe?g|png|gif|webp|svg|bmp|ico|tiff?|avif|apng|heic|heif)(?=([_-]|\/|$))/i.test(u.pathname)
+    ) {
+      return true;
+    }
+
     // Bing 图片 CDN：bing.net/th/id/ + pid=ImgRaw|ImgDet|ImgFull
     if (host.endsWith('.bing.net') && u.pathname.includes('/th/id/')) {
       const pid = params.get('pid') || '';

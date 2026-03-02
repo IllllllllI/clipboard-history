@@ -1,12 +1,18 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 import { register, unregister, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
 import { open } from '@tauri-apps/plugin-dialog';
 import { open as openPath } from '@tauri-apps/plugin-shell';
-import type { ImageAdvancedConfig, ImagePerformanceProfile } from '../types';
-import type { WindowPlacementSettings } from '../types';
+import type {
+  ImageAdvancedConfig,
+  ImageDownloadProgressEvent,
+  ImagePerformanceProfile,
+  WindowPlacementSettings,
+} from '../types';
 
 export const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+const IMAGE_DOWNLOAD_PROGRESS_EVENT = 'image-download-progress';
 
 // ============================================================================
 // 工具函数
@@ -76,6 +82,21 @@ export const TauriService = {
     await getCurrentWindow().setPosition(new PhysicalPosition(-9999, -9999));
   },
 
+  async showDownloadHud(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('show_download_hud');
+  },
+
+  async hideDownloadHud(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('hide_download_hud');
+  },
+
+  async positionDownloadHudNearCursor(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('position_download_hud_near_cursor');
+  },
+
   async handleGlobalShortcut(placement?: WindowPlacementSettings): Promise<void> {
     if (!isTauri) return;
     await invoke<void>('handle_global_shortcut', {
@@ -139,9 +160,30 @@ export const TauriService = {
   },
 
   /** 下载网络图片并复制到剪贴板 */
-  async downloadAndCopyImage(url: string): Promise<void> {
+  async downloadAndCopyImage(url: string, requestId: string): Promise<void> {
     if (!isTauri) return;
-    await invoke<void>('download_and_copy_image', { url });
+    await invoke<void>('download_and_copy_image', { url, requestId });
+  },
+
+  async cancelImageDownload(requestId: string): Promise<boolean> {
+    if (!isTauri || !requestId) return false;
+    return await invoke<boolean>('cancel_image_download', { requestId });
+  },
+
+  createImageDownloadRequestId(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  },
+
+  async listenImageDownloadProgress(
+    handler: (payload: ImageDownloadProgressEvent) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<ImageDownloadProgressEvent>(IMAGE_DOWNLOAD_PROGRESS_EVENT, (event) => {
+      handler(event.payload);
+    });
   },
 
   /** 将 Base64 图片复制到剪贴板 */
@@ -186,6 +228,12 @@ export const TauriService = {
     await invoke<void>('copy_file_to_clipboard', { path });
   },
 
+  /** 将多个文件路径以 CF_HDROP 格式复制到剪贴板 */
+  async copyFilesToClipboard(paths: string[]): Promise<void> {
+    if (!isTauri || paths.length === 0) return;
+    await invoke<void>('copy_files_to_clipboard', { paths });
+  },
+
   // ── 输入模拟 ──
 
   async pasteText(hideOnAction: boolean): Promise<void> {
@@ -226,7 +274,14 @@ export const TauriService = {
     try {
       await unregisterAll();
     } catch (e) {
-      console.error('[TauriService] Cleanup shortcut error:', e);
+      const message = e instanceof Error ? e.message : String(e);
+      const isPermissionDenied =
+        message.includes('not allowed') ||
+        message.includes('allow-unregister-all');
+
+      if (!isPermissionDenied) {
+        console.error('[TauriService] Cleanup shortcut error:', e);
+      }
     }
   },
 

@@ -171,6 +171,21 @@ Windows 打包目标由 `src-tauri/tauri.conf.json` 配置为 `nsis` 与 `msi`�
 
 后端通过 `ImageServiceState` 注入，命令层保持薄封装，核心逻辑位于 `loader / pipeline / clipboard_writer`。
 
+### 图片写入失败日志字段（Windows）
+
+当图片写入系统剪贴板失败时，后端日志会输出固定字段，便于检索与告警聚合：
+
+- `format`：失败的剪贴板格式（如 `PNG`、`CF_DIBV5`）
+- `hr`：原始 HRESULT（十六进制）
+- `code`：从 HRESULT 解析出的 Win32 错误码（若可解析）
+- `hint`：错误语义提示（例如剪贴板占用、内存不足、系统资源不足）
+
+示例（简化）：
+
+```text
+SetClipboardData失败: format=PNG hr=0x8007058A code=1418 hint=剪贴板句柄未打开或已失效 ...
+```
+
 ## 排障建议
 
 - 先检查 Rust 编译链是否正常：

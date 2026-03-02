@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager};
 
+use crate::clipboard;
 use crate::error::AppError;
 
 fn settings_file_path(app: &AppHandle) -> Result<PathBuf, AppError> {
@@ -34,6 +35,8 @@ pub fn get_app_settings(app: AppHandle) -> Result<Option<serde_json::Value>, App
 #[tauri::command]
 pub fn set_app_settings(app: AppHandle, settings: serde_json::Value) -> Result<(), AppError> {
     let settings_path = settings_file_path(&app)?;
+
+    clipboard::apply_runtime_settings(&settings);
 
     let content = serde_json::to_string_pretty(&settings)
         .map_err(|e| AppError::Storage(format!("序列化设置失败: {}", e)))?;

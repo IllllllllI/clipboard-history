@@ -80,6 +80,51 @@ const MIGRATIONS: Migration[] = [
       customY: Number.isFinite(customY) ? Math.trunc(customY) : fallback.customY,
     };
   },
+  // v0.5: 拖拽下载 HUD 开关兜底
+  (data) => {
+    if (typeof data.showDragDownloadHud !== 'boolean') {
+      data.showDragDownloadHud = true;
+    }
+  },
+  // v0.6: 拖拽开始预取开关兜底
+  (data) => {
+    if (typeof data.prefetchImageOnDragStart !== 'boolean') {
+      data.prefetchImageOnDragStart = false;
+    }
+  },
+  // v0.7: 图片下载分阶段超时兜底
+  (data) => {
+    const connect = Number(data.imageConnectTimeout);
+    const firstByte = Number(data.imageFirstByteTimeoutMs);
+    const chunk = Number(data.imageChunkTimeoutMs);
+
+    data.imageConnectTimeout = Number.isFinite(connect) && connect >= 1 ? Math.trunc(connect) : 8;
+    data.imageFirstByteTimeoutMs = Number.isFinite(firstByte) && firstByte >= 500 ? Math.trunc(firstByte) : 10_000;
+    data.imageChunkTimeoutMs = Number.isFinite(chunk) && chunk >= 500 ? Math.trunc(chunk) : 15_000;
+  },
+  // v0.8: 剪贴板写入重试预算兜底
+  (data) => {
+    const retryBudget = Number(data.imageClipboardRetryMaxTotalMs);
+    const retryMaxDelay = Number(data.imageClipboardRetryMaxDelayMs);
+
+    data.imageClipboardRetryMaxTotalMs =
+      Number.isFinite(retryBudget) && retryBudget >= 200
+        ? Math.trunc(retryBudget)
+        : 1_800;
+
+    data.imageClipboardRetryMaxDelayMs =
+      Number.isFinite(retryMaxDelay) && retryMaxDelay >= 10
+        ? Math.trunc(retryMaxDelay)
+        : 900;
+  },
+  // v0.9: 剪贴板监听事件节流间隔兜底
+  (data) => {
+    const interval = Number(data.clipboardEventMinIntervalMs);
+    data.clipboardEventMinIntervalMs =
+      Number.isFinite(interval)
+        ? Math.min(5000, Math.max(20, Math.trunc(interval)))
+        : 80;
+  },
   // 后续迁移在此追加...
 ];
 
@@ -169,11 +214,25 @@ export function useSettings() {
         allow_private_network: settings.allowPrivateNetwork,
         resolve_dns_for_url_safety: settings.resolveDnsForUrlSafety,
         max_decoded_bytes: settings.maxDecodedBytes,
+        connect_timeout: settings.imageConnectTimeout,
+        stream_first_byte_timeout_ms: settings.imageFirstByteTimeoutMs,
+        stream_chunk_timeout_ms: settings.imageChunkTimeoutMs,
+        clipboard_retry_max_total_ms: settings.imageClipboardRetryMaxTotalMs,
+        clipboard_retry_max_delay_ms: settings.imageClipboardRetryMaxDelayMs,
       })
       .catch((error) => {
         console.warn('同步图片高级配置失败：', error);
       });
-  }, [settings.allowPrivateNetwork, settings.resolveDnsForUrlSafety, settings.maxDecodedBytes]);
+  }, [
+    settings.allowPrivateNetwork,
+    settings.resolveDnsForUrlSafety,
+    settings.maxDecodedBytes,
+    settings.imageConnectTimeout,
+    settings.imageFirstByteTimeoutMs,
+    settings.imageChunkTimeoutMs,
+    settings.imageClipboardRetryMaxTotalMs,
+    settings.imageClipboardRetryMaxDelayMs,
+  ]);
 
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
     setSettings(prev => {

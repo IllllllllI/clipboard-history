@@ -29,6 +29,11 @@ pub fn copy_file_to_clipboard(path: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), AppError> {
+    commands::copy_files_to_clipboard(paths)
+}
+
+#[tauri::command]
 pub async fn open_file(path: String) -> Result<(), AppError> {
     commands::open_file(path).await
 }

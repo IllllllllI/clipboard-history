@@ -39,6 +39,11 @@ describe('useSettings', () => {
       allowPrivateNetwork: true,
       resolveDnsForUrlSafety: false,
       maxDecodedBytes: 64 * 1024 * 1024,
+      imageConnectTimeout: 6,
+      imageFirstByteTimeoutMs: 9000,
+      imageChunkTimeoutMs: 12000,
+      imageClipboardRetryMaxTotalMs: 2200,
+      imageClipboardRetryMaxDelayMs: 800,
     });
 
     const { result } = renderHook(() => useSettings());
@@ -48,6 +53,11 @@ describe('useSettings', () => {
       expect(result.current.settings.allowPrivateNetwork).toBe(true);
       expect(result.current.settings.resolveDnsForUrlSafety).toBe(false);
       expect(result.current.settings.maxDecodedBytes).toBe(64 * 1024 * 1024);
+      expect(result.current.settings.imageConnectTimeout).toBe(6);
+      expect(result.current.settings.imageFirstByteTimeoutMs).toBe(9000);
+      expect(result.current.settings.imageChunkTimeoutMs).toBe(12000);
+      expect(result.current.settings.imageClipboardRetryMaxTotalMs).toBe(2200);
+      expect(result.current.settings.imageClipboardRetryMaxDelayMs).toBe(800);
     });
 
     expect(mockTauriService.getAppSettings).toHaveBeenCalledTimes(1);
@@ -70,6 +80,11 @@ describe('useSettings', () => {
         allowPrivateNetwork: true,
         resolveDnsForUrlSafety: false,
         maxDecodedBytes: 96 * 1024 * 1024,
+        imageConnectTimeout: 7,
+        imageFirstByteTimeoutMs: 11000,
+        imageChunkTimeoutMs: 14000,
+        imageClipboardRetryMaxTotalMs: 2600,
+        imageClipboardRetryMaxDelayMs: 700,
       });
     });
 
@@ -80,6 +95,11 @@ describe('useSettings', () => {
         allow_private_network: true,
         resolve_dns_for_url_safety: false,
         max_decoded_bytes: 96 * 1024 * 1024,
+        connect_timeout: 7,
+        stream_first_byte_timeout_ms: 11000,
+        stream_chunk_timeout_ms: 14000,
+        clipboard_retry_max_total_ms: 2600,
+        clipboard_retry_max_delay_ms: 700,
       });
     });
   });

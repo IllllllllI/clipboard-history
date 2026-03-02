@@ -25,6 +25,12 @@ pub struct ImageConfig {
     pub max_file_size: u64,
     /// 网络下载超时时间（秒）。
     pub download_timeout: u64,
+    /// 建立连接（TCP/TLS）超时时间（秒）。
+    pub connect_timeout: u64,
+    /// 下载首包超时时间（毫秒）。
+    pub stream_first_byte_timeout_ms: u64,
+    /// 下载分块读取超时时间（毫秒）。
+    pub stream_chunk_timeout_ms: u64,
     /// 最大重定向次数，避免无限跳转或恶意链路。
     pub max_redirects: usize,
     /// 是否允许访问内网或本地地址（默认关闭，防 SSRF）。
@@ -49,6 +55,10 @@ pub struct ImageConfig {
     pub clipboard_retries: u32,
     /// 重试间隔（毫秒）。
     pub clipboard_retry_delay: u64,
+    /// 单次写入流程允许的总重试预算（毫秒）。
+    pub clipboard_retry_max_total_ms: u64,
+    /// 单次退避延迟上限（毫秒）。
+    pub clipboard_retry_max_delay_ms: u64,
 }
 
 impl Default for ImageConfig {
@@ -56,6 +66,9 @@ impl Default for ImageConfig {
         Self {
             max_file_size: 50 * 1024 * 1024,
             download_timeout: 30,
+            connect_timeout: 8,
+            stream_first_byte_timeout_ms: 10_000,
+            stream_chunk_timeout_ms: 15_000,
             max_redirects: 5,
             allow_private_network: false,
             resolve_dns_for_url_safety: true,
@@ -67,6 +80,8 @@ impl Default for ImageConfig {
             resize_filter: FilterType::Triangle,
             clipboard_retries: 3,
             clipboard_retry_delay: 100,
+            clipboard_retry_max_total_ms: 1_800,
+            clipboard_retry_max_delay_ms: 900,
         }
     }
 }

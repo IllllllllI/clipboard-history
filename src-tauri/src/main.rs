@@ -13,6 +13,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{
     MouseButton as TauriMouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
 };
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 fn main() {
@@ -56,6 +57,23 @@ fn main() {
             // 显式设置主窗口图标，避免平台默认图标与配置不一致
             if let Some(main_window) = app.get_webview_window("main") {
                 let _ = main_window.set_icon(app_icon.clone());
+            }
+
+            if app.get_webview_window("download-hud").is_none() {
+                let _hud_window = WebviewWindowBuilder::new(
+                    app,
+                    "download-hud",
+                    WebviewUrl::App("index.html?mode=download-hud".into()),
+                )
+                .title("Download HUD")
+                .inner_size(280.0, 84.0)
+                .resizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .visible(false)
+                .build()
+                .map_err(|e| format!("创建下载 HUD 窗口失败: {}", e))?;
             }
             log::info!("setup: main window icon set");
 
@@ -156,6 +174,7 @@ fn main() {
             clipboard::save::write_text_to_clipboard,
             // 图片处理
             image_handler::commands::download_and_copy_image,
+            image_handler::commands::cancel_image_download,
             image_handler::commands::copy_base64_image_to_clipboard,
             image_handler::commands::copy_image_to_clipboard,
             image_handler::commands::set_image_performance_profile,
@@ -166,6 +185,7 @@ fn main() {
             input::paste_text,
             input::click_and_paste,
             input::copy_file_to_clipboard,
+            input::copy_files_to_clipboard,
             input::open_file,
             input::open_file_location,
             input::get_file_icon,
@@ -174,6 +194,9 @@ fn main() {
             window_position::reposition_and_focus,
             window_position::toggle_window,
             window_position::handle_global_shortcut,
+            window_position::show_download_hud,
+            window_position::hide_download_hud,
+            window_position::position_download_hud_near_cursor,
             // 数据库操作
             db::db_auto_clear,
             db::db_get_stats,
