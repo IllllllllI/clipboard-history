@@ -300,6 +300,7 @@ export const ClipItemComponent = React.memo(
       if (!isTauri) return;
 
       clipItemHudVisibleRef.current = false;
+      void TauriService.setClipItemHudMousePassthrough(true);
       void TauriService.hideClipItemHud();
     }, []);
 
@@ -422,44 +423,35 @@ export const ClipItemComponent = React.memo(
 
     const handleRootPointerEnter = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
       clipItemHudPointerInsideRef.current = true;
+      if (triggerMouseMode === 'press_release' && isTriggerMouseButtonPressed(e.buttons)) {
+        return;
+      }
       syncClipItemHudAltState(isTriggerPressed(e));
-    }, [isTriggerPressed, syncClipItemHudAltState]);
+    }, [isTriggerPressed, isTriggerMouseButtonPressed, syncClipItemHudAltState, triggerMouseMode]);
 
     const handleRootPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      if (
-        triggerMouseMode === 'press_release'
-        && clipItemHudMouseButtonPressedRef.current
-        && !isTriggerMouseButtonPressed(e.buttons)
-      ) {
-        resetClipItemHudMouseTriggerState();
-        if (!clipItemHudAltPressedRef.current) {
-          hideClipItemHud();
-        }
+      if (triggerMouseMode === 'press_release' && isTriggerMouseButtonPressed(e.buttons)) {
+        return;
       }
-
       const pressed = isTriggerPressed(e);
       if (clipItemHudAltPressedRef.current === pressed) {
         return;
       }
       syncClipItemHudAltState(pressed);
-    }, [hideClipItemHud, isTriggerMouseButtonPressed, isTriggerPressed, resetClipItemHudMouseTriggerState, syncClipItemHudAltState, triggerMouseMode]);
+    }, [isTriggerPressed, isTriggerMouseButtonPressed, syncClipItemHudAltState, triggerMouseMode]);
 
-    const handleRootPointerLeave = useCallback(() => {
+    const handleRootPointerLeave = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
       clipItemHudPointerInsideRef.current = false;
       clearSuppressActiveFeedback();
 
-      if (triggerMouseMode !== 'press_release') {
+      if (triggerMouseMode === 'press_release' && isTriggerMouseButtonPressed(e.buttons)) {
         return;
       }
 
-      if (clipItemHudMouseButtonPressedRef.current) {
-        return;
-      }
-
-      if (!clipItemHudAltPressedRef.current) {
+      if (!clipItemHudAltPressedRef.current && !clipItemHudMouseButtonPressedRef.current) {
         hideClipItemHud();
       }
-    }, [clearSuppressActiveFeedback, hideClipItemHud, triggerMouseMode]);
+    }, [clearSuppressActiveFeedback, hideClipItemHud, isTriggerMouseButtonPressed, triggerMouseMode]);
 
     const handleRootContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       if (!shouldEnableClipItemHud || triggerMouseButton !== 'right') return;
@@ -495,21 +487,7 @@ export const ClipItemComponent = React.memo(
       };
     }, [resetClipItemHudMouseTriggerState, triggerPointerButton]);
 
-    const handleRootFocusCapture = useCallback(() => {
-      showClipItemHudAtCursor();
-    }, [showClipItemHudAtCursor]);
-
-    const handleRootBlurCapture = useCallback((e: React.FocusEvent<HTMLDivElement>) => {
-      if (e.currentTarget.contains(e.relatedTarget as Node | null)) {
-        return;
-      }
-
-      if (!e.relatedTarget) {
-        return;
-      }
-
-      hideClipItemHud();
-    }, [hideClipItemHud]);
+    
 
     useEffect(() => {
       if (shouldEnableClipItemHud) return;
@@ -593,8 +571,6 @@ export const ClipItemComponent = React.memo(
         onPointerUpCapture={handlePointerUpCapture}
         onPointerCancel={handleRootPointerCancel}
         onPointerLeave={handleRootPointerLeave}
-        onFocusCapture={handleRootFocusCapture}
-        onBlurCapture={handleRootBlurCapture}
         className={containerClass}
         data-selected={isSelected ? 'true' : 'false'}
         data-theme={settings.darkMode ? 'dark' : 'light'}
