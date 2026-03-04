@@ -20,7 +20,7 @@ export function ClipList() {
     count: filteredHistory.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 64, // 预估行高（px），实际高度由 measureElement 动态测量
-    overscan: 5,
+    overscan: 3,
     getItemKey: (index) => filteredHistory[index].id, // 用稳定 ID 作为键，避免删除项后缓存高度错位
   });
 

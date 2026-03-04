@@ -253,16 +253,27 @@ const MIGRATIONS: Migration[] = [
         ? Math.min(1600, Math.max(0, Math.trunc(next)))
         : 640;
   },
-  // v0.28: 窗口外 HUD 定位模式兜底
+  // v0.28: 线性 HUD 定位模式兜底（near_item → dynamic，fixed → dynamic）
   (data) => {
-    const allowedModes = new Set(['near_item', 'fixed']);
-    if (!allowedModes.has(data.clipItemHudPositionMode as string)) {
-      data.clipItemHudPositionMode = 'near_item';
+    const allowedModes = new Set(['dynamic', 'top', 'bottom', 'left', 'right']);
+    // 兼容旧值迁移
+    if (data.clipItemHudPositionMode === 'near_item') {
+      data.clipItemHudPositionMode = 'dynamic';
+    } else if (data.clipItemHudPositionMode === 'fixed') {
+      data.clipItemHudPositionMode = 'dynamic';
     }
-    const fx = Number(data.clipItemHudFixedX);
-    const fy = Number(data.clipItemHudFixedY);
-    data.clipItemHudFixedX = Number.isFinite(fx) ? Math.trunc(fx) : 100;
-    data.clipItemHudFixedY = Number.isFinite(fy) ? Math.trunc(fy) : 100;
+    if (!allowedModes.has(data.clipItemHudPositionMode as string)) {
+      data.clipItemHudPositionMode = 'dynamic';
+    }
+    // 清理已废弃的固定坐标字段
+    delete data.clipItemHudFixedX;
+    delete data.clipItemHudFixedY;
+  },
+  // v0.29: 主窗口置顶开关兜底
+  (data) => {
+    if (typeof data.alwaysOnTop !== 'boolean') {
+      data.alwaysOnTop = true;
+    }
   },
   // 后续迁移在此追加...
 ];
@@ -393,6 +404,17 @@ export function useSettings() {
     settings.imageClipboardRetryMaxTotalMs,
     settings.imageClipboardRetryMaxDelayMs,
   ]);
+
+  // 同步主窗口置顶状态
+  useEffect(() => {
+    if (!bootstrappedSettingsRef.current) return;
+
+    TauriService
+      .setAlwaysOnTop(settings.alwaysOnTop)
+      .catch((error) => {
+        console.warn('同步主窗口置顶状态失败：', error);
+      });
+  }, [settings.alwaysOnTop]);
 
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
     setSettings(prev => {

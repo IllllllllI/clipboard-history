@@ -39,13 +39,43 @@ pub mod monitor;
 pub mod window_state;
 
 use crate::ipc::{
-    WINDOW_LABEL_CLIPITEM_HUD, WINDOW_LABEL_DOWNLOAD_HUD, WINDOW_LABEL_MAIN,
-    WINDOW_LABEL_RADIAL_MENU,
+    WINDOW_LABEL_HUD_HOST, WINDOW_LABEL_MAIN,
 };
 use serde::Deserialize;
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Window};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder, Window};
+use tauri::window::Color;
 use crate::error::AppError;
 use std::time::Instant;
+
+/// 在 Windows 上通过 SetWindowPos 强制将 HUD 窗口置于 Z 轴最顶层。
+///
+/// 当主窗口和 HUD 窗口都处于 TOPMOST 带时，`set_always_on_top(true)` 不一定能
+/// 保证 HUD 在主窗口之上（同带窗口取决于最后激活顺序）。
+/// 此函数调用 Win32 `SetWindowPos(hwnd, HWND_TOPMOST, ...)` 强制重排序。
+#[cfg(target_os = "windows")]
+fn force_hud_topmost(window: &tauri::WebviewWindow) {
+    use windows::Win32::Foundation::HWND as WinHWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, SWP_NOMOVE, SWP_NOSIZE, SWP_NOACTIVATE, HWND_TOPMOST,
+    };
+    if let Ok(tauri_hwnd) = window.hwnd() {
+        let win_hwnd = WinHWND(tauri_hwnd.0);
+        unsafe {
+            let _ = SetWindowPos(
+                win_hwnd,
+                Some(HWND_TOPMOST),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn force_hud_topmost(window: &tauri::WebviewWindow) {
+    // 非 Windows 平台回退：仅依赖 Tauri 的 always_on_top
+    let _ = window.set_always_on_top(true);
+}
 
 const DOWNLOAD_HUD_OFFSET_X: i32 = 14;
 const DOWNLOAD_HUD_OFFSET_Y: i32 = 18;
@@ -112,6 +142,98 @@ fn detect_nearest_main_window_edge(
 
     nearest.1
 }
+
+// ── 统一 HUD 宿主窗口 ──
+//
+// 所有 HUD（ClipItem / Radial Menu / Download）共享同一个 WebView2 窗口，
+// 从 3 个独立进程（~150-240MB）降低到 1 个进程（~50-80MB）。
+// 窗口在首次需要或 warmup 时创建，内部 React 应用根据事件动态渲染
+// 对应的 HUD 组件。
+//
+// 窗口属性选择最大公约数配置：
+// - 透明背景（radial-menu / clipitem-hud 需要，download-hud 组件自行绘制背景）
+// - 不可调整大小、无装饰、始终置顶、跳过任务栏
+// - 初始尺寸取最大 HUD（radial-menu 344x344）
+
+/// 获取或按需创建统一 HUD 宿主窗口
+fn get_or_create_hud_host(app: &AppHandle) -> Result<tauri::WebviewWindow, AppError> {
+    if let Some(w) = app.get_webview_window(WINDOW_LABEL_HUD_HOST) {
+        return Ok(w);
+    }
+    log::info!("lazily creating hud-host window");
+    WebviewWindowBuilder::new(
+        app,
+        WINDOW_LABEL_HUD_HOST,
+        WebviewUrl::App("hud.html".into()),
+    )
+    .title("HUD Host")
+    .inner_size(344.0, 344.0)
+    .transparent(true)
+    .background_color(Color(0, 0, 0, 0))
+    .shadow(false)
+    .resizable(false)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .focusable(false)
+    .devtools(false)
+    .visible(false)
+    .build()
+    .map_err(|e| AppError::Window(format!("创建 HUD 宿主窗口失败: {}", e)))
+}
+
+// ── 主窗口置顶切换 ──
+
+#[tauri::command]
+pub async fn set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(WINDOW_LABEL_MAIN)
+        .ok_or_else(|| AppError::Window("主窗口不存在".to_string()))?;
+    window
+        .set_always_on_top(enabled)
+        .map_err(|e| AppError::Window(format!("设置主窗口置顶失败: {}", e)))?;
+    log::info!("set_always_on_top: enabled={enabled}");
+    Ok(())
+}
+
+// ── HUD 窗口后台预热 ──
+//
+// 主窗口 show 时在后台线程预创建 HUD 宿主窗口，确保
+// 用户交互时 HUD 能立刻出现（~0ms 延迟）。
+// 主窗口 hide 时销毁 HUD 窗口释放内存。
+
+/// 在后台预创建 HUD 窗口（非阻塞），供主窗口 show 后调用
+pub fn warmup_hud_in_background(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        match get_or_create_hud_host(&handle) {
+            Ok(w) => {
+                let _ = w.set_position(tauri::PhysicalPosition::new(-9999_i32, -9999_i32));
+                log::debug!("后台预热 HUD 窗口完成");
+            }
+            Err(e) => {
+                log::warn!("后台预热 HUD 窗口失败: {e}");
+            }
+        }
+    });
+}
+
+/// 将 HUD 宿主窗口隐藏并移到屏外（不销毁 WebView2 进程）。
+///
+/// 与 `destroy()` 不同，`hide() + 移到 (-9999,-9999)` 保持 WebView2 进程存活，
+/// 下次 show 时零延迟（~0ms vs 重建的 200-600ms）。
+/// 窗口销毁仅在 `hide_all_hud_windows`（主窗口隐藏/关闭后）中执行。
+fn stash_hud_offscreen(app: &AppHandle) -> Result<(), AppError> {
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL_HUD_HOST) {
+        let _ = window.hide();
+        let _ = window.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
+        // 开启鼠标穿透，防止隐藏窗口拦截点击
+        let _ = window.set_ignore_cursor_events(true);
+    }
+    Ok(())
+}
+
 
 fn compute_clipitem_hud_edge_position(
     cursor_pos: PhysicalPosition<i32>,
@@ -472,6 +594,10 @@ async fn toggle_window_with_config(
                 .map_err(|e| AppError::Window(format!("Failed to set window position: {}", e)))?;
             window.show()
                 .map_err(|e| AppError::Window(format!("Failed to show window: {}", e)))?;
+            // 主窗口显示后后台预热 HUD 窗口，确保悬停时即刻响应
+            if is_main_window {
+                warmup_hud_in_background(window.app_handle());
+            }
             window.set_focus()
                 .map_err(|e| AppError::Window(format!("Failed to set window focus: {}", e)))
         }
@@ -518,35 +644,27 @@ pub async fn handle_global_shortcut(
 
 #[tauri::command]
 pub async fn show_download_hud(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD)
-        .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
+    let window = get_or_create_hud_host(&app)?;
 
     window
         .show()
         .map_err(|e| AppError::Window(format!("显示 HUD 窗口失败: {}", e)))?;
+
+    // 强制 HUD 在所有 TOPMOST 窗口之上（含主窗口）
+    force_hud_topmost(&window);
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn hide_download_hud(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD)
-        .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
-
-    window
-        .hide()
-        .map_err(|e| AppError::Window(format!("隐藏 HUD 窗口失败: {}", e)))?;
-
+    stash_hud_offscreen(&app)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD)
-        .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
+    let window = get_or_create_hud_host(&app)?;
 
     let current_monitor = window
         .current_monitor()
@@ -568,31 +686,21 @@ pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), App
 
 #[tauri::command]
 pub async fn show_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
-        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+    let window = get_or_create_hud_host(&app)?;
 
     window
         .show()
         .map_err(|e| AppError::Window(format!("显示 ClipItem HUD 窗口失败: {}", e)))?;
+
+    // 强制 HUD 在所有 TOPMOST 窗口之上（含主窗口）
+    force_hud_topmost(&window);
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn hide_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
-        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
-
-    // 先 hide 再移出屏幕：hide() 立即使窗口不可见，
-    // 后续并发的 position 命令即使设置了屏幕内坐标也不会产生闪烁。
-    // set_position(-9999) 用于停放，防止下次 show() 时瞬间出现在旧位置。
-    window
-        .hide()
-        .map_err(|e| AppError::Window(format!("隐藏 ClipItem HUD 窗口失败: {}", e)))?;
-    let _ = window.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
-
+    stash_hud_offscreen(&app)?;
     Ok(())
 }
 
@@ -601,15 +709,12 @@ pub async fn position_clipitem_hud_near_cursor(
     app: AppHandle,
     mode: Option<String>,
 ) -> Result<String, AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
-        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+    let window = get_or_create_hud_host(&app)?;
 
-    // 窗口已被隐藏（如拖拽期间）则跳过定位，
-    // 防止滞后的 IPC 将窗口移回屏幕内导致闪烁。
-    if !window.is_visible().unwrap_or(true) {
-        return Ok(ClipItemHudAxis::Horizontal.as_str().to_string());
-    }
+    // 注意：不再检查 is_visible()。
+    // 隐藏状态窗口也允许定位——调用方（openClipItemHud）会先定位再 show()，
+    // 防止窗口在停泊坐标 (-9999,-9999) 处被显示。
+    // JS 侧的 HudManager.isDragging() 守卫已足够防止拖拽期间的滞后 IPC 问题。
 
     let current_monitor = window
         .current_monitor()
@@ -650,55 +755,175 @@ pub async fn position_clipitem_hud_near_cursor(
     Ok(axis.as_str().to_string())
 }
 
+/// 将线性 HUD 固定在主窗口指定边缘（top / bottom / left / right）。
+///
+/// 与 `position_clipitem_hud_near_cursor`（动态跟随光标）不同，
+/// 该命令始终将 HUD 居中对齐到主窗口的指定边缘，不依赖光标位置。
+///
+/// # 返回
+/// 与动态定位一致，返回对应轴向字符串（`"horizontal"` / `"vertical"`）。
+#[tauri::command]
+pub async fn position_clipitem_hud_at_main_edge(
+    app: AppHandle,
+    edge: String,
+) -> Result<String, AppError> {
+    let window = get_or_create_hud_host(&app)?;
+
+    let main_window = app
+        .get_webview_window(WINDOW_LABEL_MAIN)
+        .ok_or_else(|| AppError::Window("主窗口不存在".to_string()))?;
+
+    let main_pos = main_window
+        .outer_position()
+        .map_err(|e| AppError::Window(format!("读取主窗口位置失败: {}", e)))?;
+    let main_size = main_window
+        .outer_size()
+        .map_err(|e| AppError::Window(format!("读取主窗口尺寸失败: {}", e)))?;
+
+    let left = main_pos.x;
+    let top = main_pos.y;
+    let right = left + main_size.width as i32;
+    let bottom = top + main_size.height as i32;
+
+    let parsed_edge = match edge.as_str() {
+        "top" => MainWindowNearestEdge::Top,
+        "bottom" => MainWindowNearestEdge::Bottom,
+        "left" => MainWindowNearestEdge::Left,
+        "right" => MainWindowNearestEdge::Right,
+        _ => MainWindowNearestEdge::Top,
+    };
+
+    let (axis, width, height) = match parsed_edge {
+        MainWindowNearestEdge::Top | MainWindowNearestEdge::Bottom => {
+            (ClipItemHudAxis::Horizontal, CLIPITEM_HUD_LINEAR_WIDTH, CLIPITEM_HUD_LINEAR_HEIGHT)
+        }
+        MainWindowNearestEdge::Left | MainWindowNearestEdge::Right => {
+            (ClipItemHudAxis::Vertical, CLIPITEM_HUD_LINEAR_HEIGHT, CLIPITEM_HUD_LINEAR_WIDTH)
+        }
+    };
+
+    let width_i32 = width as i32;
+    let height_i32 = height as i32;
+    let center_x = left + (main_size.width as i32 - width_i32).max(0) / 2;
+    let center_y = top + (main_size.height as i32 - height_i32).max(0) / 2;
+
+    let target = match parsed_edge {
+        MainWindowNearestEdge::Top => {
+            let x = clamp_i32(center_x, left, right - width_i32);
+            let y = top - height_i32 - CLIPITEM_HUD_EDGE_INSET;
+            PhysicalPosition::new(x, y)
+        }
+        MainWindowNearestEdge::Bottom => {
+            let x = clamp_i32(center_x, left, right - width_i32);
+            let y = bottom + CLIPITEM_HUD_EDGE_INSET;
+            PhysicalPosition::new(x, y)
+        }
+        MainWindowNearestEdge::Left => {
+            let x = left - width_i32 - CLIPITEM_HUD_EDGE_INSET;
+            let y = clamp_i32(center_y, top, bottom - height_i32);
+            PhysicalPosition::new(x, y)
+        }
+        MainWindowNearestEdge::Right => {
+            let x = right + CLIPITEM_HUD_EDGE_INSET;
+            let y = clamp_i32(center_y, top, bottom - height_i32);
+            PhysicalPosition::new(x, y)
+        }
+    };
+
+    window
+        .set_size(PhysicalSize::new(width, height))
+        .map_err(|e| AppError::Window(format!("调整 ClipItem HUD 窗口尺寸失败: {}", e)))?;
+
+    window
+        .set_position(target)
+        .map_err(|e| AppError::Window(format!("移动 ClipItem HUD 窗口失败: {}", e)))?;
+
+    Ok(axis.as_str().to_string())
+}
+
 #[tauri::command]
 pub async fn set_clipitem_hud_mouse_passthrough(
     app: AppHandle,
     passthrough: bool,
 ) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
-        .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL_HUD_HOST) {
+        window
+            .set_ignore_cursor_events(passthrough)
+            .map_err(|e| AppError::Window(format!("设置 ClipItem HUD 鼠标穿透失败: {}", e)))?;
+    }
+    Ok(())
+}
 
+// ── 径向菜单命令（共享 HUD 宿主窗口） ──
+
+/// 一步完成径向菜单打开：定位 + 发送快照 + 取消穿透 + 显示 + 置顶。
+///
+/// 将原先 TS 端 4 次串行 IPC 合并为 1 次，消除 ~10-15ms IPC 往返延迟。
+/// `snapshot` 使用 `serde_json::Value` 透传，Rust 侧不关心具体字段。
+#[tauri::command]
+pub async fn open_radial_menu_at_cursor(
+    app: AppHandle,
+    snapshot: serde_json::Value,
+) -> Result<(), AppError> {
+    let window = get_or_create_hud_host(&app)?;
+
+    // 1. 定位：光标居中
+    let current_monitor = window
+        .current_monitor()
+        .map_err(|e| AppError::Window(format!("读取径向菜单当前显示器失败: {}", e)))?;
+    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
+    let half = RADIAL_MENU_SIZE as i32 / 2;
+    let target = PhysicalPosition::new(
+        cursor_pos.x.saturating_add(-half),
+        cursor_pos.y.saturating_add(-half),
+    );
     window
-        .set_ignore_cursor_events(passthrough)
-        .map_err(|e| AppError::Window(format!("设置 ClipItem HUD 鼠标穿透失败: {}", e)))?;
+        .set_position(target)
+        .map_err(|e| AppError::Window(format!("移动径向菜单窗口失败: {}", e)))?;
+
+    // 2. 发送快照到 HUD 宿主窗口
+    use tauri::Emitter;
+    window
+        .emit("radial-menu-snapshot", &snapshot)
+        .map_err(|e| AppError::Window(format!("发送径向菜单快照失败: {}", e)))?;
+
+    // 3. 取消鼠标穿透
+    window
+        .set_ignore_cursor_events(false)
+        .map_err(|e| AppError::Window(format!("设置径向菜单鼠标穿透失败: {}", e)))?;
+
+    // 4. 显示 + 强制置顶
+    window
+        .show()
+        .map_err(|e| AppError::Window(format!("显示径向菜单窗口失败: {}", e)))?;
+    force_hud_topmost(&window);
 
     Ok(())
 }
 
-// ── 径向菜单独立窗口命令 ──
-
 #[tauri::command]
 pub async fn show_radial_menu(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
-        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
+    let window = get_or_create_hud_host(&app)?;
 
     window
         .show()
         .map_err(|e| AppError::Window(format!("显示径向菜单窗口失败: {}", e)))?;
+
+    // 强制 HUD 在所有 TOPMOST 窗口之上（含主窗口）
+    force_hud_topmost(&window);
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn hide_radial_menu(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
-        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
-
-    window
-        .hide()
-        .map_err(|e| AppError::Window(format!("隐藏径向菜单窗口失败: {}", e)))?;
-
+    stash_hud_offscreen(&app)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn position_radial_menu_at_cursor(app: AppHandle) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
-        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
+    let window = get_or_create_hud_host(&app)?;
 
     let current_monitor = window
         .current_monitor()
@@ -724,32 +949,22 @@ pub async fn set_radial_menu_mouse_passthrough(
     app: AppHandle,
     passthrough: bool,
 ) -> Result<(), AppError> {
-    let window = app
-        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
-        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
-
-    window
-        .set_ignore_cursor_events(passthrough)
-        .map_err(|e| AppError::Window(format!("设置径向菜单鼠标穿透失败: {}", e)))?;
-
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL_HUD_HOST) {
+        window
+            .set_ignore_cursor_events(passthrough)
+            .map_err(|e| AppError::Window(format!("设置径向菜单鼠标穿透失败: {}", e)))?;
+    }
     Ok(())
 }
 
-/// 判断是否有任何 HUD 子窗口持有焦点
+/// 判断 HUD 宿主窗口是否持有焦点
 ///
-/// 用于主窗口失焦时判断焦点是否转移到了自身的 HUD 子窗口，
+/// 用于主窗口失焦时判断焦点是否转移到了 HUD 子窗口，
 /// 如果是则不应隐藏 HUD。
 pub fn is_any_hud_focused(app: &AppHandle) -> bool {
-    let hud_labels = [
-        WINDOW_LABEL_CLIPITEM_HUD,
-        WINDOW_LABEL_DOWNLOAD_HUD,
-        WINDOW_LABEL_RADIAL_MENU,
-    ];
-    for label in hud_labels {
-        if let Some(w) = app.get_webview_window(label) {
-            if w.is_focused().unwrap_or(false) {
-                return true;
-            }
+    if let Some(w) = app.get_webview_window(WINDOW_LABEL_HUD_HOST) {
+        if w.is_focused().unwrap_or(false) {
+            return true;
         }
     }
     false
@@ -780,13 +995,10 @@ fn is_app_foreground_window_inner(app: &AppHandle) -> bool {
 
         let labels = [
             WINDOW_LABEL_MAIN,
-            WINDOW_LABEL_CLIPITEM_HUD,
-            WINDOW_LABEL_DOWNLOAD_HUD,
-            WINDOW_LABEL_RADIAL_MENU,
+            WINDOW_LABEL_HUD_HOST,
         ];
         for label in labels {
             if let Some(w) = app.get_webview_window(label) {
-                // Tauri 2.x 在 Windows 上提供 .hwnd() 返回 HWND
                 if let Ok(hwnd) = w.hwnd() {
                     if std::ptr::eq(hwnd.0 as *const (), fg_hwnd.0 as *const ()) {
                         return true;
@@ -799,12 +1011,9 @@ fn is_app_foreground_window_inner(app: &AppHandle) -> bool {
 
     #[cfg(not(target_os = "windows"))]
     {
-        // 非 Windows 平台回退：检查任意窗口是否持有焦点
         let labels = [
             WINDOW_LABEL_MAIN,
-            WINDOW_LABEL_CLIPITEM_HUD,
-            WINDOW_LABEL_DOWNLOAD_HUD,
-            WINDOW_LABEL_RADIAL_MENU,
+            WINDOW_LABEL_HUD_HOST,
         ];
         for label in labels {
             if let Some(w) = app.get_webview_window(label) {
@@ -817,22 +1026,12 @@ fn is_app_foreground_window_inner(app: &AppHandle) -> bool {
     }
 }
 
-/// 隐藏所有 HUD 子窗口（ClipItem HUD + Download HUD + 径向菜单）
+/// 隐藏 HUD 宿主窗口
 ///
 /// 当主窗口隐藏时调用，避免 HUD 残留在屏幕上。
 pub fn hide_all_hud_windows(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window(WINDOW_LABEL_CLIPITEM_HUD) {
-        let _ = w.hide();
-        let _ = w.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
-    }
-    if let Some(w) = app.get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD) {
-        if let Err(e) = w.hide() {
-            log::warn!("隐藏 Download HUD 失败: {e}");
-        }
-    }
-    if let Some(w) = app.get_webview_window(WINDOW_LABEL_RADIAL_MENU) {
-        let _ = w.hide();
-        let _ = w.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
+    if let Some(w) = app.get_webview_window(WINDOW_LABEL_HUD_HOST) {
+        let _ = w.destroy();
     }
 }
 

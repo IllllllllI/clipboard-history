@@ -30,8 +30,8 @@ export type ClipItemHudTriggerMouseButton = 'middle' | 'right';
 export type ClipItemHudTriggerMouseMode = 'click' | 'press_release';
 export type ClipItemHudRadialMenuLayoutProfile = 'compact' | 'standard' | 'relaxed';
 
-/** 窗口外 HUD 定位模式 */
-export type ClipItemHudPositionMode = 'near_item' | 'fixed';
+/** 线性 HUD 定位模式 */
+export type ClipItemHudPositionMode = 'dynamic' | 'top' | 'bottom' | 'left' | 'right';
 
 export interface ImageAdvancedConfig {
   allow_private_network: boolean;
@@ -99,8 +99,8 @@ export interface AppSettings {
   clipItemHudBorderRunDurationSec: number;
   clipItemHudBorderRingWidthPx: number;
   clipItemHudPositionMode: ClipItemHudPositionMode;
-  clipItemHudFixedX: number;
-  clipItemHudFixedY: number;
+  /** 主窗口始终置顶 */
+  alwaysOnTop: boolean;
   windowPlacement: WindowPlacementSettings;
 }
 
@@ -168,12 +168,13 @@ export interface ClipItemHudActionEvent {
 
 // ── 径向菜单独立窗口类型 ──
 
-export type RadialMenuActionType = 'copy' | 'favorite' | 'pin' | 'delete' | 'paste';
+export type RadialMenuActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste';
 
 export interface RadialMenuSnapshot {
   itemId: number;
   isFavorite: boolean;
   isPinned: boolean;
+  canEdit: boolean;
   theme: 'light' | 'dark';
   triggerMouseButton: ClipItemHudTriggerMouseButton;
   triggerMouseMode: ClipItemHudTriggerMouseMode;

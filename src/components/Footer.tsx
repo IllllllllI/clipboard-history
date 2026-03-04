@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { isTauri } from '../services/tauri';
+import { useSettingsContext } from '../contexts/SettingsContext';
+import { useClipboardContext } from '../contexts/ClipboardContext';
 import { useAppContext } from '../contexts/AppContext';
 import './styles/footer.css';
 
@@ -23,10 +25,15 @@ const BASE_SHORTCUTS = [
  * 底部状态栏：监听状态、记录数、快捷键提示、清空按钮
  */
 export const Footer = React.memo(function Footer() {
-  const { settings, history, filteredHistory, handleClearAll } = useAppContext();
+  const { settings } = useSettingsContext();
+  const { history, handleClearAll } = useClipboardContext();
+  const { filteredHistory } = useAppContext();
   const darkMode = settings.darkMode;
   const immersiveShortcut = settings.immersiveShortcut?.trim() || 'Alt+Z';
-  const shortcuts = [...BASE_SHORTCUTS, { key: immersiveShortcut, label: '沉浸' }] as const;
+  const shortcuts = useMemo(
+    () => [...BASE_SHORTCUTS, { key: immersiveShortcut, label: '沉浸' }] as const,
+    [immersiveShortcut],
+  );
   const captureEnabled = isTauri && settings.autoCapture;
   const captureState = !isTauri ? 'preview' : captureEnabled ? 'capturing' : 'paused';
 

@@ -14,8 +14,13 @@ interface RowPositionCacheEntry {
 }
 
 const previousRowStartMap = new Map<number, RowPositionCacheEntry>();
+let lastPruneTimestamp = 0;
+const PRUNE_THROTTLE_MS = 2000; // 每 2 秒最多清理一次
 
 function pruneRowPositionCache(now: number): void {
+  if (now - lastPruneTimestamp < PRUNE_THROTTLE_MS) return;
+  lastPruneTimestamp = now;
+
   for (const [id, entry] of previousRowStartMap.entries()) {
     if (now - entry.lastSeenAt > ROW_POSITION_CACHE_TTL_MS) {
       previousRowStartMap.delete(id);

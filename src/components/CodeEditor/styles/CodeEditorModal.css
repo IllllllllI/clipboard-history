@@ -17,8 +17,7 @@
 .code-editor-backdrop {
   position: absolute;
   inset: 0;
-  background: rgb(0 0 0 / 0.6);
-  backdrop-filter: blur(3px);
+  background: rgb(0 0 0 / 0.7);
 }
 
 .code-editor-modal {

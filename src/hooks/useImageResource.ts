@@ -21,11 +21,16 @@ interface ImageCacheEntry {
   touchedAt: number;
 }
 
-const IMAGE_CACHE_MAX_ENTRIES = 300;
-const IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
+const IMAGE_CACHE_MAX_ENTRIES = 50;
+const IMAGE_CACHE_TTL_MS = 20 * 60 * 1000;
+const IMAGE_PRUNE_THROTTLE_MS = 5000; // 每 5 秒最多清理一次过期条目
 const imageMemoryCache = new Map<string, ImageCacheEntry>();
+let lastImagePruneTimestamp = 0;
 
 function pruneExpiredEntries(now: number): void {
+  if (now - lastImagePruneTimestamp < IMAGE_PRUNE_THROTTLE_MS) return;
+  lastImagePruneTimestamp = now;
+
   for (const [key, entry] of imageMemoryCache.entries()) {
     if (now - entry.touchedAt > IMAGE_CACHE_TTL_MS) {
       imageMemoryCache.delete(key);
@@ -188,8 +193,8 @@ export function useImageResource({
       try {
         switch (imageType) {
           case ImageType.Base64:
+            // Base64 字符串可能很大（数 MB），不存入 memoryCache 以节约内存
             setImageSrc(sourceText);
-            setCacheEntry(cacheKey, sourceText, false);
             break;
           case ImageType.HttpUrl: {
             const resolvedSrc = await fetchAndCacheImage(sourceText, 10000);

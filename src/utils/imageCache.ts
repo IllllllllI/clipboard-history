@@ -25,7 +25,7 @@ export class ImageLRUCache {
    * @param maxEntries Maximum number of images to cache (default: 50)
    * @param maxMemoryMB Maximum memory usage in MB (default: 100MB)
    */
-  constructor(maxEntries: number = 50, maxMemoryMB: number = 100) {
+  constructor(maxEntries: number = 10, maxMemoryMB: number = 20) {
     this.cache = new Map();
     this.maxEntries = maxEntries;
     this.maxMemoryBytes = maxMemoryMB * BYTES_PER_MB;
@@ -173,7 +173,7 @@ let globalImageCache: ImageLRUCache | null = null;
  */
 export function getImageCache(): ImageLRUCache {
   if (!globalImageCache) {
-    globalImageCache = new ImageLRUCache(50);
+    globalImageCache = new ImageLRUCache(10);
   }
   return globalImageCache;
 }

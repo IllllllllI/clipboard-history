@@ -61,7 +61,6 @@
   stroke-width: 2;
   stroke-linecap: round;
   filter: none;
-  animation: radial-pointer-enter 130ms ease-out;
 }
 
 .radial-menu-center {
@@ -153,49 +152,8 @@
     0 6px 12px rgba(216, 59, 1, 0.2);
 }
 
-@keyframes radial-item-border-orbit {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
 .radial-menu-item.active::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  padding: 2px;
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--rm-primary) 0%, transparent) 0deg,
-    color-mix(in srgb, var(--rm-primary) 90%, transparent) 42deg,
-    color-mix(in srgb, var(--rm-primary) 20%, transparent) 114deg,
-    transparent 160deg,
-    transparent 250deg,
-    color-mix(in srgb, var(--rm-primary) 24%, transparent) 300deg,
-    color-mix(in srgb, var(--rm-primary) 62%, transparent) 340deg,
-    color-mix(in srgb, var(--rm-primary) 0%, transparent) 360deg
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  transform-origin: 50% 50%;
-  animation: radial-item-border-orbit 1.8s linear infinite;
-}
-
-.radial-menu-item.danger.active::after {
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--rm-danger) 0%, transparent) 0deg,
-    color-mix(in srgb, var(--rm-danger) 90%, transparent) 42deg,
-    color-mix(in srgb, var(--rm-danger) 20%, transparent) 114deg,
-    transparent 160deg,
-    transparent 250deg,
-    color-mix(in srgb, var(--rm-danger) 24%, transparent) 300deg,
-    color-mix(in srgb, var(--rm-danger) 62%, transparent) 340deg,
-    color-mix(in srgb, var(--rm-danger) 0%, transparent) 360deg
-  );
+  display: none;
 }
 
 .radial-menu-icon {
@@ -320,11 +278,3 @@
   display: none !important; /* Hide dev-menu as it obstructs UI */
 }
 
-@keyframes radial-pointer-enter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}

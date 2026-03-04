@@ -15,7 +15,7 @@ import type {
   RadialMenuActionEvent,
   WindowPlacementSettings,
 } from '../types';
-import { CLIPITEM_HUD_EVENTS, RADIAL_MENU_EVENTS, IMAGE_DOWNLOAD_EVENTS, WINDOW_LABELS } from '../constants/ipc';
+import { CLIPITEM_HUD_EVENTS, RADIAL_MENU_EVENTS, IMAGE_DOWNLOAD_EVENTS, HUD_HOST_EVENTS, WINDOW_LABELS } from '../constants/ipc';
 
 export const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 
@@ -149,6 +149,12 @@ export const TauriService = {
     return await invoke<'horizontal' | 'vertical'>('position_clipitem_hud_near_cursor', { mode: mode || 'edge' });
   },
 
+  /** 将线性 HUD 固定在主窗口指定边缘 */
+  async positionClipItemHudAtMainEdge(edge: 'top' | 'bottom' | 'left' | 'right'): Promise<'horizontal' | 'vertical'> {
+    if (!isTauri) return edge === 'left' || edge === 'right' ? 'vertical' : 'horizontal';
+    return await invoke<'horizontal' | 'vertical'>('position_clipitem_hud_at_main_edge', { edge });
+  },
+
   async setClipItemHudMousePassthrough(passthrough: boolean): Promise<void> {
     if (!isTauri) return;
     await invoke<void>('set_clipitem_hud_mouse_passthrough', { passthrough });
@@ -210,7 +216,54 @@ export const TauriService = {
     });
   },
 
+  /** HUD 窗口失焦时向主窗口发送通知 */
+  async emitClipItemHudWindowBlur(): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.main, CLIPITEM_HUD_EVENTS.windowBlur, null);
+  },
+
+  /** 主窗口侧：监听 HUD 窗口失焦事件 */
+  async listenClipItemHudWindowBlur(
+    handler: () => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen(CLIPITEM_HUD_EVENTS.windowBlur, () => {
+      handler();
+    });
+  },
+
+
+  // ── 主窗口置顶控制 ──
+
+  /** 设置主窗口是否始终置顶 */
+  async setAlwaysOnTop(enabled: boolean): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('set_always_on_top', { enabled });
+  },
+
+  /** HUD 宿主窗口前端就绪时向主窗口发送通知 */
+  async emitHudHostReady(): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.main, HUD_HOST_EVENTS.ready, null);
+  },
+
+  /** 主窗口侧：监听 HUD 宿主窗口就绪事件 */
+  async listenHudHostReady(
+    handler: () => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen(HUD_HOST_EVENTS.ready, () => {
+      handler();
+    });
+  },
+
   // ── 径向菜单独立窗口 ──
+
+  /** 一步打开径向菜单：定位+快照+穿透+显示+置顶，合并为 1 次 IPC */
+  async openRadialMenuAtCursor(snapshot: RadialMenuSnapshot): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('open_radial_menu_at_cursor', { snapshot });
+  },
 
   async showRadialMenu(): Promise<void> {
     if (!isTauri) return;

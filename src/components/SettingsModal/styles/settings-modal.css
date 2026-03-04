@@ -11,8 +11,7 @@
 .sm-modal__backdrop {
   position: absolute;
   inset: 0;
-  background: rgb(0 0 0 / 0.4);
-  backdrop-filter: blur(4px);
+  background: rgb(0 0 0 / 0.55);
 }
 
 .sm-modal__panel {

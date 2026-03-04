@@ -10,8 +10,8 @@ import RadialMenu from './RadialMenu';
  * 通过 Tauri 事件接收快照数据，渲染 RadialMenu 组件，
  * 操作完成后通过事件将动作回报给主窗口。
  */
-export default function RadialMenuApp() {
-  const [snapshot, setSnapshot] = useState<RadialMenuSnapshot | null>(null);
+export default function RadialMenuApp({ initialSnapshot }: { initialSnapshot?: RadialMenuSnapshot | null }) {
+  const [snapshot, setSnapshot] = useState<RadialMenuSnapshot | null>(initialSnapshot ?? null);
   const [fancyFx, setFancyFx] = useState(true);
   const [layoutProfile, setLayoutProfile] = useState<ClipItemHudRadialMenuLayoutProfile>('standard');
 

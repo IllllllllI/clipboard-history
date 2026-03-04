@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Copy, Edit3, Pin, Star, Trash2 } from 'lucide-react';
+import { Copy, Edit3, Pin, Star, Trash2 } from '../icons';
 import { TauriService } from '../../services/tauri';
 import type { ClipItemHudActionType, ClipItemHudSnapshot } from '../../types';
 
@@ -13,8 +13,8 @@ import type { ClipItemHudActionType, ClipItemHudSnapshot } from '../../types';
  * 显示/隐藏的控制权完全在主窗口侧的 useClipItemHudController，
  * 避免双向 IPC 竞态。
  */
-export default function ClipItemHudApp() {
-  const [snapshot, setSnapshot] = useState<ClipItemHudSnapshot | null>(null);
+export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: ClipItemHudSnapshot | null }) {
+  const [snapshot, setSnapshot] = useState<ClipItemHudSnapshot | null>(initialSnapshot ?? null);
   const [hoveredAction, setHoveredAction] = useState<ClipItemHudActionType | null>(null);
   const [flashedAction, setFlashedAction] = useState<ClipItemHudActionType | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -37,6 +37,15 @@ export default function ClipItemHudApp() {
       mounted = false;
       if (unlisten) unlisten();
     };
+  }, []);
+
+  // HUD 窗口失焦时通知主窗口，让主窗口决定是否隐藏 HUD
+  useEffect(() => {
+    const handleBlur = () => {
+      void TauriService.emitClipItemHudWindowBlur();
+    };
+    window.addEventListener('blur', handleBlur);
+    return () => window.removeEventListener('blur', handleBlur);
   }, []);
 
   const triggerFlash = useCallback((action: ClipItemHudActionType) => {

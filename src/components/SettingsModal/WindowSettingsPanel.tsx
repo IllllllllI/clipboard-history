@@ -94,8 +94,11 @@ const HUD_RADIAL_LAYOUT_OPTIONS: OptionCardItem<ClipItemHudRadialMenuLayoutProfi
 ];
 
 const HUD_POSITION_MODE_OPTIONS: OptionCardItem<ClipItemHudPositionMode>[] = [
-  { value: 'near_item', label: '跟随条目', desc: '在被选中条目旁边弹出（默认行为）' },
-  { value: 'fixed',     label: '固定位置', desc: '始终在指定的屏幕坐标弹出' },
+  { value: 'dynamic', label: '跟随光标', desc: '根据光标位置动态出现在主窗口最近的边缘' },
+  { value: 'top',     label: '顶部',     desc: '始终固定在主窗口顶部居中，水平方向' },
+  { value: 'bottom',  label: '底部',     desc: '始终固定在主窗口底部居中，水平方向' },
+  { value: 'left',    label: '左侧',     desc: '始终固定在主窗口左侧居中，垂直方向' },
+  { value: 'right',   label: '右侧',     desc: '始终固定在主窗口右侧居中，垂直方向' },
 ];
 
 // ── 主组件 ──
@@ -139,7 +142,6 @@ export function WindowSettingsPanel({
 
   const isAnyHudEnabled = !!settings.clipItemHudEnabled || !!settings.clipItemHudRadialMenuEnabled;
   const isRadialHudEnabled = !!settings.clipItemHudRadialMenuEnabled;
-  const isFixedHudPosition = settings.clipItemHudPositionMode === 'fixed';
 
   return (
     <div className="sm-panel__stack">
@@ -270,51 +272,15 @@ export function WindowSettingsPanel({
 
             <p className="sm-panel__muted">鼠标触发模式</p>
             <OptionCardGrid options={HUD_TRIGGER_MODE_OPTIONS} activeValue={settings.clipItemHudTriggerMouseMode} dark={dark} onSelect={(v) => updateSettings({ clipItemHudTriggerMouseMode: v })} />
-
-            {/* ── HUD 定位 ── */}
-            <p className="sm-panel__muted">HUD 定位</p>
-            <OptionCardGrid options={HUD_POSITION_MODE_OPTIONS} activeValue={settings.clipItemHudPositionMode} dark={dark} onSelect={(v) => updateSettings({ clipItemHudPositionMode: v })} />
-
-            {isFixedHudPosition && (
-              <div className="sm-panel__custom-box" data-theme={dark ? 'dark' : 'light'}>
-                <p className="sm-panel__muted">固定坐标（屏幕绝对坐标）</p>
-                <div className="sm-panel__custom-grid">
-                  <label className="sm-panel__custom-label">
-                    <span className="sm-panel__custom-axis">X</span>
-                    <input
-                      type="number" step={1}
-                      value={settings.clipItemHudFixedX}
-                      onChange={(e) => {
-                        const v = Number.parseInt(e.target.value || '0', 10);
-                        updateSettings({ clipItemHudFixedX: Number.isFinite(v) ? v : 0 });
-                      }}
-                      className="sm-field__number" data-theme={dark ? 'dark' : 'light'}
-                    />
-                  </label>
-                  <label className="sm-panel__custom-label">
-                    <span className="sm-panel__custom-axis">Y</span>
-                    <input
-                      type="number" step={1}
-                      value={settings.clipItemHudFixedY}
-                      onChange={(e) => {
-                        const v = Number.parseInt(e.target.value || '0', 10);
-                        updateSettings({ clipItemHudFixedY: Number.isFinite(v) ? v : 0 });
-                      }}
-                      className="sm-field__number" data-theme={dark ? 'dark' : 'light'}
-                    />
-                  </label>
-                </div>
-                <p className="sm-panel__note--tiny">
-                  窗口外 HUD 将始终固定在屏幕坐标 ({settings.clipItemHudFixedX}, {settings.clipItemHudFixedY}) 处弹出
-                </p>
-              </div>
-            )}
           </>
         )}
 
-        {/* ── 线性 HUD 外观 ── */}
+        {/* ── 线性 HUD 定位与外观 ── */}
         {!!settings.clipItemHudEnabled && (
           <>
+            <p className="sm-panel__muted">线性 HUD 定位</p>
+            <OptionCardGrid options={HUD_POSITION_MODE_OPTIONS} activeValue={settings.clipItemHudPositionMode} dark={dark} onSelect={(v) => updateSettings({ clipItemHudPositionMode: v })} />
+
             <p className="sm-panel__muted">线性 HUD 外观</p>
             <SettingRow title="流光边框速度（秒/圈）" desc="数值越小流动越快，建议范围 0.6 - 8.0">
               <input

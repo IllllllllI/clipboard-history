@@ -1,16 +1,16 @@
 /**
  * HUD 模块统一入口
  *
- * 本项目采用 Tauri 多窗口架构，除主窗口外还有三个 HUD 浮窗：
+ * 所有 HUD 共享同一个 WebView2 宿主窗口 `hud-host`，
+ * 由 `HudHost` 组件根据 Tauri 事件动态渲染对应的 HUD 子组件：
  *
- * | 窗口 label      | 子模块          | 说明                   |
- * |-----------------|----------------|------------------------|
- * | clipitem-hud    | ./clipitem     | 条目线性快捷操作 HUD    |
- * | download-hud    | ./download     | 图片下载进度浮窗        |
- * | radial-menu     | ./radial-menu  | 径向菜单 HUD           |
+ * | 子模块          | 说明                   |
+ * |----------------|------------------------|
+ * | ./clipitem     | 条目线性快捷操作 HUD    |
+ * | ./download     | 图片下载进度浮窗        |
+ * | ./radial-menu  | 径向菜单 HUD           |
  *
- * 所有 HUD 窗口共享同一个 SPA 入口（index.html），
- * 通过 URL `?mode=xxx` 参数在 main.tsx 中路由到对应 App 组件。
+ * 入口：hud.html → src/hud/main.tsx → HudHost
  */
 
 // ── ClipItem HUD ──

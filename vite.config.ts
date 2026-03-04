@@ -51,6 +51,10 @@ export default defineConfig(({mode}) => {
     },
     build: {
       rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          'hud': path.resolve(__dirname, 'hud.html'),
+        },
         output: {
           manualChunks,
         },

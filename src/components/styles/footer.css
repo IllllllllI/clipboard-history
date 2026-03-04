@@ -13,17 +13,16 @@
   transition: color 300ms ease, background-color 300ms ease, border-color 300ms ease;
   z-index: 10;
   box-shadow: 0 -1px 2px rgb(0 0 0 / 0.02);
-  backdrop-filter: blur(12px);
 }
 
 .app-footer[data-theme='light'] {
-  background: rgb(255 255 255 / 0.8);
+  background: rgb(255 255 255 / 0.96);
   border-color: #e5e5e5;
   color: #737373;
 }
 
 .app-footer[data-theme='dark'] {
-  background: rgb(23 23 23 / 0.8);
+  background: rgb(23 23 23 / 0.96);
   border-color: #262626;
   color: #737373;
 }

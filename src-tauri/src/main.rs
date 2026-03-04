@@ -7,22 +7,40 @@
 //! 业务逻辑分布在各子模块中，详见 `lib.rs` 架构文档。
 
 use clipboard_history::{clipboard, db, image_handler, input, settings, storage, window_position};
-use clipboard_history::ipc::{
-    WINDOW_LABEL_CLIPITEM_HUD, WINDOW_LABEL_DOWNLOAD_HUD, WINDOW_LABEL_MAIN,
-    WINDOW_LABEL_RADIAL_MENU,
-};
+use clipboard_history::ipc::WINDOW_LABEL_MAIN;
 use tauri::Manager;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{
     MouseButton as TauriMouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
 };
-use tauri::window::Color;
-use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    // 大幅降低 WebView2 进程树内存占用：
+    // - 禁用 GPU 合成 → 软件渲染（工具型 UI 足够）
+    // - 禁用备用渲染进程 / 后台网络 / 自动更新等
+    // - V8 lite 模式 → 禁用优化编译器，降低 JS 堆开销
+    // 必须在任何 WebView2 实例创建之前设置。
+    unsafe {
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--disable-gpu-compositing \
+             --disable-gpu-shader-disk-cache \
+             --disable-background-networking \
+             --disable-component-update \
+             --disable-domain-reliability \
+             --disable-breakpad \
+             --disable-speech-api \
+             --disable-remote-fonts \
+             --no-pings \
+             --renderer-process-limit=2 \
+             --disable-features=SharedArrayBuffer,SpareRendererForSitePerProcess,BackForwardCache,OptimizationHints,MediaRouter,DialMediaRouteProvider,AutofillServerCommunication,Translate,CertificateTransparencyComponentUpdater,InterestFeedContentSuggestions \
+             --js-flags=--lite-mode,--max-old-space-size=64",
+        );
+    }
 
     tauri::Builder::default()
         // 插件初始化
@@ -64,67 +82,6 @@ fn main() {
                 let _ = main_window.set_icon(app_icon.clone());
             }
 
-            if app.get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD).is_none() {
-                let _hud_window = WebviewWindowBuilder::new(
-                    app,
-                    WINDOW_LABEL_DOWNLOAD_HUD,
-                    WebviewUrl::App("index.html?mode=download-hud".into()),
-                )
-                .title("Download HUD")
-                .inner_size(280.0, 84.0)
-                .resizable(false)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .devtools(false)
-                .visible(false)
-                .build()
-                .map_err(|e| format!("创建下载 HUD 窗口失败: {}", e))?;
-            }
-
-            if app.get_webview_window(WINDOW_LABEL_CLIPITEM_HUD).is_none() {
-                let _clipitem_hud_window = WebviewWindowBuilder::new(
-                    app,
-                    WINDOW_LABEL_CLIPITEM_HUD,
-                    WebviewUrl::App("index.html?mode=clipitem-hud".into()),
-                )
-                .title("ClipItem HUD")
-                .inner_size(336.0, 108.0)
-                .transparent(true)
-                .background_color(Color(0, 0, 0, 0))
-                .shadow(false)
-                .resizable(false)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .focused(false)
-                .focusable(false)
-                .devtools(false)
-                .visible(false)
-                .build()
-                .map_err(|e| format!("创建条目 HUD 窗口失败: {}", e))?;
-            }
-
-            if app.get_webview_window(WINDOW_LABEL_RADIAL_MENU).is_none() {
-                let _radial_menu_window = WebviewWindowBuilder::new(
-                    app,
-                    WINDOW_LABEL_RADIAL_MENU,
-                    WebviewUrl::App("index.html?mode=radial-menu".into()),
-                )
-                .title("Radial Menu")
-                .inner_size(344.0, 344.0)
-                .transparent(true)
-                .background_color(Color(0, 0, 0, 0))
-                .shadow(false)
-                .resizable(false)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .devtools(false)
-                .visible(false)
-                .build()
-                .map_err(|e| format!("创建径向菜单窗口失败: {}", e))?;
-            }
             log::info!("setup: main window icon set");
 
             // 启动剪贴板监控
@@ -158,6 +115,7 @@ fn main() {
                             if let Err(err) = w.set_focus() {
                                 log::warn!("托盘菜单显示窗口失败（focus）: {err}");
                             }
+                            window_position::warmup_hud_in_background(app);
                         }
                     }
                     _ => {}
@@ -179,6 +137,7 @@ fn main() {
                             if let Err(err) = w.set_focus() {
                                 log::warn!("托盘点击显示窗口失败（focus）: {err}");
                             }
+                            window_position::warmup_hud_in_background(tray.app_handle());
                         }
                     }
                 })
@@ -271,11 +230,14 @@ fn main() {
             window_position::show_clipitem_hud,
             window_position::hide_clipitem_hud,
             window_position::position_clipitem_hud_near_cursor,
+            window_position::position_clipitem_hud_at_main_edge,
             window_position::set_clipitem_hud_mouse_passthrough,
             window_position::show_radial_menu,
             window_position::hide_radial_menu,
             window_position::position_radial_menu_at_cursor,
             window_position::set_radial_menu_mouse_passthrough,
+            window_position::open_radial_menu_at_cursor,
+            window_position::set_always_on_top,
             window_position::is_app_foreground_window,
             // 数据库操作
             db::db_auto_clear,

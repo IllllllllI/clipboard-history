@@ -5,17 +5,16 @@
   z-index: 10;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
   transition: background-color 300ms ease, border-color 300ms ease;
-  backdrop-filter: blur(12px);
   border-bottom: 1px solid;
 }
 
 .app-header[data-theme='light'] {
-  background: rgb(255 255 255 / 0.8);
+  background: rgb(255 255 255 / 0.96);
   border-bottom-color: #e5e5e5;
 }
 
 .app-header[data-theme='dark'] {
-  background: rgb(23 23 23 / 0.8);
+  background: rgb(23 23 23 / 0.96);
   border-bottom-color: #262626;
 }
 
@@ -164,6 +163,15 @@
 
 .app-header[data-theme='dark'] .app-header__tool-btn[data-variant='theme-toggle']:hover {
   background: #262626;
+}
+
+/* 置顶按钮激活高亮 */
+.app-header[data-theme='light'] .app-header__tool-btn[data-variant='pin-active'] {
+  color: #2563eb;
+}
+
+.app-header[data-theme='dark'] .app-header__tool-btn[data-variant='pin-active'] {
+  color: #60a5fa;
 }
 
 .app-header__tool-icon {

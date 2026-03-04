@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-capability.json",
   "identifier": "default",
   "description": "Default capability for the clipboard history app",
-  "windows": ["main", "download-hud", "clipitem-hud", "radial-menu"],
+  "windows": ["main", "hud-host"],
   "permissions": [
     "core:default",
     "core:event:default",

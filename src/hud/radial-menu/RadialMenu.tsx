@@ -32,7 +32,8 @@ export const RadialMenu: React.FC<RadialMenuProps> = ({ snapshot, fancyFx = true
   const actions = useMemo(() => buildRadialMenuActions({
     isPinned: snapshot.isPinned,
     isFavorite: snapshot.isFavorite,
-  }), [snapshot.isPinned, snapshot.isFavorite]);
+    canEdit: snapshot.canEdit,
+  }), [snapshot.isPinned, snapshot.isFavorite, snapshot.canEdit]);
   const activeAction = activeIndex !== null ? actions[activeIndex] : null;
 
   // ── 组件级动作防重 ref ──

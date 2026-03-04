@@ -45,9 +45,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   clipItemHudRadialMenuLayoutProfile: 'standard',
   clipItemHudBorderRunDurationSec: CLIP_ITEM_HUD_BORDER_RUN_DURATION.defaultValue,
   clipItemHudBorderRingWidthPx: CLIP_ITEM_HUD_BORDER_RING_WIDTH.defaultValue,
-  clipItemHudPositionMode: 'near_item',
-  clipItemHudFixedX: 100,
-  clipItemHudFixedY: 100,
+  clipItemHudPositionMode: 'dynamic',
+  alwaysOnTop: true,
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,

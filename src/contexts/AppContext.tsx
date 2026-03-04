@@ -269,6 +269,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
   // 双重挂载时两个监听器实例共享同一份去重状态。
   const pasteDedup = useRef({ key: '', time: 0 });
 
+
   useEffect(() => {
     if (!isTauri) return;
 
@@ -397,6 +398,10 @@ function AppBridge({ children }: { children: React.ReactNode }) {
 
       if (payload.action === 'delete') {
         void handleRemoveRef.current(target.id);
+      }
+
+      if (payload.action === 'edit') {
+        setEditingClipRef.current(target);
       }
     });
     radialListenPromise.then((dispose) => {

@@ -12,6 +12,52 @@ let lastUsedTagId: number | null = null;
 let iconQuickHintShown = false;
 const ICON_QUICK_HINT_DELAY_MS = 550;
 
+/** 动画 variant — 模块级常量，避免每次渲染重建 */
+const TAG_CONTAINER_VARIANTS = {
+  hidden: { opacity: 0, scale: 0.96, y: -6, filter: 'blur(2px)' },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: {
+      type: 'spring' as const,
+      stiffness: 420,
+      damping: 32,
+      mass: 0.6,
+      staggerChildren: 0.02,
+      delayChildren: 0.02,
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.97,
+    y: -4,
+    filter: 'blur(1px)',
+    transition: {
+      duration: 0.14,
+      ease: 'easeInOut' as const,
+      when: 'afterChildren' as const,
+      staggerChildren: 0.015,
+      staggerDirection: -1,
+    },
+  },
+};
+
+const TAG_ITEM_VARIANTS = {
+  hidden: { opacity: 0, y: 4 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.14, ease: 'easeOut' as const },
+  },
+  exit: {
+    opacity: 0,
+    y: 3,
+    transition: { duration: 0.1, ease: 'easeIn' as const },
+  },
+};
+
 interface TagDropdownProps {
   item: ClipItem;
   tags: Tag[];
@@ -117,51 +163,6 @@ export const TagDropdown = React.memo(function TagDropdown({
 
   useClickOutside([popoverRef, btnRef], open, () => setOpen(false), { event: 'pointerdown', capture: true });
 
-  const containerVariants = {
-    hidden: { opacity: 0, scale: 0.96, y: -6, filter: 'blur(2px)' },
-    visible: {
-      opacity: 1,
-      scale: 1,
-      y: 0,
-      filter: 'blur(0px)',
-      transition: {
-        type: 'spring' as const,
-        stiffness: 420,
-        damping: 32,
-        mass: 0.6,
-        staggerChildren: 0.02,
-        delayChildren: 0.02,
-      },
-    },
-    exit: {
-      opacity: 0,
-      scale: 0.97,
-      y: -4,
-      filter: 'blur(1px)',
-      transition: {
-        duration: 0.14,
-        ease: 'easeInOut' as const,
-        when: 'afterChildren' as const,
-        staggerChildren: 0.015,
-        staggerDirection: -1,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 4 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: { duration: 0.14, ease: 'easeOut' as const },
-    },
-    exit: {
-      opacity: 0,
-      y: 3,
-      transition: { duration: 0.1, ease: 'easeIn' as const },
-    },
-  };
-
   const selectedCount = itemTagIdSet.size;
   const triggerLabel = triggerTitle ?? '添加标签（Alt+点击快速切换最近标签）';
 
@@ -221,7 +222,7 @@ export const TagDropdown = React.memo(function TagDropdown({
         createPortal(
           <AnimatePresence mode="wait">
             <motion.div
-              variants={containerVariants}
+              variants={TAG_CONTAINER_VARIANTS}
               initial="hidden"
               animate="visible"
               exit="exit"
@@ -264,7 +265,7 @@ export const TagDropdown = React.memo(function TagDropdown({
                     return (
                       <motion.button
                         key={tag.id}
-                        variants={itemVariants}
+                        variants={TAG_ITEM_VARIANTS}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           e.stopPropagation();

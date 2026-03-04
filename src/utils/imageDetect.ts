@@ -18,6 +18,18 @@ const HEX_COLOR_REGEX = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
 const IMAGE_PARAM_HINT_REGEX = /(format=|type=image)/i;
 
 // ============================================================================
+// detectType 缓存 — 避免 filterHistory 对每条记录重复检测
+// ============================================================================
+
+const DETECT_TYPE_CACHE_MAX = 1200;
+const detectTypeCache = new Map<string, string>();
+
+/** 清除 detectType 缓存（历史记录大幅变更时可手动调用） */
+export function clearDetectTypeCache(): void {
+  detectTypeCache.clear();
+}
+
+// ============================================================================
 // 私有辅助
 // ============================================================================
 
@@ -61,35 +73,36 @@ function convertAssetUrlToPath(url: string): string {
   }
 }
 
+/** 代码特征正则 — 模块级常量，避免每次调用重建 18 个 RegExp */
+const CODE_PATTERNS: ReadonlyArray<RegExp> = [
+  /\{[^}]*\}/,                    // 花括号包裹内容
+  /\([^)]*\)/,                    // 圆括号包裹内容（函数调用）
+  /;[\s]*$/m,                     // 行尾分号
+  /^[\s]*(fn|function|const|let|var|class|struct|impl|mod|use|import|export|def|async|pub|private|public|static)\s/m,
+  /=>/,                           // 箭头函数
+  /::/,                           // Rust / C++ 作用域
+  /\[\s*\]/,                      // 空数组
+  /<[^>]+>/,                      // 泛型 / 模板
+  /\bformat!\(/,                  // Rust 宏
+  /\bprintln!\(/,
+  /\|\s*\w+\s*\|/,                // Rust 闭包
+  /\w+\s*=\s*\w+/,                // 赋值语句
+  /\/\/.+$/m,                     // 单行注释
+  /\/\*[\s\S]*?\*\//,             // 多行注释
+  /#\[[\w(]+\]/,                  // Rust 属性
+  /\bif\s+/,
+  /\bfor\s+/,
+  /\bwhile\s+/,
+  /\breturn\s+/,
+];
+
 /**
  * 判断文本是否包含代码特征（关键字、括号、注释等），
  * 用于防止代码片段被误判为文件路径。
  */
 function hasCodePatterns(text: string): boolean {
   if (text.startsWith(FILE_PROTOCOL)) return false;
-
-  const patterns: RegExp[] = [
-    /\{[^}]*\}/,                    // 花括号包裹内容
-    /\([^)]*\)/,                    // 圆括号包裹内容（函数调用）
-    /;[\s]*$/m,                     // 行尾分号
-    /^[\s]*(fn|function|const|let|var|class|struct|impl|mod|use|import|export|def|async|pub|private|public|static)\s/m,
-    /=>/,                           // 箭头函数
-    /::/,                           // Rust / C++ 作用域
-    /\[\s*\]/,                      // 空数组
-    /<[^>]+>/,                      // 泛型 / 模板
-    /\bformat!\(/,                  // Rust 宏
-    /\bprintln!\(/,
-    /\|\s*\w+\s*\|/,                // Rust 闭包
-    /\w+\s*=\s*\w+/,                // 赋值语句
-    /\/\/.+$/m,                     // 单行注释
-    /\/\*[\s\S]*?\*\//,             // 多行注释
-    /#\[[\w(]+\]/,                  // Rust 属性
-    /\bif\s+/,
-    /\bfor\s+/,
-    /\bwhile\s+/,
-    /\breturn\s+/,
-  ];
-  return patterns.some(p => p.test(text));
+  return CODE_PATTERNS.some(p => p.test(text));
 }
 
 /** 判断文本是否为本地文件路径（Unix / Windows / file URI） */
@@ -174,20 +187,39 @@ function isKnownImageCdnUrl(url: string): boolean {
  * @returns 'files' | 'image' | 'image-url' | 'multi-image' | 'url' | 'color' | 'text'
  */
 export function detectType(text: string): string {
-  if (isFileList(text)) return 'files';
-  if (text.startsWith(DATA_IMAGE_PREFIX)) return 'image';
+  // 缓存命中则直接返回
+  const cached = detectTypeCache.get(text);
+  if (cached !== undefined) return cached;
 
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  if (lines.length > 0) {
-    const allImages = lines.every(line => detectImageType(line) !== ImageType.None);
-    if (allImages) {
-      return lines.length === 1 ? 'image-url' : 'multi-image';
+  let result: string;
+  if (isFileList(text)) {
+    result = 'files';
+  } else if (text.startsWith(DATA_IMAGE_PREFIX)) {
+    result = 'image';
+  } else {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length > 0 && lines.every(line => detectImageType(line) !== ImageType.None)) {
+      result = lines.length === 1 ? 'image-url' : 'multi-image';
+    } else if (URL_TEXT_REGEX.test(text)) {
+      result = 'url';
+    } else if (HEX_COLOR_REGEX.test(text)) {
+      result = 'color';
+    } else {
+      result = 'text';
     }
   }
 
-  if (URL_TEXT_REGEX.test(text)) return 'url';
-  if (HEX_COLOR_REGEX.test(text)) return 'color';
-  return 'text';
+  // 写入缓存，超限时淘汰最早的 25%
+  if (detectTypeCache.size >= DETECT_TYPE_CACHE_MAX) {
+    const evictCount = DETECT_TYPE_CACHE_MAX >> 2;
+    let i = 0;
+    for (const key of detectTypeCache.keys()) {
+      if (i++ >= evictCount) break;
+      detectTypeCache.delete(key);
+    }
+  }
+  detectTypeCache.set(text, result);
+  return result;
 }
 
 /**

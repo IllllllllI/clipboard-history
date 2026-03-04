@@ -42,8 +42,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgb(0 0 0 / 0.6);
-  backdrop-filter: blur(1px);
+  background: rgb(0 0 0 / 0.7);
   color: #ffffff;
   font-size: 9px;
   padding: 0.125rem 0.375rem;

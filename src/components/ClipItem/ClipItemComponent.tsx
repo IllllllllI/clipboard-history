@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import { ClipItem } from '../../types';
 import { formatDateParts } from '../../utils';
-import { useAppContext } from '../../contexts/AppContext';
+import { useSettingsContext } from '../../contexts/SettingsContext';
+import { useClipboardContext } from '../../contexts/ClipboardContext';
+import { useUIContext } from '../../contexts/UIContext';
 import { ClipItemContent } from './ClipItemContent';
 import { ActionButtons } from './actions/ActionButtons';
 import { TagDropdown } from './actions/TagDropdown';
@@ -29,29 +31,40 @@ const FAVORITE_BURST_DURATION_SEC = `${FAVORITE_BURST_DURATION_MS / 1000}s`;
  */
 export const ClipItemComponent = React.memo(
   function ClipItemComponent({ item, index }: ClipItemProps) {
+    const { settings, updateSettings } = useSettingsContext();
     const {
-      selectedIndex,
-      settings,
-      updateSettings,
-      searchQuery,
-      copiedId,
-      loadHistory,
-      setSelectedIndex,
-      handleDoubleClick,
-      handleDragStart,
-      handleDragEnd,
-      handleTogglePin,
-      handleToggleFavorite,
       copyToClipboard,
       copyText,
+      copiedId,
+      loadHistory,
+      tags,
+      handleTogglePin,
+      handleToggleFavorite,
       handleRemove,
       handleUpdatePickedColor,
-      setPreviewImageUrl,
-      setEditingClip,
-      tags,
       handleAddTagToItem,
       handleRemoveTagFromItem,
-    } = useAppContext();
+    } = useClipboardContext();
+    const {
+      selectedIndex,
+      searchQuery,
+      setSelectedIndex,
+      handleDoubleClick: doubleClickRaw,
+      handleDragStart: dragStartRaw,
+      handleDragEnd,
+      setPreviewImageUrl,
+      setEditingClip,
+    } = useUIContext();
+
+    // 包装 UI context 的注入式回调
+    const handleDoubleClick = useCallback(
+      (clipItem: ClipItem) => doubleClickRaw(clipItem, copyToClipboard),
+      [doubleClickRaw, copyToClipboard],
+    );
+    const handleDragStart = useCallback(
+      (e: React.DragEvent | React.MouseEvent, text: string) => dragStartRaw(e, text, copyToClipboard),
+      [dragStartRaw, copyToClipboard],
+    );
 
     const isSelected = selectedIndex === index;
     const rootRef = useRef<HTMLDivElement>(null);
@@ -170,13 +183,14 @@ export const ClipItemComponent = React.memo(
       shouldEnableRadialMenuHud: settings.clipItemHudRadialMenuEnabled,
       triggerMouseButton: settings.clipItemHudTriggerMouseButton,
       triggerMouseMode: settings.clipItemHudTriggerMouseMode,
+      positionMode: settings.clipItemHudPositionMode,
     });
 
     const hudFxMode = settings.clipItemHudRadialMenuFancyFx ? 'fancy' : 'normal';
-    const clipItemHudStyle = {
+    const clipItemHudStyle = useMemo(() => ({
       '--clip-item-hud-run-duration': `${settings.clipItemHudBorderRunDurationSec}s`,
       '--clip-item-hud-ring-width': `${settings.clipItemHudBorderRingWidthPx}px`,
-    } as React.CSSProperties;
+    } as React.CSSProperties), [settings.clipItemHudBorderRunDurationSec, settings.clipItemHudBorderRingWidthPx]);
 
     return (
       <div

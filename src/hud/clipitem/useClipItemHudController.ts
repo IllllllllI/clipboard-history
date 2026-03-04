@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ClipItemHudTriggerMouseButton, ClipItemHudTriggerMouseMode } from '../../types';
+import { ClipItemHudTriggerMouseButton, ClipItemHudTriggerMouseMode, ClipItemHudPositionMode } from '../../types';
 import { isTauri, TauriService } from '../../services/tauri';
 import * as HudManager from './clipItemHudManager';
 
@@ -10,6 +10,7 @@ const MAIN_WINDOW_MOVE_SETTLE_MS = 160;
  * 设为 120ms 足以让 Win32 焦点切换完成，同时感知不到延迟。
  */
 const BLUR_HIDE_DEBOUNCE_MS = 120;
+
 
 interface UseClipItemHudControllerInput {
   rootRef: React.RefObject<HTMLDivElement>;
@@ -26,6 +27,7 @@ interface UseClipItemHudControllerInput {
   shouldEnableRadialMenuHud: boolean;
   triggerMouseButton: ClipItemHudTriggerMouseButton;
   triggerMouseMode: ClipItemHudTriggerMouseMode;
+  positionMode: ClipItemHudPositionMode;
 }
 
 export function useClipItemHudController(input: UseClipItemHudControllerInput) {
@@ -44,6 +46,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     shouldEnableRadialMenuHud,
     triggerMouseButton,
     triggerMouseMode,
+    positionMode,
   } = input;
 
   const [isHudActive, setIsHudActive] = useState(false);
@@ -59,6 +62,8 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
   const mainWindowMovingRef = useRef(false);
   const mainWindowMoveSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 条目 DOM 元素是否在滚动容器可视区内 */
+  const isInViewportRef = useRef(true);
 
   const clearMainWindowMoveSettleTimer = useCallback(() => {
     if (mainWindowMoveSettleTimerRef.current !== null) {
@@ -139,12 +144,17 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
   }, [hideClipItemHud]);
 
   const positionClipItemHudAtEdge = useCallback(async () => {
-    const axis = await TauriService.positionClipItemHudNearCursor('edge');
+    let axis: 'horizontal' | 'vertical';
+    if (positionMode === 'dynamic') {
+      axis = await TauriService.positionClipItemHudNearCursor('edge');
+    } else {
+      axis = await TauriService.positionClipItemHudAtMainEdge(positionMode);
+    }
     if (clipItemHudAxisRef.current !== axis) {
       clipItemHudAxisRef.current = axis;
       emitClipItemHudSnapshot();
     }
-  }, [emitClipItemHudSnapshot]);
+  }, [emitClipItemHudSnapshot, positionMode]);
 
   const repositionClipItemHud = useCallback(async () => {
     if (!clipItemHudVisibleRef.current || !isSelected) return;
@@ -171,13 +181,15 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     if (!rootRef.current) return;
     if (!clipItemHudVisibleRef.current || !isSelected) return;
     if (HudManager.isDragging()) return;
+    // 固定边缘模式下不需要跟随光标重定位
+    if (positionMode !== 'dynamic') return;
     if (clipItemHudRepositionRafRef.current !== null) return;
 
     clipItemHudRepositionRafRef.current = window.requestAnimationFrame(() => {
       clipItemHudRepositionRafRef.current = null;
       void repositionClipItemHud();
     });
-  }, [isSelected, repositionClipItemHud, rootRef]);
+  }, [isSelected, positionMode, repositionClipItemHud, rootRef]);
 
   const openClipItemHud = useCallback(async () => {
     if (HudManager.isDragging()) return;
@@ -213,6 +225,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     if (!shouldEnableClipItemHud || !isSelected) return false;
     if (HudManager.isDragging()) return false;
     if (mainWindowMovingRef.current) return false;
+    if (!isInViewportRef.current) return false;
     return mainWindowFocusedRef.current;
   }, [isSelected, shouldEnableClipItemHud]);
 
@@ -272,7 +285,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
     setIsHudActive(false);
 
-    // 先隐藏线性 HUD（如果可见）
+    // 先隐藏线性 HUD（如果可见）— hide 不再销毁窗口，只移到屏外
     if (clipItemHudVisibleRef.current) {
       clipItemHudVisibleRef.current = false;
       HudManager.setVisible(false);
@@ -280,21 +293,20 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       void TauriService.hideClipItemHud();
     }
 
-    await TauriService.positionRadialMenuAtCursor();
-    await TauriService.emitRadialMenuSnapshot({
+    // 单次 IPC 完成：定位 + 快照 + 穿透 + 显示 + 置顶
+    await TauriService.openRadialMenuAtCursor({
       itemId,
       isFavorite,
       isPinned,
+      canEdit,
       theme,
       triggerMouseButton,
       triggerMouseMode,
     });
-    await TauriService.setRadialMenuMousePassthrough(false);
-    await TauriService.showRadialMenu();
     radialMenuVisibleRef.current = true;
     setRadialMenuActive(true);
     setIsHudActive(true);
-  }, [itemId, isFavorite, isPinned, theme, triggerMouseButton, triggerMouseMode, shouldEnableRadialMenuHud]);
+  }, [itemId, isFavorite, isPinned, canEdit, theme, triggerMouseButton, triggerMouseMode, shouldEnableRadialMenuHud]);
 
   // 转发全局鼠标事件到径向菜单窗口
   useEffect(() => {
@@ -461,6 +473,45 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     };
   }, [isSelected, scheduleRepositionClipItemHud]);
 
+  // ── [Section 5.5] 视口检测：条目滚出可见区域时立即隐藏 HUD，滚回后重新显示 ──
+  useEffect(() => {
+    if (!isTauri || !shouldEnableClipItemHud || !isSelected) return;
+    const el = rootRef.current;
+    if (!el) return;
+
+    // 找到最近的滚动容器作为 IntersectionObserver root，
+    // 使其能正确检测虚拟列表中 absolute 定位元素的可见性。
+    let scrollRoot: Element | null = null;
+    let node = el.parentElement;
+    while (node) {
+      const style = getComputedStyle(node);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        scrollRoot = node;
+        break;
+      }
+      node = node.parentElement;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const wasInViewport = isInViewportRef.current;
+        isInViewportRef.current = entry.isIntersecting;
+
+        if (!wasInViewport && entry.isIntersecting) {
+          // 条目滚回可视区 → 重新评估 HUD 可见性
+          syncClipItemHudVisibility();
+        } else if (wasInViewport && !entry.isIntersecting) {
+          // 条目离开可视区 → 立即隐藏 HUD
+          hideClipItemHud();
+        }
+      },
+      { root: scrollRoot, threshold: 0 },
+    );
+    observer.observe(el);
+
+    return () => observer.disconnect();
+  }, [hideClipItemHud, isSelected, rootRef, shouldEnableClipItemHud, syncClipItemHudVisibility]);
+
   // ── [Section 6] 副作用：HUD 禁用时强制隐藏 ──
   useEffect(() => {
     if (shouldEnableClipItemHud) return;
@@ -555,6 +606,110 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       }
     };
   }, [isSelected, shouldEnableClipItemHud, syncClipItemHudVisibility]);
+
+  // ── [Section 8.5] HUD 窗口失焦事件监听：事件驱动的焦点丢失检测 ──
+  //
+  // 解决场景：用户点击 HUD 按钮 → HUD 获焦 → 主窗口早已 blur →
+  // 再点外部应用 → HUD 触发 blur → 发送 windowBlur 事件到主窗口 →
+  // 主窗口收到后检查前台窗口 → 确认不属于本应用 → 隐藏 HUD。
+  useEffect(() => {
+    if (!isTauri || !shouldEnableClipItemHud || !isSelected) return;
+
+    let mounted = true;
+    let unlisten: (() => void) | null = null;
+
+    const handleHudWindowBlur = () => {
+      if (!mounted) return;
+      // 与 Section 8 相同的防抖 + IPC 验证逻辑
+      setTimeout(() => {
+        if (!mounted) return;
+        void TauriService.isAppForegroundWindow().then((isOurs) => {
+          if (!mounted) return;
+          if (isOurs) {
+            // 焦点回到了主窗口或其他子窗口，不隐藏
+            mainWindowFocusedRef.current = true;
+            return;
+          }
+          mainWindowFocusedRef.current = false;
+          syncClipItemHudVisibility();
+        }).catch(() => {
+          if (!mounted) return;
+          mainWindowFocusedRef.current = false;
+          syncClipItemHudVisibility();
+        });
+      }, BLUR_HIDE_DEBOUNCE_MS);
+    };
+
+    void TauriService.listenClipItemHudWindowBlur(handleHudWindowBlur).then((dispose) => {
+      if (!mounted) {
+        dispose();
+        return;
+      }
+      unlisten = dispose;
+    }).catch(() => {
+      // 忽略监听初始化失败
+    });
+
+    return () => {
+      mounted = false;
+      if (unlisten) unlisten();
+    };
+  }, [isSelected, shouldEnableClipItemHud, syncClipItemHudVisibility]);
+
+  // ── [Section 8.6] HUD 宿主窗口就绪事件：懒创建后补发快照 ──
+  //
+  // 所有 HUD 共享一个 WebView2 宿主窗口。当该窗口由 Rust 侧懒创建时，
+  // WebView2 需要时间加载前端代码。如果此时主窗口已经发送了快照事件，
+  // HUD 的 React 组件尚未挂载，事件会被丢弃。
+  // 收到 hud-host-ready 后，根据当前状态重新补发快照。
+  useEffect(() => {
+    if (!isTauri || (!shouldEnableClipItemHud && !shouldEnableRadialMenuHud)) return;
+
+    let mounted = true;
+    let unlisten: (() => void) | null = null;
+
+    const handleHudHostReady = () => {
+      if (!mounted) return;
+
+      // 补发 ClipItem HUD 快照
+      if (shouldEnableClipItemHud && isSelected) {
+        emitClipItemHudSnapshot();
+        void positionClipItemHudAtEdge().then(() => {
+          if (!mounted) return;
+          void TauriService.showClipItemHud();
+          void TauriService.setClipItemHudMousePassthrough(false);
+        });
+      }
+
+      // 补发径向菜单快照
+      if (shouldEnableRadialMenuHud && radialMenuVisibleRef.current) {
+        void TauriService.emitRadialMenuSnapshot({
+          itemId,
+          isFavorite,
+          isPinned,
+          canEdit,
+          theme,
+          triggerMouseButton,
+          triggerMouseMode,
+        });
+      }
+    };
+
+    void TauriService.listenHudHostReady(handleHudHostReady).then((dispose) => {
+      if (!mounted) {
+        dispose();
+        return;
+      }
+      unlisten = dispose;
+    }).catch(() => {});
+
+    return () => {
+      mounted = false;
+      if (unlisten) unlisten();
+    };
+  }, [isSelected, shouldEnableClipItemHud, shouldEnableRadialMenuHud,
+      emitClipItemHudSnapshot, positionClipItemHudAtEdge,
+      itemId, isFavorite, isPinned, theme, triggerMouseButton, triggerMouseMode]);
 
   // ── [Section 9] visibilitychange / pagehide → 强制隐藏 ──
   useEffect(() => {

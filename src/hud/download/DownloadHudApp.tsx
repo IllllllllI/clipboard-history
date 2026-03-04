@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, XCircle, CheckCircle2 } from 'lucide-react';
+import { Loader2, XCircle, CheckCircle2 } from '../icons';
 import { TauriService } from '../../services/tauri';
 import type { ImageDownloadProgressEvent } from '../../types';
 
@@ -9,8 +9,22 @@ type HudState = {
   message?: string;
 };
 
-export default function DownloadHudApp() {
-  const [state, setState] = useState<HudState>({ status: 'idle', progress: 0 });
+export default function DownloadHudApp({ initialProgress }: { initialProgress?: ImageDownloadProgressEvent | null }) {
+  const [state, setState] = useState<HudState>(() => {
+    if (initialProgress?.status === 'downloading') {
+      return { status: 'downloading', progress: Math.max(0, Math.min(100, initialProgress.progress ?? 0)) };
+    }
+    if (initialProgress?.status === 'completed') {
+      return { status: 'completed', progress: 100, message: '下载完成' };
+    }
+    if (initialProgress?.status === 'failed') {
+      return { status: 'failed', progress: Math.max(0, Math.min(100, initialProgress.progress ?? 0)), message: initialProgress.error_message || '下载失败' };
+    }
+    if (initialProgress?.status === 'cancelled') {
+      return { status: 'cancelled', progress: 0, message: '已取消' };
+    }
+    return { status: 'idle', progress: 0 };
+  });
 
   useEffect(() => {
     let disposed = false;

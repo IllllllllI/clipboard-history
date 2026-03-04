@@ -3,10 +3,6 @@ import { AppProvider, useAppContext } from './contexts/AppContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { ClipList } from './components/ClipList';
-import { AddSnippetModal } from './components/AddSnippetModal';
-import { SettingsModal } from './components/SettingsModal';
-import { TagManagerModal } from './components/TagManagerModal';
-import { LargeImagePreview } from './components/LargeImagePreview';
 import { DownloadProgressIndicator } from './components/DownloadProgressIndicator';
 import { ToastContainer } from './components/Toast';
 import { Maximize2, Minimize2 } from 'lucide-react';
@@ -15,6 +11,11 @@ const CodeEditorModal = lazy(async () => {
   const module = await import('./components/CodeEditor');
   return { default: module.CodeEditorModal };
 });
+
+const AddSnippetModal = lazy(() => import('./components/AddSnippetModal').then(m => ({ default: m.AddSnippetModal })));
+const SettingsModal = lazy(() => import('./components/SettingsModal').then(m => ({ default: m.SettingsModal })));
+const TagManagerModal = lazy(() => import('./components/TagManagerModal').then(m => ({ default: m.TagManagerModal })));
+const LargeImagePreview = lazy(() => import('./components/LargeImagePreview').then(m => ({ default: m.LargeImagePreview })));
 
 /**
  * App 内部布局组件
@@ -91,6 +92,25 @@ function AppLayout() {
     };
   }, [settings.clipItemTimeMetaAutoHideWidthPx, settings.headerFilterIconModeWidthPx]);
 
+  // 窗口隐藏时释放图片缓存，降低常驻内存
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        // 延迟清理，避免快速切换时频繁重建
+        const timer = setTimeout(() => {
+          if (document.hidden) {
+            import('./utils/imageCache').then(({ getImageCache }) => {
+              getImageCache().clear();
+            });
+          }
+        }, 30_000); // 隐藏 30 秒后清理
+        return () => clearTimeout(timer);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
   return (
     <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${settings.darkMode ? 'bg-neutral-900 text-neutral-200' : 'bg-neutral-50 text-neutral-800'} font-sans selection:bg-indigo-500/30 flex flex-col relative`}>
       {/* Subtle background pattern/gradient */}
@@ -151,29 +171,45 @@ function AppLayout() {
         }
       </button>
 
-      <SettingsModal 
-        show={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
+      <Suspense fallback={null}>
+        {showSettings && (
+          <SettingsModal 
+            show={showSettings}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+      </Suspense>
 
-      <TagManagerModal
-        show={showTagManager}
-        onClose={() => setShowTagManager(false)}
-      />
+      <Suspense fallback={null}>
+        {showTagManager && (
+          <TagManagerModal
+            show={showTagManager}
+            onClose={() => setShowTagManager(false)}
+          />
+        )}
+      </Suspense>
 
-      <AddSnippetModal 
-        show={showAddModal}
-        onClose={() => setShowAddModal(false)}
-      />
+      <Suspense fallback={null}>
+        {showAddModal && (
+          <AddSnippetModal 
+            show={showAddModal}
+            onClose={() => setShowAddModal(false)}
+          />
+        )}
+      </Suspense>
 
       <Suspense fallback={null}>
         <CodeEditorModal />
       </Suspense>
 
-      <LargeImagePreview 
-        url={previewImageUrl}
-        onClose={() => setPreviewImageUrl(null)}
-      />
+      <Suspense fallback={null}>
+        {previewImageUrl && (
+          <LargeImagePreview 
+            url={previewImageUrl}
+            onClose={() => setPreviewImageUrl(null)}
+          />
+        )}
+      </Suspense>
 
       <DownloadProgressIndicator
         downloadState={downloadState}
