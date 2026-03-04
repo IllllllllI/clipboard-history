@@ -72,7 +72,7 @@ interface FavoriteBurstEffectProps {
   durationSec: string;
 }
 
-export function FavoriteBurstEffect({ durationSec }: FavoriteBurstEffectProps) {
+export const FavoriteBurstEffect = React.memo(function FavoriteBurstEffect({ durationSec }: FavoriteBurstEffectProps) {
   const rays = useMemo(() => buildFavoriteBurstRays(), []);
   const particles = useMemo(() => buildFavoriteBurstParticles(), []);
   const center = String(FAVORITE_BURST_CENTER);
@@ -125,4 +125,4 @@ export function FavoriteBurstEffect({ durationSec }: FavoriteBurstEffectProps) {
       </svg>
     </span>
   );
-}
+});

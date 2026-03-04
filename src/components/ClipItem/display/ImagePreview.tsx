@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { resolveImageSrc, extractFormatLabel } from '../../utils/imageUrl';
+import { resolveImageSrc, extractFormatLabel } from '../../../utils/imageUrl';
 import './styles/image-preview.css';
 
 interface ImagePreviewProps {

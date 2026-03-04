@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Pin, Star } from 'lucide-react';
 import { FavoriteBurstEffect } from './FavoriteBurstEffect';
@@ -21,7 +21,7 @@ interface ClipItemTimeMetaProps {
   favoriteBurstDurationSec: string;
 }
 
-export function ClipItemTimeMeta({
+export const ClipItemTimeMeta = React.memo(function ClipItemTimeMeta({
   isPinned,
   isSelected,
   showFavoriteIcon,
@@ -32,9 +32,9 @@ export function ClipItemTimeMeta({
   onTimeKeyDown,
   favoriteBurstDurationSec,
 }: ClipItemTimeMetaProps) {
-  const stopDoubleClickPropagation = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const stopDoubleClickPropagation = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-  };
+  }, []);
 
   return (
     <div className="clip-item-time-wrap">
@@ -81,4 +81,4 @@ export function ClipItemTimeMeta({
       </button>
     </div>
   );
-}
+});

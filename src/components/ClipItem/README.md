@@ -1,27 +1,56 @@
 # ClipItem
 
-`ClipItem` 是单条剪贴板记录的模块化目录。
+`ClipItem` 是单条剪贴板记录的模块化目录，按职责拆分为 5 个子模块 + 4 个自定义 Hook。
 
-## 文件职责
+## 目录结构
 
-- `index.ts`：对外统一导出入口（`ClipItemComponent` + 已抽离的可复用子模块）。
-- `ClipItemComponent.tsx`：条目布局骨架与交互编排（编排层）。
-- `ClipItemTimeMeta.tsx`：右侧时间区（图钉/收藏/时间按钮）展示与交互。
-- `FavoriteBurstEffect.tsx`：收藏爆发 SVG 动效渲染。
-- `useFavoriteVisualState.ts`：收藏动效时序（先爆发后显示星标）状态管理。
-- `useClipItemHudController.ts`：条目 HUD 触发与全局指针/键盘控制逻辑。
-- `ClipItemContent.tsx`：主体内容渲染（文本/代码/图片/文件等）。
-- `ColorContentBlock.tsx`：颜色内容分支渲染与颜色复制/颜色板交互。
-- `LinkOpenStatus.tsx`：链接/文件打开状态图标渲染（idle/opening/success/error）。
-- `ActionButtons.tsx`：条目操作按钮区。
-- `ImagePreview.tsx`：图片预览子视图。
-- `DateTimeChip.tsx`：时间展示子视图。
-- `HighlightText.tsx`：搜索高亮文本渲染。
-- `TagDropdown.tsx`：标签下拉与选择交互。
-- `constants.ts`：图标与类型映射等常量。
-- `ClipItemColorPicker/`：条目内颜色相关子模块。
-- `ClipItemColorPicker/styles/`：ColorPicker 子模块样式目录。
-- `styles/`：ClipItem 语义化样式目录（按子组件拆分）。
+```
+ClipItem/
+├── index.ts                  # barrel 导出（对外唯一入口）
+├── ClipItemComponent.tsx     # 条目布局骨架与交互编排（编排层）
+├── ClipItemContent.tsx       # 主体内容路由（文本/代码/图片/文件/颜色等）
+├── constants.ts              # 图标与类型映射等共享常量
+├── useClickOutside.ts        # 统一的“点击外部关闭”Hook
+├── useClipItemDerivedState.ts # 衍生状态 Hook（类型/图标/accent 等）
+├── useClipItemCallbacks.ts   # 回调 Hook（gallery/filelist/color/time 操作）
+├── useUrlOpenState.ts        # URL/文件打开异步状态 Hook
+├── README.md
+│
+├── display/                  # 显示原语
+│   ├── HighlightText.tsx     # 搜索关键词高亮渲染
+│   ├── DateTimeChip.tsx      # 日期时间高亮标签 + 悬停格式转换弹窗
+│   ├── LinkOpenStatus.tsx    # 链接/文件打开状态图标（idle/opening/success/error）
+│   ├── ImagePreview.tsx      # 图片缩略图预览（格式/尺寸元信息）
+│   └── styles/               # 对应样式文件
+│
+├── actions/                  # 交互与操作
+│   ├── ActionButtons.tsx     # 操作按钮栏（复制/编辑/删除）
+│   ├── TagDropdown.tsx       # 标签下拉选择器（Alt+点击快速切换）
+│   └── styles/               # 对应样式文件
+│
+├── tags/                     # 标签列表
+│   └── ClipItemTagList.tsx   # 标签列表组件（高度动画 + 两种布局）
+│
+├── favorite/                 # 收藏视觉效果
+│   ├── ClipItemTimeMeta.tsx  # 右侧时间区（图钉/收藏/时间按钮）展示与交互
+│   ├── FavoriteBurstEffect.tsx # 收藏爆发 SVG 动效渲染
+│   └── useFavoriteVisualState.ts # 收藏动效时序（先爆发后显示星标）状态管理
+│
+├── color/                    # 颜色系统
+│   ├── index.ts              # barrel 导出
+│   ├── ColorContentBlock.tsx # 颜色内容分支渲染与颜色复制/颜色板交互
+│   ├── ColorPickerPopover.tsx# 颜色选择弹窗主体
+│   ├── useColorState.ts      # 颜色状态管理 Hook（HSLA 主状态）
+│   ├── ColorPreview.tsx      # 颜色预览圆圈（当前色 vs 原色）
+│   ├── ColorModeSelector.tsx # 颜色模式切换下拉（HEX/RGB/HSL）
+│   ├── ColorInputPanel.tsx   # 颜色值输入区
+│   ├── ChannelInput.tsx      # 单通道数值输入（含滚轮）
+│   ├── HistoryColors.tsx     # 预设/历史颜色面板
+│   ├── ActionBar.tsx         # 底部操作栏（复制+确认）
+│   └── styles/               # 对应样式文件
+│
+└── styles/                   # 顶层样式（clip-item 主体 + HUD + 内容区）
+```
 
 ## 维护约定
 

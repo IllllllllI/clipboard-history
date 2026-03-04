@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { ColorMode } from './useColorState';
+import { useClickOutside } from '../useClickOutside';
 import './styles/color-picker.css';
 
 interface ColorModeSelectorProps {
@@ -17,33 +18,10 @@ const MODE_HELP_TEXT: Record<ColorMode, string> = {
 };
 
 /** 颜色模式切换按钮 + 下拉菜单 */
-export function ColorModeSelector({ mode, onSelect }: ColorModeSelectorProps) {
+export const ColorModeSelector = React.memo(function ColorModeSelector({ mode, onSelect }: ColorModeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen]);
+  useClickOutside([rootRef], isOpen, () => setIsOpen(false), { escapeKey: true });
 
   return (
     <div
@@ -90,4 +68,4 @@ export function ColorModeSelector({ mode, onSelect }: ColorModeSelectorProps) {
       </div>
     </div>
   );
-}
+});

@@ -1,3 +1,4 @@
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import './styles/color-picker.css';
 
@@ -13,7 +14,7 @@ interface HistoryColorsProps {
 }
 
 /** 预设 / 历史颜色面板（带展开动画） */
-export function HistoryColors({ visible, onSelect }: HistoryColorsProps) {
+export const HistoryColors = React.memo(function HistoryColors({ visible, onSelect }: HistoryColorsProps) {
   return (
     <AnimatePresence>
       {visible && (
@@ -41,4 +42,4 @@ export function HistoryColors({ visible, onSelect }: HistoryColorsProps) {
       )}
     </AnimatePresence>
   );
-}
+});

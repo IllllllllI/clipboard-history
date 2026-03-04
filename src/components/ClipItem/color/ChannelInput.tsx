@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import React, { useRef } from 'react';
 import './styles/color-picker.css';
 
 interface ChannelInputProps {
@@ -9,7 +9,7 @@ interface ChannelInputProps {
 }
 
 /** 单通道数值输入（R/G/B/H/S/L/A 等） */
-export function ChannelInput({ label, value, max, onChange }: ChannelInputProps) {
+export const ChannelInput = React.memo(function ChannelInput({ label, value, max, onChange }: ChannelInputProps) {
   const wheelDeltaRef = useRef(0);
 
   const clamp = (v: number) => Math.max(0, Math.min(max, v));
@@ -46,4 +46,4 @@ export function ChannelInput({ label, value, max, onChange }: ChannelInputProps)
       />
     </div>
   );
-}
+});

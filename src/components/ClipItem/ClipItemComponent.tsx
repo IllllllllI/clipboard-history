@@ -1,26 +1,16 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Tag as TagIcon } from 'lucide-react';
-import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection } from '../../types';
-import { formatDateParts, detectType, detectImageType, isFileList, decodeFileList, encodeFileList } from '../../utils';
-import { hexToRgba } from '../../utils/color';
-import { ClipboardDB } from '../../services/db';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { ClipItem } from '../../types';
+import { formatDateParts } from '../../utils';
 import { useAppContext } from '../../contexts/AppContext';
-import {
-  TAG_LIST_ANIMATION_DURATION_MS,
-  TAG_LIST_ANIMATION_EASING,
-  TAG_LIST_MARGIN_TOP_PX,
-  TAG_LIST_OPACITY_DURATION_MS,
-  TAG_PILL_SPRING_DAMPING,
-  TAG_PILL_SPRING_STIFFNESS,
-} from '../ClipListParts/constants';
-import { getItemIcon } from './constants';
 import { ClipItemContent } from './ClipItemContent';
-import ActionButtons from './ActionButtons';
-import TagDropdown from './TagDropdown';
-import { ClipItemTimeMeta } from './ClipItemTimeMeta';
-import { useFavoriteVisualState } from './useFavoriteVisualState';
+import { ActionButtons } from './actions/ActionButtons';
+import { TagDropdown } from './actions/TagDropdown';
+import { ClipItemTimeMeta } from './favorite/ClipItemTimeMeta';
+import { useFavoriteVisualState } from './favorite/useFavoriteVisualState';
 import { useClipItemHudController } from '../../hud/clipitem/useClipItemHudController';
+import { useClipItemDerivedState } from './useClipItemDerivedState';
+import { useClipItemCallbacks } from './useClipItemCallbacks';
+import { ClipItemTagList } from './tags/ClipItemTagList';
 import './styles/clip-item-hud.css';
 import './styles/clip-item.css';
 
@@ -66,159 +56,69 @@ export const ClipItemComponent = React.memo(
     const isSelected = selectedIndex === index;
     const rootRef = useRef<HTMLDivElement>(null);
 
-    // --- 衍生状态 ---
-    const type = useMemo(() => detectType(item.text), [item.text]);
-    const isFiles = type === 'files';
-    const imageType = useMemo(
-      () => (isFiles ? ImageType.None : detectImageType(item.text)),
-      [isFiles, item.text],
-    );
-    const isImage = imageType !== ImageType.None;
-    const hasTags = (item.tags?.length ?? 0) > 0;
-    const tagListRef = useRef<HTMLDivElement>(null);
-    const [tagListHeight, setTagListHeight] = useState(0);
-    const imageUrls = useMemo(
-      () =>
-        type === 'multi-image'
-          ? item.text
-              .split('\n')
-              .map((line) => line.trim())
-              .filter(Boolean)
-          : [item.text],
-      [type, item.text],
-    );
-    const filePaths = useMemo(
-      () => (isFiles ? decodeFileList(item.text) : []),
-      [isFiles, item.text],
-    );
-    const isFilesGallery = useMemo(
-      () => settings.showImagePreview
-        && isFiles
-        && filePaths.length > 0
-        && filePaths.every((path) => detectImageType(path) === ImageType.LocalFile),
-      [settings.showImagePreview, isFiles, filePaths],
-    );
+    // --- 衍生状态（提取至 hook） ---
+    const {
+      type, isFiles, imageType, isImage, imageUrls, filePaths,
+      isFilesGallery, accentType, IconComponent,
+    } = useClipItemDerivedState(item, settings.showImagePreview);
+
     const theme = settings.darkMode ? 'dark' : 'light';
     const itemTags = item.tags ?? [];
-    const shouldEnableClipItemHud = settings.clipItemHudEnabled && settings.compactMetaDisplayMode !== 'inside';
-    const shouldEnableRadialMenuHud = settings.clipItemHudRadialMenuEnabled;
-    const triggerMouseButton = settings.clipItemHudTriggerMouseButton;
-    const triggerMouseMode = settings.clipItemHudTriggerMouseMode;
 
-    // --- 图标 ---
-    const IconComponent = useMemo(
-      () => getItemIcon(item, type, imageType),
-      [item, type, imageType],
-    );
+    // --- 回调（提取至 hook） ---
+    const {
+      handleGalleryDisplayModeChange,
+      handleGalleryScrollDirectionChange,
+      handleGalleryListItemClick,
+      handleGalleryListItemDragStart,
+      handleGalleryCopyImage,
+      handleFileListItemClick,
+      handleFileListItemDragStart,
+      handleCopyAsNewColor,
+      handleTimeClick,
+      handleTimeKeyDown,
+    } = useClipItemCallbacks({
+      item,
+      copyToClipboard,
+      copyText,
+      handleDragStart,
+      updateSettings,
+      loadHistory,
+      handleTogglePin,
+      handleToggleFavorite,
+    });
 
-    // --- 语义化颜色指示器 ---
-    const accentType = useMemo(() => {
-      if (type === 'code') return 'code';
-      if (type === 'url') return 'url';
-      if (isImage || type === 'multi-image') return 'image';
-      if (isFiles) return 'files';
-      if (type === 'color') return 'color';
-      return 'default';
-    }, [type, isImage, isFiles]);
+    // --- 配置对象（分组传递给 ClipItemContent）---
+    const galleryConfig = useMemo(() => ({
+      displayMode: settings.galleryDisplayMode,
+      scrollDirection: settings.galleryScrollDirection,
+      wheelMode: settings.galleryWheelMode,
+      listMaxVisibleItems: settings.galleryListMaxVisibleItems,
+      onDisplayModeChange: handleGalleryDisplayModeChange,
+      onScrollDirectionChange: handleGalleryScrollDirectionChange,
+      onListItemClick: handleGalleryListItemClick,
+      onListItemDragStart: handleGalleryListItemDragStart,
+      onCopyImage: handleGalleryCopyImage,
+    }), [
+      settings.galleryDisplayMode, settings.galleryScrollDirection,
+      settings.galleryWheelMode, settings.galleryListMaxVisibleItems,
+      handleGalleryDisplayModeChange, handleGalleryScrollDirectionChange,
+      handleGalleryListItemClick, handleGalleryListItemDragStart,
+      handleGalleryCopyImage,
+    ]);
 
-    const handleGalleryDisplayModeChange = useCallback((mode: GalleryDisplayMode) => {
-      updateSettings({ galleryDisplayMode: mode });
-    }, [updateSettings]);
+    const fileListConfig = useMemo(() => ({
+      maxVisibleItems: settings.fileListMaxVisibleItems,
+      onItemClick: handleFileListItemClick,
+      onItemDragStart: handleFileListItemDragStart,
+    }), [settings.fileListMaxVisibleItems, handleFileListItemClick, handleFileListItemDragStart]);
 
-    const handleGalleryScrollDirectionChange = useCallback((dir: GalleryScrollDirection) => {
-      updateSettings({ galleryScrollDirection: dir });
-    }, [updateSettings]);
+    const colorConfig = useMemo(() => ({
+      onUpdatePickedColor: handleUpdatePickedColor,
+      onCopyAsNewColor: handleCopyAsNewColor,
+    }), [handleUpdatePickedColor, handleCopyAsNewColor]);
 
-    const handleGalleryListItemClick = useCallback((url: string) => {
-      void copyToClipboard(
-        { ...item, text: url },
-        { suppressCopiedIdFeedback: true },
-      );
-    }, [copyToClipboard, item]);
-
-    const handleGalleryListItemDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, url: string) => {
-      void handleDragStart(e, url);
-    }, [handleDragStart]);
-
-    const handleGalleryCopyImage = useCallback((url: string) => {
-      void copyToClipboard(
-        { ...item, text: url },
-        { suppressCopiedIdFeedback: true },
-      );
-    }, [copyToClipboard, item]);
-
-    const handleFileListItemClick = useCallback((filePath: string) => {
-      void copyToClipboard(
-        { ...item, text: encodeFileList([filePath]) },
-        { suppressCopiedIdFeedback: true },
-      );
-    }, [copyToClipboard, item]);
-
-    const handleFileListItemDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, filePath: string) => {
-      void handleDragStart(e, filePath);
-    }, [handleDragStart]);
-
-    const handleCopyAsNewColor = useCallback(
-      async (color: string) => {
-        await copyText(color);
-        await ClipboardDB.addClip(color);
-        await loadHistory();
-      },
-      [copyText, loadHistory],
-    );
-
-    const handleTimeQuickAction = useCallback((usePinAction: boolean) => {
-      if (usePinAction) {
-        handleTogglePin(item);
-        return;
-      }
-      handleToggleFavorite(item);
-    }, [handleToggleFavorite, handleTogglePin, item]);
-
-    const handleTimeClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
-      e.stopPropagation();
-      handleTimeQuickAction(e.altKey);
-    }, [handleTimeQuickAction]);
-
-    const handleTimeKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
-      e.stopPropagation();
-      handleTimeQuickAction(e.altKey);
-    }, [handleTimeQuickAction]);
-
-    const getTagStyle = useCallback((color?: string | null) => (
-      color
-        ? {
-            backgroundColor: hexToRgba(color, settings.darkMode ? 0.2 : 0.12),
-            color,
-            borderColor: hexToRgba(color, settings.darkMode ? 0.4 : 0.28),
-          }
-        : {}
-    ), [settings.darkMode]);
-
-    const renderTagPill = useCallback((tag: NonNullable<ClipItem['tags']>[number]) => (
-      <motion.span
-        layout
-        initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
-        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, scale: 0.8 }}
-        transition={{
-          type: 'spring',
-          stiffness: TAG_PILL_SPRING_STIFFNESS,
-          damping: TAG_PILL_SPRING_DAMPING,
-        }}
-        key={tag.id}
-        className="clip-item-tag-pill"
-        data-default={!tag.color ? 'true' : 'false'}
-        data-theme={theme}
-        style={getTagStyle(tag.color)}
-      >
-        <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
-        {tag.name}
-      </motion.span>
-    ), [getTagStyle, theme]);
-
+    // --- 收藏视觉效果 ---
     const isFavorite = Boolean(item.is_favorite);
     const isPinned = Boolean(item.is_pinned);
     const { showFavoriteBurst, showFavoriteIcon } = useFavoriteVisualState({
@@ -230,7 +130,6 @@ export const ClipItemComponent = React.memo(
     const handleClick = useCallback(() => setSelectedIndex(index), [setSelectedIndex, index]);
     const handleDblClick = useCallback(
       (e: React.MouseEvent) => {
-        // 双击按钮、链接、输入框等交互元素时不触发粘贴
         const target = e.target as HTMLElement;
         if (target.closest('button, a, input, select, textarea, [role="button"]')) return;
         handleDoubleClick(item);
@@ -243,6 +142,8 @@ export const ClipItemComponent = React.memo(
     );
 
     const { dateLine, timeLine } = useMemo(() => formatDateParts(item.timestamp), [item.timestamp]);
+
+    // --- HUD 控制器 ---
     const {
       isHudActive,
       suppressActiveFeedback,
@@ -264,34 +165,13 @@ export const ClipItemComponent = React.memo(
       isPinned,
       canEdit: !isFiles && !isImage,
       isCopied: copiedId === item.id,
-      theme: settings.darkMode ? 'dark' : 'light',
-      shouldEnableClipItemHud,
-      shouldEnableRadialMenuHud,
-      triggerMouseButton,
-      triggerMouseMode,
+      theme,
+      shouldEnableClipItemHud: settings.clipItemHudEnabled && settings.compactMetaDisplayMode !== 'inside',
+      shouldEnableRadialMenuHud: settings.clipItemHudRadialMenuEnabled,
+      triggerMouseButton: settings.clipItemHudTriggerMouseButton,
+      triggerMouseMode: settings.clipItemHudTriggerMouseMode,
     });
 
-    useLayoutEffect(() => {
-      if (isImage || !hasTags) {
-        setTagListHeight(0);
-        return;
-      }
-
-      const element = tagListRef.current;
-      if (!element) return;
-
-      const syncHeight = () => {
-        setTagListHeight(element.scrollHeight);
-      };
-
-
-      const observer = new ResizeObserver(syncHeight);
-      observer.observe(element);
-
-      return () => observer.disconnect();
-    }, [isImage, hasTags, itemTags]);
-
-    const containerClass = 'clip-item-root';
     const hudFxMode = settings.clipItemHudRadialMenuFancyFx ? 'fancy' : 'normal';
     const clipItemHudStyle = {
       '--clip-item-hud-run-duration': `${settings.clipItemHudBorderRunDurationSec}s`,
@@ -314,7 +194,7 @@ export const ClipItemComponent = React.memo(
         onPointerUpCapture={handlePointerUpCapture}
         onPointerCancel={handleRootPointerCancel}
         onPointerLeave={handleRootPointerLeave}
-        className={containerClass}
+        className="clip-item-root"
         data-selected={isSelected ? 'true' : 'false'}
         data-theme={theme}
         data-files={isFiles ? 'true' : 'false'}
@@ -357,67 +237,19 @@ export const ClipItemComponent = React.memo(
             setPreviewImageUrl={setPreviewImageUrl}
             isSelected={isSelected}
             darkMode={settings.darkMode}
-            galleryDisplayMode={settings.galleryDisplayMode}
-            galleryScrollDirection={settings.galleryScrollDirection}
-            galleryWheelMode={settings.galleryWheelMode}
-            galleryListMaxVisibleItems={settings.galleryListMaxVisibleItems}
-            fileListMaxVisibleItems={settings.fileListMaxVisibleItems}
-            onFileListItemClick={handleFileListItemClick}
-            onFileListItemDragStart={handleFileListItemDragStart}
-            onGalleryDisplayModeChange={handleGalleryDisplayModeChange}
-            onGalleryScrollDirectionChange={handleGalleryScrollDirectionChange}
-            onGalleryListItemClick={handleGalleryListItemClick}
-            onGalleryListItemDragStart={handleGalleryListItemDragStart}
-            onGalleryCopyImage={handleGalleryCopyImage}
-            onUpdatePickedColor={handleUpdatePickedColor}
-            onCopyAsNewColor={handleCopyAsNewColor}
+            gallery={galleryConfig}
+            fileList={fileListConfig}
+            color={colorConfig}
             copyText={copyText}
           />
 
           {/* 标签列表 */}
-          {isImage ? (
-            <div
-              className="clip-item-tag-list"
-              data-has-tags={hasTags ? 'true' : 'false'}
-              data-image-slot="true"
-            >
-              <AnimatePresence>
-                {itemTags.map(renderTagPill)}
-              </AnimatePresence>
-            </div>
-          ) : (
-            <AnimatePresence initial={false}>
-              {hasTags && (
-                <motion.div
-                  key="clip-item-tag-list-shell"
-                  className="clip-item-tag-list-shell"
-                  initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                  animate={{ opacity: 1, height: tagListHeight, marginTop: TAG_LIST_MARGIN_TOP_PX }}
-                  exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                  transition={{
-                    opacity: {
-                      duration: TAG_LIST_OPACITY_DURATION_MS / 1000,
-                      ease: TAG_LIST_ANIMATION_EASING,
-                    },
-                    height: {
-                      duration: TAG_LIST_ANIMATION_DURATION_MS / 1000,
-                      ease: TAG_LIST_ANIMATION_EASING,
-                    },
-                    marginTop: {
-                      duration: TAG_LIST_ANIMATION_DURATION_MS / 1000,
-                      ease: TAG_LIST_ANIMATION_EASING,
-                    },
-                  }}
-                >
-                  <div ref={tagListRef} className="clip-item-tag-list" data-has-tags="true">
-                    <AnimatePresence>
-                      {itemTags.map(renderTagPill)}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          )}
+          <ClipItemTagList
+            itemTags={itemTags}
+            isImage={isImage}
+            theme={theme}
+            darkMode={settings.darkMode}
+          />
         </div>
 
         {/* 右侧：时间 + 操作 */}

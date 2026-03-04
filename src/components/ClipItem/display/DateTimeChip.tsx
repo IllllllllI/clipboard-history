@@ -1,9 +1,9 @@
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Clock, Copy, Check } from 'lucide-react';
-import type { DateTimeMatch } from '../../utils';
-import { getDateTimeFormats } from '../../utils';
-import { usePopoverPosition } from '../../hooks/usePopoverPosition';
+import type { DateTimeMatch } from '../../../utils';
+import { getDateTimeFormats } from '../../../utils';
+import { usePopoverPosition } from '../../../hooks/usePopoverPosition';
 import { HighlightText } from './HighlightText';
 import './styles/datetime-chip.css';
 
@@ -151,11 +151,8 @@ export const HighlightDateTimeText = React.memo(function HighlightDateTimeText({
   darkMode: boolean;
   copyText: (text: string) => Promise<void>;
 }) {
-  if (matches.length === 0) {
-    return <HighlightText text={text} highlight={searchQuery} darkMode={darkMode} />;
-  }
-
   const segments = useMemo(() => {
+    if (matches.length === 0) return null;
     const computed: { text: string; isDateTime: boolean; matchIdx: number }[] = [];
     let lastEnd = 0;
     for (let mi = 0; mi < matches.length; mi++) {
@@ -171,6 +168,10 @@ export const HighlightDateTimeText = React.memo(function HighlightDateTimeText({
     }
     return computed;
   }, [text, matches]);
+
+  if (!segments) {
+    return <HighlightText text={text} highlight={searchQuery} darkMode={darkMode} />;
+  }
 
   return (
     <>

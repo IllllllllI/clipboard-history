@@ -1,36 +1,43 @@
-import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { Globe, HardDrive, FileCode2, Images } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Globe, HardDrive, FileCode2 } from 'lucide-react';
 import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode } from '../../types';
-import { decodeFileList, detectImageType, findDateTimesInText, normalizeFilePath } from '../../utils';
-import { TauriService } from '../../services/tauri';
+import { decodeFileList, detectImageType, findDateTimesInText } from '../../utils';
 import { ImageDisplay } from '../ImageDisplay';
 import { FileListDisplay } from '../FileListDisplay';
 import { ImageGallery } from '../ImageGallery';
-import { ImagePreview } from './ImagePreview';
-import { HighlightText } from './HighlightText';
-import { HighlightDateTimeText } from './DateTimeChip';
-import { ColorContentBlock } from './ColorContentBlock';
-import { LinkOpenStatus } from './LinkOpenStatus';
+import { ImagePreview } from './display/ImagePreview';
+import { HighlightText } from './display/HighlightText';
+import { HighlightDateTimeText } from './display/DateTimeChip';
+import { ColorContentBlock } from './color/ColorContentBlock';
+import { LinkOpenStatus } from './display/LinkOpenStatus';
+import { useUrlOpenState, buildOpenTargetTitle } from './useUrlOpenState';
 import './styles/clip-item-content.css';
 
-const URL_OPENING_DELAY_MS = 180;
-const URL_SUCCESS_RESET_DELAY_MS = 1000;
-const URL_ERROR_RESET_DELAY_MS = 1400;
+// ============================================================================
+// 配置对象接口 — 将相关 props 分组，减少扁平式参数穿透
+// ============================================================================
 
-type UrlOpenState = 'idle' | 'opening' | 'success' | 'error';
-
-function getUrlOpenStatusTitle(
-  state: UrlOpenState,
-  imageType: ImageType,
-): string {
-  if (state === 'opening') return '正在打开...';
-  if (state === 'success') return '已打开';
-  if (state === 'error') return '打开失败';
-  return imageType === ImageType.LocalFile ? '双击打开文件' : '双击打开链接';
+export interface GalleryContentConfig {
+  displayMode: GalleryDisplayMode;
+  scrollDirection: GalleryScrollDirection;
+  wheelMode: GalleryWheelMode;
+  listMaxVisibleItems: number;
+  onDisplayModeChange: (mode: GalleryDisplayMode) => void;
+  onScrollDirectionChange: (dir: GalleryScrollDirection) => void;
+  onListItemClick: (url: string) => void;
+  onListItemDragStart: (e: React.DragEvent<HTMLDivElement>, url: string) => void;
+  onCopyImage: (url: string) => void;
 }
 
-function buildOpenTargetTitle(prefix: string, value: string, statusTitle: string): string {
-  return `${prefix}${value}\n${statusTitle}`;
+export interface FileListContentConfig {
+  maxVisibleItems: number;
+  onItemClick: (filePath: string) => void;
+  onItemDragStart: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
+}
+
+export interface ColorContentConfig {
+  onUpdatePickedColor: (id: number, color: string | null) => Promise<void>;
+  onCopyAsNewColor: (color: string) => Promise<void>;
 }
 
 interface ClipItemContentProps {
@@ -44,20 +51,9 @@ interface ClipItemContentProps {
   setPreviewImageUrl: (url: string) => void;
   isSelected: boolean;
   darkMode: boolean;
-  galleryDisplayMode: GalleryDisplayMode;
-  galleryScrollDirection: GalleryScrollDirection;
-  galleryWheelMode: GalleryWheelMode;
-  galleryListMaxVisibleItems: number;
-  fileListMaxVisibleItems: number;
-  onFileListItemClick: (filePath: string) => void;
-  onFileListItemDragStart: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
-  onGalleryDisplayModeChange: (mode: GalleryDisplayMode) => void;
-  onGalleryScrollDirectionChange: (dir: GalleryScrollDirection) => void;
-  onGalleryListItemClick: (url: string) => void;
-  onGalleryListItemDragStart: (e: React.DragEvent<HTMLDivElement>, url: string) => void;
-  onGalleryCopyImage: (url: string) => void;
-  onUpdatePickedColor: (id: number, color: string | null) => Promise<void>;
-  onCopyAsNewColor: (color: string) => Promise<void>;
+  gallery: GalleryContentConfig;
+  fileList: FileListContentConfig;
+  color: ColorContentConfig;
   copyText: (text: string) => Promise<void>;
 }
 
@@ -73,46 +69,16 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   setPreviewImageUrl,
   isSelected,
   darkMode,
-  galleryDisplayMode,
-  galleryScrollDirection,
-  galleryWheelMode,
-  galleryListMaxVisibleItems,
-  fileListMaxVisibleItems,
-  onFileListItemClick,
-  onFileListItemDragStart,
-  onGalleryDisplayModeChange,
-  onGalleryScrollDirectionChange,
-  onGalleryListItemClick,
-  onGalleryListItemDragStart,
-  onGalleryCopyImage,
-  onUpdatePickedColor,
-  onCopyAsNewColor,
+  gallery,
+  fileList,
+  color,
   copyText,
 }: ClipItemContentProps) {
-  // ⚠ 所有 Hooks 必须在条件分支前调用，确保 React Hooks 调用规则
-  const [urlOpenState, setUrlOpenState] = useState<UrlOpenState>('idle');
-  const urlOpeningDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const urlStateResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clearUrlStateTimers = useCallback(() => {
-    if (urlOpeningDelayTimerRef.current) {
-      clearTimeout(urlOpeningDelayTimerRef.current);
-      urlOpeningDelayTimerRef.current = null;
-    }
-
-    if (urlStateResetTimerRef.current) {
-      clearTimeout(urlStateResetTimerRef.current);
-      urlStateResetTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearUrlStateTimers();
-    };
-  }, [clearUrlStateTimers]);
-
+  // --- URL 打开状态管理（提取至 hook） ---
   const trimmedText = useMemo(() => item.text.trim(), [item.text]);
+  const { urlOpenState, openStatusTitle, handleUrlDoubleClick } = useUrlOpenState(imageType, trimmedText);
+
+  // --- 衍生状态 ---
   const displayText = useMemo(() => item.text.replace(/\n/g, ' ↵ '), [item.text]);
   const dtMatches = useMemo(() => findDateTimesInText(displayText), [displayText]);
   const hasDateTime = dtMatches.length > 0;
@@ -132,52 +98,11 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   );
   const theme = darkMode ? 'dark' : 'light';
 
-  const openUrlWithStatus = useCallback(async () => {
-    const scheduleUrlStateReset = (state: UrlOpenState, delayMs: number) => {
-      setUrlOpenState(state);
-      urlStateResetTimerRef.current = setTimeout(() => {
-        setUrlOpenState('idle');
-        urlStateResetTimerRef.current = null;
-      }, delayMs);
-    };
-
-    clearUrlStateTimers();
-    urlOpeningDelayTimerRef.current = setTimeout(() => {
-      setUrlOpenState('opening');
-      urlOpeningDelayTimerRef.current = null;
-    }, URL_OPENING_DELAY_MS);
-
-    const value = trimmedText;
-
-    try {
-      if (imageType === ImageType.LocalFile) {
-        await TauriService.openFile(normalizeFilePath(value));
-      } else {
-        await TauriService.openPath(value);
-      }
-
-      clearUrlStateTimers();
-      scheduleUrlStateReset('success', URL_SUCCESS_RESET_DELAY_MS);
-    } catch (error) {
-      clearUrlStateTimers();
-      scheduleUrlStateReset('error', URL_ERROR_RESET_DELAY_MS);
-      console.warn('Open url failed:', value, error);
-    }
-  }, [clearUrlStateTimers, imageType, trimmedText]);
-
-  const handleUrlDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    void openUrlWithStatus();
-  }, [openUrlWithStatus]);
-
-  const openStatusTitle = getUrlOpenStatusTitle(urlOpenState, imageType);
-
-  const renderUrlOpenStatus = useCallback(() => (
+  const renderUrlOpenStatus = () => (
     <span className="clip-item-content-link-status" data-state={urlOpenState} aria-hidden="true">
       <LinkOpenStatus state={urlOpenState} />
     </span>
-  ), [urlOpenState]);
+  );
 
   const imageOpenTitle = buildOpenTargetTitle(
     imageType === ImageType.HttpUrl ? '链接: ' : '文件: ',
@@ -193,9 +118,9 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         files={files}
         isSelected={isSelected}
         darkMode={darkMode}
-        onItemCopy={onFileListItemClick}
-        onItemDragStart={onFileListItemDragStart}
-        maxVisibleItems={fileListMaxVisibleItems}
+        onItemCopy={fileList.onItemClick}
+        onItemDragStart={fileList.onItemDragStart}
+        maxVisibleItems={fileList.maxVisibleItems}
       />
     );
   }
@@ -206,8 +131,8 @@ export const ClipItemContent = React.memo(function ClipItemContent({
       <ColorContentBlock
         item={item}
         darkMode={darkMode}
-        onUpdatePickedColor={onUpdatePickedColor}
-        onCopyAsNewColor={onCopyAsNewColor}
+        onUpdatePickedColor={color.onUpdatePickedColor}
+        onCopyAsNewColor={color.onCopyAsNewColor}
         copyText={copyText}
       />
     );
@@ -221,16 +146,16 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         baseItem={item}
         darkMode={darkMode}
         onImageClick={setPreviewImageUrl}
-        displayMode={galleryDisplayMode}
-        scrollDirection={galleryScrollDirection}
-        wheelMode={galleryWheelMode}
-        listMaxVisibleItems={galleryListMaxVisibleItems}
+        displayMode={gallery.displayMode}
+        scrollDirection={gallery.scrollDirection}
+        wheelMode={gallery.wheelMode}
+        listMaxVisibleItems={gallery.listMaxVisibleItems}
         isFileGallery={showFilesAsGallery}
-        onCopyImage={onGalleryCopyImage}
-        onListItemClick={onGalleryListItemClick}
-        onListItemDragStart={onGalleryListItemDragStart}
-        onDisplayModeChange={onGalleryDisplayModeChange}
-        onScrollDirectionChange={onGalleryScrollDirectionChange}
+        onCopyImage={gallery.onCopyImage}
+        onListItemClick={gallery.onListItemClick}
+        onListItemDragStart={gallery.onListItemDragStart}
+        onDisplayModeChange={gallery.onDisplayModeChange}
+        onScrollDirectionChange={gallery.onScrollDirectionChange}
       />
     );
   }

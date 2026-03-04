@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import './styles/color-picker.css';
+
+const COPY_FEEDBACK_DURATION_MS = 2000;
 
 interface ActionBarProps {
   hex: string;
@@ -10,18 +12,26 @@ interface ActionBarProps {
 }
 
 /** 底部操作栏：复制 & 确认 */
-export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
+export const ActionBar = React.memo(function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => {
+    clearTimeout(timerRef.current);
+  }, []);
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onCopy(hex);
+    setCopied(true);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_DURATION_MS);
+  }, [hex, onCopy]);
 
   return (
     <div className="clip-item-color-picker-actionbar">
       <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopy(hex);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        }}
+        onClick={handleCopy}
         className="clip-item-color-picker-action-btn clip-item-color-picker-action-copy"
         title="复制并新增条目"
       >
@@ -63,4 +73,4 @@ export function ActionBar({ hex, onConfirm, onCopy }: ActionBarProps) {
       </button>
     </div>
   );
-}
+});

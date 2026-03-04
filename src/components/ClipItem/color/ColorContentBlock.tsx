@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ClipItem } from '../../types';
-import { expandHex } from '../../utils/colorConvert';
-import { ColorPickerPopover } from './ClipItemColorPicker';
+import { ClipItem } from '../../../types';
+import { expandHex } from '../../../utils/colorConvert';
+import { ColorPickerPopover } from './ColorPickerPopover';
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
 

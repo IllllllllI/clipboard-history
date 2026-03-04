@@ -1,3 +1,4 @@
+import React from 'react';
 import { RotateCcw } from 'lucide-react';
 import './styles/color-picker.css';
 
@@ -13,7 +14,7 @@ interface ColorPreviewProps {
 }
 
 /** 颜色预览圆圈：显示当前色 / 原色与当前色对半显示 */
-export function ColorPreview({ originalColor, currentColor, isChanged, onReset }: ColorPreviewProps) {
+export const ColorPreview = React.memo(function ColorPreview({ originalColor, currentColor, isChanged, onReset }: ColorPreviewProps) {
   return (
     <div
       className="clip-item-color-picker-preview"
@@ -37,4 +38,4 @@ export function ColorPreview({ originalColor, currentColor, isChanged, onReset }
       )}
     </div>
   );
-}
+});

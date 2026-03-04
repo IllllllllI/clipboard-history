@@ -2,9 +2,10 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon, Check } from 'lucide-react';
-import { ClipItem, Tag } from '../../types';
-import { hexToRgba } from '../../utils/color';
-import { usePopoverPosition } from '../../hooks/usePopoverPosition';
+import { ClipItem, Tag } from '../../../types';
+import { hexToRgba } from '../../../utils/color';
+import { usePopoverPosition } from '../../../hooks/usePopoverPosition';
+import { useClickOutside } from '../useClickOutside';
 import './styles/tag-dropdown.css';
 
 let lastUsedTagId: number | null = null;
@@ -107,38 +108,14 @@ export const TagDropdown = React.memo(function TagDropdown({
   }, []);
 
   const handleToggleTag = useCallback(
-    async (e: React.MouseEvent, tagId: number, hasTag: boolean) => {
+    async (e: React.MouseEvent, tagId: number) => {
       e.stopPropagation();
-      if (hasTag) {
-        await onRemoveTag(item.id, tagId);
-        lastUsedTagId = tagId;
-        return;
-      }
-      await onAddTag(item.id, tagId);
-      lastUsedTagId = tagId;
+      await toggleTagById(tagId);
     },
-    [item.id, onAddTag, onRemoveTag]
+    [toggleTagById],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: PointerEvent) => {
-      const target = e.target;
-      if (!(target instanceof Node)) return;
-
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(target) &&
-        btnRef.current &&
-        !btnRef.current.contains(target)
-      ) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener('pointerdown', handler, true);
-    return () => document.removeEventListener('pointerdown', handler, true);
-  }, [open, popoverRef]);
+  useClickOutside([popoverRef, btnRef], open, () => setOpen(false), { event: 'pointerdown', capture: true });
 
   const containerVariants = {
     hidden: { opacity: 0, scale: 0.96, y: -6, filter: 'blur(2px)' },
@@ -293,7 +270,7 @@ export const TagDropdown = React.memo(function TagDropdown({
                           e.stopPropagation();
                         }}
                         onClick={(e) => {
-                          void handleToggleTag(e, tag.id, hasTag);
+                          void handleToggleTag(e, tag.id);
                         }}
                         className="clip-item-tag-dropdown-item"
                         data-active={hasTag ? 'true' : 'false'}
@@ -330,4 +307,3 @@ export const TagDropdown = React.memo(function TagDropdown({
   );
 });
 
-export default TagDropdown;

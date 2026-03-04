@@ -1,8 +1,10 @@
 import React from 'react';
 import { Trash2, Copy, Check, Edit3 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ClipItem } from '../../types';
+import { ClipItem } from '../../../types';
 import './styles/action-buttons.css';
+
+const COPY_ICON_SPRING = { type: 'spring' as const, stiffness: 500, damping: 30 };
 
 interface ActionButtonsProps {
   item: ClipItem;
@@ -59,7 +61,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
               animate={{ opacity: 1, scale: 1, rotate: 0 }}
               exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              transition={COPY_ICON_SPRING}
             >
               <Check className="clip-item-action-icon clip-item-action-icon-copy-ok" />
             </motion.div>
@@ -69,7 +71,7 @@ export const ActionButtons = React.memo(function ActionButtons({
               initial={{ opacity: 0, scale: 0.5, rotate: 45 }}
               animate={{ opacity: 1, scale: 1, rotate: 0 }}
               exit={{ opacity: 0, scale: 0.5 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+              transition={COPY_ICON_SPRING}
             >
               <Copy className="clip-item-action-icon" />
             </motion.div>
@@ -108,5 +110,3 @@ export const ActionButtons = React.memo(function ActionButtons({
     </div>
   );
 });
-
-export default ActionButtons;

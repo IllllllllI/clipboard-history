@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { HexAlphaColorPicker } from 'react-colorful';
@@ -11,37 +11,7 @@ import { ColorInputPanel } from './ColorInputPanel';
 import { HistoryColors } from './HistoryColors';
 import { ActionBar } from './ActionBar';
 import './styles/color-picker.css';
-
-// ============================================================================
-// Props & Hook: 点击外部关闭
-// ============================================================================
-
-function useClickOutside(
-  popoverRef: React.RefObject<HTMLElement | null>,
-  anchorRef: React.RefObject<HTMLElement | null>,
-  isOpen: boolean,
-  onClickOutside: () => void,
-) {
-  const onClickOutsideRef = useRef(onClickOutside);
-
-  useEffect(() => {
-    onClickOutsideRef.current = onClickOutside;
-  }, [onClickOutside]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (
-        popoverRef.current && !popoverRef.current.contains(e.target as Node) &&
-        anchorRef.current && !anchorRef.current.contains(e.target as Node)
-      ) {
-        onClickOutsideRef.current();
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [isOpen, popoverRef, anchorRef]);
-}
+import { useClickOutside } from '../useClickOutside';
 
 // ============================================================================
 // 主组件
@@ -78,8 +48,7 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
 
   // 点击外部：已改色则确认，否则关闭
   useClickOutside(
-    popoverRef,
-    anchorRef,
+    [popoverRef, anchorRef],
     isOpen,
     isChanged ? () => onConfirm(hex) : onClose,
   );

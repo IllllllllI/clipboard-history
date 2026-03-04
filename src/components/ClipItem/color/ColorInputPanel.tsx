@@ -1,3 +1,4 @@
+import React from 'react';
 import { Hash } from 'lucide-react';
 import { ChannelInput } from './ChannelInput';
 import type { ColorState } from './useColorState';
@@ -7,7 +8,7 @@ interface ColorInputPanelProps {
 }
 
 /** 根据当前模式渲染对应的颜色值输入区域 */
-export function ColorInputPanel({ state }: ColorInputPanelProps) {
+export const ColorInputPanel = React.memo(function ColorInputPanel({ state }: ColorInputPanelProps) {
   const { mode, displayColor, rgba, hslDraft, setHexFromInput, setRgbaChannel, setHslaChannel } = state;
 
   if (mode === 'HEX') {
@@ -47,4 +48,4 @@ export function ColorInputPanel({ state }: ColorInputPanelProps) {
       <ChannelInput label="A" value={Math.round(hslDraft.a * 100)} max={100} onChange={(v) => setHslaChannel('a', v / 100)} />
     </div>
   );
-}
+});

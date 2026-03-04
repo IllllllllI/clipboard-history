@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { escapeRegExp } from '../../utils';
+import { escapeRegExp } from '../../../utils';
 import './styles/highlight-text.css';
 
 interface HighlightTextProps {
