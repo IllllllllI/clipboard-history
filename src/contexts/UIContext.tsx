@@ -13,6 +13,7 @@ import { ClipItem, AppSettings, DownloadState, ImageType } from '../types';
 import { executeCopyStrategy, resolveCopyStrategy } from '../services/copyRouter';
 import { TauriService, isTauri } from '../services/tauri';
 import { detectType, detectImageType, detectContentType, normalizeFilePath, isFileList, encodeFileList } from '../utils';
+import { setClipItemHudDragging, setClipItemHudVisible } from '../hud/clipitem/clipItemHudManager';
 
 // ============================================================================
 // 过滤类型
@@ -490,6 +491,11 @@ export function UIProvider({
     pendingDragCopyRef.current = copyToClipboard;
     resetPrefetchState();
 
+    // 拖拽期间抑制 HUD 显示，防止 blur/move 事件竞态导致闪烁
+    setClipItemHudDragging(true);
+    // 同步更新共享可见状态，确保控制器的 blur 处理器不会冗余调用 Rust IPC
+    setClipItemHudVisible(false);
+
     if (settings.prefetchImageOnDragStart && detectImageType(text) === ImageType.HttpUrl) {
       const requestId = TauriService.createImageDownloadRequestId();
       activeDownloadRequestIdRef.current = requestId;
@@ -501,6 +507,9 @@ export function UIProvider({
     }
 
     try {
+      // 拖拽开始时立即隐藏 HUD，避免等 blur/move 事件的延迟造成残影
+      try { await TauriService.hideClipItemHud(); } catch { /* 忽略 */ }
+
       // 隐藏窗口（如果设置了拖拽时隐藏）
       if (settings.hideOnDrag) {
         try {
@@ -602,6 +611,7 @@ export function UIProvider({
       }
 
       if (settings.hideAfterDrag) {
+        try { await TauriService.hideClipItemHud(); } catch { /* 忽略 */ }
         try { await TauriService.hideWindow(); } catch { /* 忽略 */ }
         dragHiddenRef.current = true;
         // 延迟恢复位置，确保隐藏动画完成
@@ -623,6 +633,8 @@ export function UIProvider({
     } finally {
       clearPendingDrag();
       resetPrefetchState();
+      // 拖拽结束，恢复 HUD 响应（必须在 restorePosition/showWindow 之后，等 focus 事件自然触发 sync）
+      setClipItemHudDragging(false);
       dragHiddenRef.current = false;
       stopDownloadHudFollow();
 

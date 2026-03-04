@@ -7,12 +7,17 @@
 //! 业务逻辑分布在各子模块中，详见 `lib.rs` 架构文档。
 
 use clipboard_history::{clipboard, db, image_handler, input, settings, storage, window_position};
+use clipboard_history::ipc::{
+    WINDOW_LABEL_CLIPITEM_HUD, WINDOW_LABEL_DOWNLOAD_HUD, WINDOW_LABEL_MAIN,
+    WINDOW_LABEL_RADIAL_MENU,
+};
 use tauri::Manager;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{
     MouseButton as TauriMouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
 };
+use tauri::window::Color;
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
@@ -55,14 +60,14 @@ fn main() {
             }
 
             // 显式设置主窗口图标，避免平台默认图标与配置不一致
-            if let Some(main_window) = app.get_webview_window("main") {
+            if let Some(main_window) = app.get_webview_window(WINDOW_LABEL_MAIN) {
                 let _ = main_window.set_icon(app_icon.clone());
             }
 
-            if app.get_webview_window("download-hud").is_none() {
+            if app.get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD).is_none() {
                 let _hud_window = WebviewWindowBuilder::new(
                     app,
-                    "download-hud",
+                    WINDOW_LABEL_DOWNLOAD_HUD,
                     WebviewUrl::App("index.html?mode=download-hud".into()),
                 )
                 .title("Download HUD")
@@ -71,27 +76,54 @@ fn main() {
                 .decorations(false)
                 .always_on_top(true)
                 .skip_taskbar(true)
+                .devtools(false)
                 .visible(false)
                 .build()
                 .map_err(|e| format!("创建下载 HUD 窗口失败: {}", e))?;
             }
 
-            if app.get_webview_window("clipitem-hud").is_none() {
+            if app.get_webview_window(WINDOW_LABEL_CLIPITEM_HUD).is_none() {
                 let _clipitem_hud_window = WebviewWindowBuilder::new(
                     app,
-                    "clipitem-hud",
+                    WINDOW_LABEL_CLIPITEM_HUD,
                     WebviewUrl::App("index.html?mode=clipitem-hud".into()),
                 )
                 .title("ClipItem HUD")
-                .inner_size(320.0, 320.0)
+                .inner_size(336.0, 108.0)
                 .transparent(true)
+                .background_color(Color(0, 0, 0, 0))
+                .shadow(false)
                 .resizable(false)
                 .decorations(false)
                 .always_on_top(true)
                 .skip_taskbar(true)
+                .focused(false)
+                .focusable(false)
+                .devtools(false)
                 .visible(false)
                 .build()
                 .map_err(|e| format!("创建条目 HUD 窗口失败: {}", e))?;
+            }
+
+            if app.get_webview_window(WINDOW_LABEL_RADIAL_MENU).is_none() {
+                let _radial_menu_window = WebviewWindowBuilder::new(
+                    app,
+                    WINDOW_LABEL_RADIAL_MENU,
+                    WebviewUrl::App("index.html?mode=radial-menu".into()),
+                )
+                .title("Radial Menu")
+                .inner_size(344.0, 344.0)
+                .transparent(true)
+                .background_color(Color(0, 0, 0, 0))
+                .shadow(false)
+                .resizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .devtools(false)
+                .visible(false)
+                .build()
+                .map_err(|e| format!("创建径向菜单窗口失败: {}", e))?;
             }
             log::info!("setup: main window icon set");
 
@@ -116,7 +148,7 @@ fn main() {
                         app.exit(0);
                     }
                     "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
+                        if let Some(w) = app.get_webview_window(WINDOW_LABEL_MAIN) {
                             if let Err(err) = w.unminimize() {
                                 log::warn!("托盘菜单显示窗口失败（unminimize）: {err}");
                             }
@@ -137,7 +169,7 @@ fn main() {
                         ..
                     } = event
                     {
-                        if let Some(w) = tray.app_handle().get_webview_window("main") {
+                        if let Some(w) = tray.app_handle().get_webview_window(WINDOW_LABEL_MAIN) {
                             if let Err(err) = w.unminimize() {
                                 log::warn!("托盘点击显示窗口失败（unminimize）: {err}");
                             }
@@ -154,7 +186,7 @@ fn main() {
 
             if let Err(err) = tray_result {
                 log::warn!("托盘图标创建失败，回退为显示主窗口: {err}");
-                if let Some(w) = app.get_webview_window("main") {
+                if let Some(w) = app.get_webview_window(WINDOW_LABEL_MAIN) {
                     if let Err(err) = w.unminimize() {
                         log::warn!("托盘失败回退显示窗口失败（unminimize）: {err}");
                     }
@@ -171,13 +203,34 @@ fn main() {
 
             Ok(())
         })
-        // 窗口关闭时隐藏而非退出
+        // 窗口事件：关闭转隐藏 + 主窗口失焦时隐藏 HUD
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if let Err(err) = window.hide() {
-                    log::warn!("窗口关闭转隐藏失败: {err}");
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // 如果是主窗口关闭，同步隐藏所有 HUD 子窗口
+                    if window.label() == WINDOW_LABEL_MAIN {
+                        window_position::hide_all_hud_windows(window.app_handle());
+                    }
+                    if let Err(err) = window.hide() {
+                        log::warn!("窗口关闭转隐藏失败: {err}");
+                    }
+                    api.prevent_close();
                 }
-                api.prevent_close();
+                tauri::WindowEvent::Focused(false) => {
+                    // 主窗口失焦时，若焦点未转移到自身 HUD 子窗口，则隐藏所有 HUD
+                    if window.label() == WINDOW_LABEL_MAIN {
+                        // 短暂延迟检查：焦点可能正在转移到 HUD 子窗口
+                        let app = window.app_handle().clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            if !window_position::is_any_hud_focused(&app) {
+                                log::debug!("主窗口失焦且焦点未在 HUD 子窗口，隐藏所有 HUD");
+                                window_position::hide_all_hud_windows(&app);
+                            }
+                        });
+                    }
+                }
+                _ => {}
             }
         })
         // 注册所有 Tauri 命令
@@ -219,6 +272,11 @@ fn main() {
             window_position::hide_clipitem_hud,
             window_position::position_clipitem_hud_near_cursor,
             window_position::set_clipitem_hud_mouse_passthrough,
+            window_position::show_radial_menu,
+            window_position::hide_radial_menu,
+            window_position::position_radial_menu_at_cursor,
+            window_position::set_radial_menu_mouse_passthrough,
+            window_position::is_app_foreground_window,
             // 数据库操作
             db::db_auto_clear,
             db::db_get_stats,

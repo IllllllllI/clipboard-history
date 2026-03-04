@@ -38,17 +38,132 @@ pub mod calculation;
 pub mod monitor;
 pub mod window_state;
 
+use crate::ipc::{
+    WINDOW_LABEL_CLIPITEM_HUD, WINDOW_LABEL_DOWNLOAD_HUD, WINDOW_LABEL_MAIN,
+    WINDOW_LABEL_RADIAL_MENU,
+};
 use serde::Deserialize;
-use tauri::{AppHandle, Manager, PhysicalPosition, Window};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Window};
 use crate::error::AppError;
 use std::time::Instant;
 
-const DOWNLOAD_HUD_WINDOW_LABEL: &str = "download-hud";
 const DOWNLOAD_HUD_OFFSET_X: i32 = 14;
 const DOWNLOAD_HUD_OFFSET_Y: i32 = 18;
-const CLIPITEM_HUD_WINDOW_LABEL: &str = "clipitem-hud";
 const CLIPITEM_HUD_OFFSET_X: i32 = 18;
 const CLIPITEM_HUD_OFFSET_Y: i32 = 18;
+const CLIPITEM_HUD_LINEAR_WIDTH: u32 = 324;
+const CLIPITEM_HUD_LINEAR_HEIGHT: u32 = 50;
+const CLIPITEM_HUD_EDGE_INSET: i32 = 6;
+const RADIAL_MENU_SIZE: u32 = 344;
+
+#[derive(Clone, Copy)]
+enum ClipItemHudAxis {
+    Horizontal,
+    Vertical,
+}
+
+impl ClipItemHudAxis {
+    fn as_str(self) -> &'static str {
+        match self {
+            ClipItemHudAxis::Horizontal => "horizontal",
+            ClipItemHudAxis::Vertical => "vertical",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum MainWindowNearestEdge {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+fn clamp_i32(value: i32, min_value: i32, max_value: i32) -> i32 {
+    if min_value > max_value {
+        return min_value;
+    }
+    value.clamp(min_value, max_value)
+}
+
+fn detect_nearest_main_window_edge(
+    cursor_x: i32,
+    cursor_y: i32,
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+) -> MainWindowNearestEdge {
+    let distance_top = (cursor_y - top).abs();
+    let distance_right = (right - cursor_x).abs();
+    let distance_bottom = (bottom - cursor_y).abs();
+    let distance_left = (cursor_x - left).abs();
+
+    let mut nearest = (distance_top, MainWindowNearestEdge::Top);
+    if distance_right < nearest.0 {
+        nearest = (distance_right, MainWindowNearestEdge::Right);
+    }
+    if distance_bottom < nearest.0 {
+        nearest = (distance_bottom, MainWindowNearestEdge::Bottom);
+    }
+    if distance_left < nearest.0 {
+        nearest = (distance_left, MainWindowNearestEdge::Left);
+    }
+
+    nearest.1
+}
+
+fn compute_clipitem_hud_edge_position(
+    cursor_pos: PhysicalPosition<i32>,
+    main_pos: PhysicalPosition<i32>,
+    main_size: PhysicalSize<u32>,
+) -> (ClipItemHudAxis, PhysicalSize<u32>, PhysicalPosition<i32>) {
+    let left = main_pos.x;
+    let top = main_pos.y;
+    let right = left + main_size.width as i32;
+    let bottom = top + main_size.height as i32;
+
+    let edge = detect_nearest_main_window_edge(cursor_pos.x, cursor_pos.y, left, top, right, bottom);
+
+    let (axis, width, height) = match edge {
+        MainWindowNearestEdge::Top | MainWindowNearestEdge::Bottom => {
+            (ClipItemHudAxis::Horizontal, CLIPITEM_HUD_LINEAR_WIDTH, CLIPITEM_HUD_LINEAR_HEIGHT)
+        }
+        MainWindowNearestEdge::Left | MainWindowNearestEdge::Right => {
+            (ClipItemHudAxis::Vertical, CLIPITEM_HUD_LINEAR_HEIGHT, CLIPITEM_HUD_LINEAR_WIDTH)
+        }
+    };
+
+    let width_i32 = width as i32;
+    let height_i32 = height as i32;
+    let center_x = left + (main_size.width as i32 - width_i32).max(0) / 2;
+    let center_y = top + (main_size.height as i32 - height_i32).max(0) / 2;
+
+    let target = match edge {
+        MainWindowNearestEdge::Top => {
+            let x = clamp_i32(center_x, left, right - width_i32);
+            let y = top - height_i32 - CLIPITEM_HUD_EDGE_INSET;
+            PhysicalPosition::new(x, y)
+        }
+        MainWindowNearestEdge::Bottom => {
+            let x = clamp_i32(center_x, left, right - width_i32);
+            let y = bottom + CLIPITEM_HUD_EDGE_INSET;
+            PhysicalPosition::new(x, y)
+        }
+        MainWindowNearestEdge::Left => {
+            let x = left - width_i32 - CLIPITEM_HUD_EDGE_INSET;
+            let y = clamp_i32(center_y, top, bottom - height_i32);
+            PhysicalPosition::new(x, y)
+        }
+        MainWindowNearestEdge::Right => {
+            let x = right + CLIPITEM_HUD_EDGE_INSET;
+            let y = clamp_i32(center_y, top, bottom - height_i32);
+            PhysicalPosition::new(x, y)
+        }
+    };
+
+    (axis, PhysicalSize::new(width, height), target)
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -341,8 +456,15 @@ async fn toggle_window_with_config(
     restore_if_minimized(&window)?;
 
     let state = window_state::get_window_state(&window)?;
+    let is_main_window = window.label() == WINDOW_LABEL_MAIN;
+    let hud_focused = is_main_window && is_any_hud_focused(window.app_handle());
+    let treat_as_focused = state.is_focused || hud_focused;
 
-    match (state.is_visible, state.is_focused) {
+    if is_main_window && hud_focused {
+        log::debug!("主窗口未聚焦但 HUD 子窗口持有焦点，按已聚焦处理快捷键切换");
+    }
+
+    match (state.is_visible, treat_as_focused) {
         (false, _) => {
             log::debug!("窗口处于隐藏状态，正在显示到光标附近");
             let target_position = compute_target_position(&window, &config).await?;
@@ -363,6 +485,8 @@ async fn toggle_window_with_config(
         }
         (true, true) => {
             log::debug!("窗口可见且已聚焦，正在隐藏");
+            // 同步隐藏所有 HUD 子窗口，防止主窗口隐藏后 HUD 残留
+            hide_all_hud_windows(window.app_handle());
             window.hide()
                 .map_err(|e| AppError::Window(format!("Failed to hide window: {}", e)))
         }
@@ -395,7 +519,7 @@ pub async fn handle_global_shortcut(
 #[tauri::command]
 pub async fn show_download_hud(app: AppHandle) -> Result<(), AppError> {
     let window = app
-        .get_webview_window(DOWNLOAD_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD)
         .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
 
     window
@@ -408,7 +532,7 @@ pub async fn show_download_hud(app: AppHandle) -> Result<(), AppError> {
 #[tauri::command]
 pub async fn hide_download_hud(app: AppHandle) -> Result<(), AppError> {
     let window = app
-        .get_webview_window(DOWNLOAD_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD)
         .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
 
     window
@@ -421,7 +545,7 @@ pub async fn hide_download_hud(app: AppHandle) -> Result<(), AppError> {
 #[tauri::command]
 pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), AppError> {
     let window = app
-        .get_webview_window(DOWNLOAD_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD)
         .ok_or_else(|| AppError::Window("HUD 窗口不存在".to_string()))?;
 
     let current_monitor = window
@@ -445,7 +569,7 @@ pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), App
 #[tauri::command]
 pub async fn show_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
     let window = app
-        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
         .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
 
     window
@@ -458,12 +582,16 @@ pub async fn show_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
 #[tauri::command]
 pub async fn hide_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
     let window = app
-        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
         .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
 
+    // 先 hide 再移出屏幕：hide() 立即使窗口不可见，
+    // 后续并发的 position 命令即使设置了屏幕内坐标也不会产生闪烁。
+    // set_position(-9999) 用于停放，防止下次 show() 时瞬间出现在旧位置。
     window
         .hide()
         .map_err(|e| AppError::Window(format!("隐藏 ClipItem HUD 窗口失败: {}", e)))?;
+    let _ = window.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
 
     Ok(())
 }
@@ -472,10 +600,16 @@ pub async fn hide_clipitem_hud(app: AppHandle) -> Result<(), AppError> {
 pub async fn position_clipitem_hud_near_cursor(
     app: AppHandle,
     mode: Option<String>,
-) -> Result<(), AppError> {
+) -> Result<String, AppError> {
     let window = app
-        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
         .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
+
+    // 窗口已被隐藏（如拖拽期间）则跳过定位，
+    // 防止滞后的 IPC 将窗口移回屏幕内导致闪烁。
+    if !window.is_visible().unwrap_or(true) {
+        return Ok(ClipItemHudAxis::Horizontal.as_str().to_string());
+    }
 
     let current_monitor = window
         .current_monitor()
@@ -483,25 +617,37 @@ pub async fn position_clipitem_hud_near_cursor(
 
     let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
 
-    let mut offset_x = CLIPITEM_HUD_OFFSET_X;
-    let mut offset_y = CLIPITEM_HUD_OFFSET_Y;
-    if let Some(m) = mode {
-        if m == "radial" {
-            offset_x = -160;
-            offset_y = -160;
-        }
-    }
+    let (axis, size, target) = if let Some(main_window) = app.get_webview_window(WINDOW_LABEL_MAIN) {
+        let main_pos = main_window
+            .outer_position()
+            .map_err(|e| AppError::Window(format!("读取主窗口位置失败: {}", e)))?;
+        let main_size = main_window
+            .outer_size()
+            .map_err(|e| AppError::Window(format!("读取主窗口尺寸失败: {}", e)))?;
+        compute_clipitem_hud_edge_position(cursor_pos, main_pos, main_size)
+    } else {
+        (
+            ClipItemHudAxis::Horizontal,
+            PhysicalSize::new(CLIPITEM_HUD_LINEAR_WIDTH, CLIPITEM_HUD_LINEAR_HEIGHT),
+            PhysicalPosition::new(
+                cursor_pos.x.saturating_add(CLIPITEM_HUD_OFFSET_X),
+                cursor_pos.y.saturating_add(CLIPITEM_HUD_OFFSET_Y),
+            ),
+        )
+    };
 
-    let target = PhysicalPosition::new(
-        cursor_pos.x.saturating_add(offset_x),
-        cursor_pos.y.saturating_add(offset_y),
-    );
+    // 忽略 mode 参数（仅保留兼容签名），线性 HUD 窗口始终使用 edge 布局
+    let _ = mode;
+
+    window
+        .set_size(size)
+        .map_err(|e| AppError::Window(format!("调整 ClipItem HUD 窗口尺寸失败: {}", e)))?;
 
     window
         .set_position(target)
         .map_err(|e| AppError::Window(format!("移动 ClipItem HUD 窗口失败: {}", e)))?;
 
-    Ok(())
+    Ok(axis.as_str().to_string())
 }
 
 #[tauri::command]
@@ -510,7 +656,7 @@ pub async fn set_clipitem_hud_mouse_passthrough(
     passthrough: bool,
 ) -> Result<(), AppError> {
     let window = app
-        .get_webview_window(CLIPITEM_HUD_WINDOW_LABEL)
+        .get_webview_window(WINDOW_LABEL_CLIPITEM_HUD)
         .ok_or_else(|| AppError::Window("ClipItem HUD 窗口不存在".to_string()))?;
 
     window
@@ -518,6 +664,176 @@ pub async fn set_clipitem_hud_mouse_passthrough(
         .map_err(|e| AppError::Window(format!("设置 ClipItem HUD 鼠标穿透失败: {}", e)))?;
 
     Ok(())
+}
+
+// ── 径向菜单独立窗口命令 ──
+
+#[tauri::command]
+pub async fn show_radial_menu(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
+        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
+
+    window
+        .show()
+        .map_err(|e| AppError::Window(format!("显示径向菜单窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn hide_radial_menu(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
+        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
+
+    window
+        .hide()
+        .map_err(|e| AppError::Window(format!("隐藏径向菜单窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn position_radial_menu_at_cursor(app: AppHandle) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
+        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
+
+    let current_monitor = window
+        .current_monitor()
+        .map_err(|e| AppError::Window(format!("读取径向菜单当前显示器失败: {}", e)))?;
+
+    let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
+
+    let half = RADIAL_MENU_SIZE as i32 / 2;
+    let target = PhysicalPosition::new(
+        cursor_pos.x.saturating_add(-half),
+        cursor_pos.y.saturating_add(-half),
+    );
+
+    window
+        .set_position(target)
+        .map_err(|e| AppError::Window(format!("移动径向菜单窗口失败: {}", e)))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_radial_menu_mouse_passthrough(
+    app: AppHandle,
+    passthrough: bool,
+) -> Result<(), AppError> {
+    let window = app
+        .get_webview_window(WINDOW_LABEL_RADIAL_MENU)
+        .ok_or_else(|| AppError::Window("径向菜单窗口不存在".to_string()))?;
+
+    window
+        .set_ignore_cursor_events(passthrough)
+        .map_err(|e| AppError::Window(format!("设置径向菜单鼠标穿透失败: {}", e)))?;
+
+    Ok(())
+}
+
+/// 判断是否有任何 HUD 子窗口持有焦点
+///
+/// 用于主窗口失焦时判断焦点是否转移到了自身的 HUD 子窗口，
+/// 如果是则不应隐藏 HUD。
+pub fn is_any_hud_focused(app: &AppHandle) -> bool {
+    let hud_labels = [
+        WINDOW_LABEL_CLIPITEM_HUD,
+        WINDOW_LABEL_DOWNLOAD_HUD,
+        WINDOW_LABEL_RADIAL_MENU,
+    ];
+    for label in hud_labels {
+        if let Some(w) = app.get_webview_window(label) {
+            if w.is_focused().unwrap_or(false) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// 检测当前前景窗口是否属于本应用。
+///
+/// 在 Windows 上通过 Win32 `GetForegroundWindow` 获取前景 HWND，
+/// 与本应用所有已知窗口的 HWND 进行比对。
+/// 在非 Windows 平台上回退到 Tauri 的 `is_focused()` 检查。
+///
+/// 主要用途：主窗口 blur 事件触发时，判断用户是在与自己的
+/// HUD 窗口交互（不应隐藏 HUD），还是真正切换到了其他应用。
+#[tauri::command]
+pub fn is_app_foreground_window(app: AppHandle) -> bool {
+    is_app_foreground_window_inner(&app)
+}
+
+fn is_app_foreground_window_inner(app: &AppHandle) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+
+        let fg_hwnd = unsafe { GetForegroundWindow() };
+        if fg_hwnd.0.is_null() {
+            return false;
+        }
+
+        let labels = [
+            WINDOW_LABEL_MAIN,
+            WINDOW_LABEL_CLIPITEM_HUD,
+            WINDOW_LABEL_DOWNLOAD_HUD,
+            WINDOW_LABEL_RADIAL_MENU,
+        ];
+        for label in labels {
+            if let Some(w) = app.get_webview_window(label) {
+                // Tauri 2.x 在 Windows 上提供 .hwnd() 返回 HWND
+                if let Ok(hwnd) = w.hwnd() {
+                    if std::ptr::eq(hwnd.0 as *const (), fg_hwnd.0 as *const ()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 非 Windows 平台回退：检查任意窗口是否持有焦点
+        let labels = [
+            WINDOW_LABEL_MAIN,
+            WINDOW_LABEL_CLIPITEM_HUD,
+            WINDOW_LABEL_DOWNLOAD_HUD,
+            WINDOW_LABEL_RADIAL_MENU,
+        ];
+        for label in labels {
+            if let Some(w) = app.get_webview_window(label) {
+                if w.is_focused().unwrap_or(false) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+}
+
+/// 隐藏所有 HUD 子窗口（ClipItem HUD + Download HUD + 径向菜单）
+///
+/// 当主窗口隐藏时调用，避免 HUD 残留在屏幕上。
+pub fn hide_all_hud_windows(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window(WINDOW_LABEL_CLIPITEM_HUD) {
+        let _ = w.hide();
+        let _ = w.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
+    }
+    if let Some(w) = app.get_webview_window(WINDOW_LABEL_DOWNLOAD_HUD) {
+        if let Err(e) = w.hide() {
+            log::warn!("隐藏 Download HUD 失败: {e}");
+        }
+    }
+    if let Some(w) = app.get_webview_window(WINDOW_LABEL_RADIAL_MENU) {
+        let _ = w.hide();
+        let _ = w.set_position(PhysicalPosition::new(-9999_i32, -9999_i32));
+    }
 }
 
 // 重新导出 Monitor 类型，方便上层统一引用

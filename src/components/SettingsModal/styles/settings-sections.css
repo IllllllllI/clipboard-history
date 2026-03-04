@@ -68,6 +68,18 @@
   color: rgb(115 115 115);
 }
 
+.sm-panel__metric-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 13rem;
+  min-width: 11rem;
+}
+
+.sm-panel__metric-control .sm-panel__note--tiny {
+  text-align: right;
+}
+
 .sm-panel__stats-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -163,6 +175,17 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
+}
+
+@media (max-width: 639px) {
+  .sm-panel__metric-control {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sm-panel__metric-control .sm-panel__note--tiny {
+    text-align: left;
+  }
 }
 
 .sm-panel__option-card {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AppSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../constants';
+import { CLIP_ITEM_HUD_BORDER_RING_WIDTH, CLIP_ITEM_HUD_BORDER_RUN_DURATION } from '../hud/clipitem/constants';
 import { TauriService } from '../services/tauri';
 
 const SAVE_DEBOUNCE_MS = 300;
@@ -167,19 +168,6 @@ const MIGRATIONS: Migration[] = [
       data.compactMetaDisplayMode = 'auto';
     }
   },
-  // v0.15: 条目 HUD 触发键兜底
-  (data) => {
-    const allowedKeys = new Set(['alt', 'ctrl', 'shift']);
-    if (!allowedKeys.has(data.clipItemHudTriggerKey as string)) {
-      data.clipItemHudTriggerKey = 'alt';
-    }
-  },
-  // v0.16: 条目 HUD 悬停保留策略兜底
-  (data) => {
-    if (typeof data.clipItemHudKeepOpenOnHover !== 'boolean') {
-      data.clipItemHudKeepOpenOnHover = false;
-    }
-  },
   // v0.17: 条目 HUD 鼠标触发按钮兜底
   (data) => {
     const allowedButtons = new Set(['middle', 'right']);
@@ -193,6 +181,88 @@ const MIGRATIONS: Migration[] = [
     if (!allowedModes.has(data.clipItemHudTriggerMouseMode as string)) {
       data.clipItemHudTriggerMouseMode = 'press_release';
     }
+  },
+  // v0.19: 条目 HUD 径向菜单动效开关兜底
+  (data) => {
+    if (typeof data.clipItemHudRadialMenuFancyFx !== 'boolean') {
+      data.clipItemHudRadialMenuFancyFx = true;
+    }
+  },
+  // v0.20: 条目 HUD 径向菜单布局档位兜底
+  (data) => {
+    const allowedProfiles = new Set(['compact', 'standard', 'relaxed']);
+    if (!allowedProfiles.has(data.clipItemHudRadialMenuLayoutProfile as string)) {
+      data.clipItemHudRadialMenuLayoutProfile = 'standard';
+    }
+  },
+  // v0.21: 条目 HUD 流光边框速度兜底
+  (data) => {
+    const next = Number(data.clipItemHudBorderRunDurationSec);
+    if (!Number.isFinite(next)) {
+      data.clipItemHudBorderRunDurationSec = CLIP_ITEM_HUD_BORDER_RUN_DURATION.defaultValue;
+      return;
+    }
+    data.clipItemHudBorderRunDurationSec = Math.min(
+      CLIP_ITEM_HUD_BORDER_RUN_DURATION.max,
+      Math.max(CLIP_ITEM_HUD_BORDER_RUN_DURATION.min, next),
+    );
+  },
+  // v0.22: 条目 HUD 流光边框宽度兜底
+  (data) => {
+    const next = Number(data.clipItemHudBorderRingWidthPx);
+    if (!Number.isFinite(next)) {
+      data.clipItemHudBorderRingWidthPx = CLIP_ITEM_HUD_BORDER_RING_WIDTH.defaultValue;
+      return;
+    }
+    data.clipItemHudBorderRingWidthPx = Math.min(
+      CLIP_ITEM_HUD_BORDER_RING_WIDTH.max,
+      Math.max(CLIP_ITEM_HUD_BORDER_RING_WIDTH.min, next),
+    );
+  },
+  // v0.23: 右侧悬浮操作按钮开关兜底
+  (data) => {
+    if (typeof data.clipItemFloatingActionsEnabled !== 'boolean') {
+      data.clipItemFloatingActionsEnabled = true;
+    }
+  },
+  // v0.24: 窗口外 HUD 总开关兜底
+  (data) => {
+    if (typeof data.clipItemHudEnabled !== 'boolean') {
+      data.clipItemHudEnabled = true;
+    }
+  },
+  // v0.25: 窗口外圆形 HUD 开关兜底
+  (data) => {
+    if (typeof data.clipItemHudRadialMenuEnabled !== 'boolean') {
+      data.clipItemHudRadialMenuEnabled = true;
+    }
+  },
+  // v0.26: 条目时间信息自动隐藏阈值兜底（0=禁用）
+  (data) => {
+    const next = Number(data.clipItemTimeMetaAutoHideWidthPx);
+    data.clipItemTimeMetaAutoHideWidthPx =
+      Number.isFinite(next)
+        ? Math.min(1600, Math.max(0, Math.trunc(next)))
+        : 0;
+  },
+  // v0.27: 筛选按钮图标模式阈值兜底
+  (data) => {
+    const next = Number(data.headerFilterIconModeWidthPx);
+    data.headerFilterIconModeWidthPx =
+      Number.isFinite(next)
+        ? Math.min(1600, Math.max(0, Math.trunc(next)))
+        : 640;
+  },
+  // v0.28: 窗口外 HUD 定位模式兜底
+  (data) => {
+    const allowedModes = new Set(['near_item', 'fixed']);
+    if (!allowedModes.has(data.clipItemHudPositionMode as string)) {
+      data.clipItemHudPositionMode = 'near_item';
+    }
+    const fx = Number(data.clipItemHudFixedX);
+    const fy = Number(data.clipItemHudFixedY);
+    data.clipItemHudFixedX = Number.isFinite(fx) ? Math.trunc(fx) : 100;
+    data.clipItemHudFixedY = Number.isFinite(fy) ? Math.trunc(fy) : 100;
   },
   // 后续迁移在此追加...
 ];

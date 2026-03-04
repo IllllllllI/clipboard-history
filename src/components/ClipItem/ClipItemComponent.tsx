@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Tag as TagIcon, Star } from 'lucide-react';
+import { Tag as TagIcon } from 'lucide-react';
 import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection } from '../../types';
 import { formatDateParts, detectType, detectImageType, isFileList, decodeFileList, encodeFileList } from '../../utils';
 import { hexToRgba } from '../../utils/color';
 import { ClipboardDB } from '../../services/db';
-import { isTauri, TauriService } from '../../services/tauri';
 import { useAppContext } from '../../contexts/AppContext';
 import {
   TAG_LIST_ANIMATION_DURATION_MS,
@@ -19,6 +18,10 @@ import { getItemIcon } from './constants';
 import { ClipItemContent } from './ClipItemContent';
 import ActionButtons from './ActionButtons';
 import TagDropdown from './TagDropdown';
+import { ClipItemTimeMeta } from './ClipItemTimeMeta';
+import { useFavoriteVisualState } from './useFavoriteVisualState';
+import { useClipItemHudController } from '../../hud/clipitem/useClipItemHudController';
+import './styles/clip-item-hud.css';
 import './styles/clip-item.css';
 
 interface ClipItemProps {
@@ -26,6 +29,8 @@ interface ClipItemProps {
   index: number;
 }
 
+const FAVORITE_BURST_DURATION_MS = 560;
+const FAVORITE_BURST_DURATION_SEC = `${FAVORITE_BURST_DURATION_MS / 1000}s`;
 /**
  * 剪贴板历史条目组件
  *
@@ -59,15 +64,7 @@ export const ClipItemComponent = React.memo(
     } = useAppContext();
 
     const isSelected = selectedIndex === index;
-    const [suppressActiveFeedback, setSuppressActiveFeedback] = useState(false);
-    const [showFavoriteBurst, setShowFavoriteBurst] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
-    const clipItemHudVisibleRef = useRef(false);
-    const clipItemHudTriggerSourceRef = useRef<'mouse' | 'keyboard'>('keyboard');
-    const clipItemHudAltPressedRef = useRef(false);
-    const clipItemHudMouseButtonPressedRef = useRef(false);
-    const clipItemHudMouseTriggerArmedRef = useRef(false);
-    const clipItemHudPointerInsideRef = useRef(false);
 
     // --- 衍生状态 ---
     const type = useMemo(() => detectType(item.text), [item.text]);
@@ -101,36 +98,12 @@ export const ClipItemComponent = React.memo(
         && filePaths.every((path) => detectImageType(path) === ImageType.LocalFile),
       [settings.showImagePreview, isFiles, filePaths],
     );
-    const shouldEnableClipItemHud = settings.compactMetaDisplayMode !== 'inside';
-    const triggerKey = settings.clipItemHudTriggerKey;
+    const theme = settings.darkMode ? 'dark' : 'light';
+    const itemTags = item.tags ?? [];
+    const shouldEnableClipItemHud = settings.clipItemHudEnabled && settings.compactMetaDisplayMode !== 'inside';
+    const shouldEnableRadialMenuHud = settings.clipItemHudRadialMenuEnabled;
     const triggerMouseButton = settings.clipItemHudTriggerMouseButton;
     const triggerMouseMode = settings.clipItemHudTriggerMouseMode;
-    const triggerPointerButton = triggerMouseButton === 'right' ? 2 : 1;
-    const triggerPointerButtonMask = triggerMouseButton === 'right' ? 2 : 4;
-    const triggerKeyboardKey = useMemo(() => {
-      if (triggerKey === 'ctrl') return 'control';
-      return triggerKey;
-    }, [triggerKey]);
-
-    const canShowClipItemHud = useCallback(() => (
-      shouldEnableClipItemHud
-      && (clipItemHudAltPressedRef.current || clipItemHudMouseButtonPressedRef.current)
-      && clipItemHudPointerInsideRef.current
-    ), [shouldEnableClipItemHud]);
-
-    const isTriggerPressed = useCallback((event: Pick<KeyboardEvent, 'key'> | Pick<React.PointerEvent<HTMLDivElement>, 'altKey' | 'ctrlKey' | 'shiftKey'>) => {
-      if ('key' in event) {
-        return event.key.toLowerCase() === triggerKeyboardKey;
-      }
-
-      if (triggerKey === 'alt') return event.altKey;
-      if (triggerKey === 'ctrl') return event.ctrlKey;
-      return event.shiftKey;
-    }, [triggerKey, triggerKeyboardKey]);
-
-    const isTriggerMouseButtonPressed = useCallback((buttons: number) => (
-      (buttons & triggerPointerButtonMask) !== 0
-    ), [triggerPointerButtonMask]);
 
     // --- 图标 ---
     const IconComponent = useMemo(
@@ -214,27 +187,44 @@ export const ClipItemComponent = React.memo(
       handleTimeQuickAction(e.altKey);
     }, [handleTimeQuickAction]);
 
+    const getTagStyle = useCallback((color?: string | null) => (
+      color
+        ? {
+            backgroundColor: hexToRgba(color, settings.darkMode ? 0.2 : 0.12),
+            color,
+            borderColor: hexToRgba(color, settings.darkMode ? 0.4 : 0.28),
+          }
+        : {}
+    ), [settings.darkMode]);
+
+    const renderTagPill = useCallback((tag: NonNullable<ClipItem['tags']>[number]) => (
+      <motion.span
+        layout
+        initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
+        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, scale: 0.8 }}
+        transition={{
+          type: 'spring',
+          stiffness: TAG_PILL_SPRING_STIFFNESS,
+          damping: TAG_PILL_SPRING_DAMPING,
+        }}
+        key={tag.id}
+        className="clip-item-tag-pill"
+        data-default={!tag.color ? 'true' : 'false'}
+        data-theme={theme}
+        style={getTagStyle(tag.color)}
+      >
+        <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
+        {tag.name}
+      </motion.span>
+    ), [getTagStyle, theme]);
+
     const isFavorite = Boolean(item.is_favorite);
-    const previousFavoriteRef = useRef(isFavorite);
-
-    useEffect(() => {
-      const wasFavorite = previousFavoriteRef.current;
-      if (!wasFavorite && isFavorite) {
-        setShowFavoriteBurst(true);
-      }
-      if (wasFavorite && !isFavorite) {
-        setShowFavoriteBurst(false);
-      }
-      previousFavoriteRef.current = isFavorite;
-    }, [isFavorite]);
-
-    useEffect(() => {
-      if (!showFavoriteBurst) return;
-      const timer = setTimeout(() => {
-        setShowFavoriteBurst(false);
-      }, 560);
-      return () => clearTimeout(timer);
-    }, [showFavoriteBurst]);
+    const isPinned = Boolean(item.is_pinned);
+    const { showFavoriteBurst, showFavoriteIcon } = useFavoriteVisualState({
+      isFavorite,
+      durationMs: FAVORITE_BURST_DURATION_MS,
+    });
 
     // --- 事件 ---
     const handleClick = useCallback(() => setSelectedIndex(index), [setSelectedIndex, index]);
@@ -252,302 +242,34 @@ export const ClipItemComponent = React.memo(
       [handleDragStart, item.text],
     );
 
-    const clearSuppressActiveFeedback = useCallback(() => {
-      setSuppressActiveFeedback(false);
-    }, []);
-
     const { dateLine, timeLine } = useMemo(() => formatDateParts(item.timestamp), [item.timestamp]);
-
-    const emitClipItemHudSnapshot = useCallback(() => {
-      if (!isTauri || !shouldEnableClipItemHud) return;
-
-      void TauriService.emitClipItemHudSnapshot({
-        itemId: item.id,
-        dateLine,
-        timeLine,
-        isFavorite,
-        isPinned: Boolean(item.is_pinned),
-        canEdit: !isFiles && !isImage,
-        isCopied: copiedId === item.id,
-        theme: settings.darkMode ? 'dark' : 'light',
-        triggerKey,
-        triggerMouseButton,
-        triggerMouseMode,
-        keepOpenOnHover: settings.clipItemHudKeepOpenOnHover,
-        triggerSource: clipItemHudTriggerSourceRef.current,
-      });
-    }, [
-      copiedId,
+    const {
+      isHudActive,
+      suppressActiveFeedback,
+      handleMouseDownCapture,
+      handlePointerDownCapture,
+      handleRootPointerMove,
+      handlePointerUpCapture,
+      handleRootPointerCancel,
+      handleRootPointerLeave,
+      handleRootContextMenu,
+      handleRootAuxClick,
+    } = useClipItemHudController({
+      rootRef,
+      isSelected,
+      itemId: item.id,
       dateLine,
+      timeLine,
       isFavorite,
-      isFiles,
-      isImage,
-      settings.clipItemHudKeepOpenOnHover,
-      item.id,
-      item.is_pinned,
-      settings.darkMode,
+      isPinned,
+      canEdit: !isFiles && !isImage,
+      isCopied: copiedId === item.id,
+      theme: settings.darkMode ? 'dark' : 'light',
       shouldEnableClipItemHud,
-      triggerKey,
+      shouldEnableRadialMenuHud,
       triggerMouseButton,
       triggerMouseMode,
-      timeLine,
-    ]);
-
-    useEffect(() => {
-      if (!clipItemHudVisibleRef.current) return;
-      emitClipItemHudSnapshot();
-    }, [emitClipItemHudSnapshot]);
-
-    const hideClipItemHud = useCallback(() => {
-      if (!isTauri) return;
-
-      clipItemHudVisibleRef.current = false;
-      void TauriService.setClipItemHudMousePassthrough(true);
-      void TauriService.hideClipItemHud();
-    }, []);
-
-    const showClipItemHudAtCursor = useCallback(() => {
-      if (!isTauri || !canShowClipItemHud()) return;
-
-      emitClipItemHudSnapshot();
-      void TauriService.setClipItemHudMousePassthrough(false);
-      void TauriService.showClipItemHud();
-        const mode = clipItemHudTriggerSourceRef.current === 'mouse' ? 'radial' : 'linear';
-      void TauriService.positionClipItemHudNearCursor(mode);
-      clipItemHudVisibleRef.current = true;
-    }, [canShowClipItemHud, emitClipItemHudSnapshot]);
-
-    const syncClipItemHudAltState = useCallback((altPressed: boolean) => {
-      if (!isTauri) return;
-
-      clipItemHudAltPressedRef.current = altPressed;
-
-      if (altPressed) {
-        clipItemHudTriggerSourceRef.current = 'keyboard';
-        showClipItemHudAtCursor();
-      } else {
-        hideClipItemHud();
-      }
-    }, [hideClipItemHud, showClipItemHudAtCursor]);
-
-    const isInteractiveElementTarget = useCallback((target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return false;
-      return Boolean(target.closest('button, a, input, select, textarea, [role="button"]'));
-    }, []);
-
-    const isContentAreaTarget = useCallback((target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return false;
-      return Boolean(target.closest('.clip-item-content-wrap'));
-    }, []);
-
-    const isHudMouseTriggerEligibleTarget = useCallback((target: EventTarget | null) => (
-      isContentAreaTarget(target) && !isInteractiveElementTarget(target)
-    ), [isContentAreaTarget, isInteractiveElementTarget]);
-
-    const resetClipItemHudMouseTriggerState = useCallback(() => {
-      clipItemHudMouseTriggerArmedRef.current = false;
-      clipItemHudMouseButtonPressedRef.current = false;
-    }, []);
-
-    const handlePointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      const isInteractiveTarget = isInteractiveElementTarget(e.target);
-      const isTriggerEligibleTarget = isHudMouseTriggerEligibleTarget(e.target);
-      const isTriggerButton = e.button === triggerPointerButton;
-
-      if (isTriggerButton) {
-        clipItemHudMouseTriggerArmedRef.current =
-          shouldEnableClipItemHud
-          && clipItemHudPointerInsideRef.current
-          && isTriggerEligibleTarget;
-
-        if (isInteractiveTarget) {
-          clipItemHudMouseButtonPressedRef.current = false;
-        }
-      }
-
-      if (
-        isTriggerButton
-        && clipItemHudMouseTriggerArmedRef.current
-      ) {
-        e.preventDefault();
-        if (triggerMouseMode === 'press_release') {
-          clipItemHudMouseButtonPressedRef.current = true;
-          clipItemHudTriggerSourceRef.current = 'mouse';
-          try {
-            (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-          } catch (err) {
-            console.warn(err);
-          }
-          showClipItemHudAtCursor();
-        }
-      }
-
-      setSuppressActiveFeedback(isInteractiveTarget);
-    }, [isHudMouseTriggerEligibleTarget, isInteractiveElementTarget, showClipItemHudAtCursor, shouldEnableClipItemHud, triggerMouseMode, triggerPointerButton]);
-
-    const handleMouseDownCapture = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-      const isTriggerButton = e.button === triggerPointerButton;
-      if (!isTriggerButton) return;
-
-      if (!shouldEnableClipItemHud || !clipItemHudMouseTriggerArmedRef.current) return;
-
-      e.preventDefault();
-    }, [shouldEnableClipItemHud, triggerPointerButton]);
-
-    const handlePointerUpCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      clearSuppressActiveFeedback();
-
-      if (e.button !== triggerPointerButton) return;
-
-      const triggerArmed = clipItemHudMouseTriggerArmedRef.current;
-      clipItemHudMouseTriggerArmedRef.current = false;
-
-      if (!triggerArmed) {
-        clipItemHudMouseButtonPressedRef.current = false;
-        return;
-      }
-
-      if (triggerMouseMode === 'click') {
-        if (clipItemHudVisibleRef.current) {
-          hideClipItemHud();
-        } else {
-          emitClipItemHudSnapshot();
-          void TauriService.setClipItemHudMousePassthrough(false);
-          void TauriService.showClipItemHud();
-
-          void TauriService.positionClipItemHudNearCursor('radial');
-          clipItemHudVisibleRef.current = true;
-        }
-        return;
-      }
-
-      clipItemHudMouseButtonPressedRef.current = false;
-      if (!clipItemHudAltPressedRef.current) {
-        if (clipItemHudTriggerSourceRef.current === 'mouse') {
-          void TauriService.emitClipItemHudGlobalPointerUp();
-        }
-        setTimeout(() => {
-          if (!clipItemHudAltPressedRef.current && !clipItemHudMouseButtonPressedRef.current) {
-            hideClipItemHud();
-          }
-        }, 150);
-      }
-    }, [clearSuppressActiveFeedback, emitClipItemHudSnapshot, hideClipItemHud, triggerMouseMode, triggerPointerButton]);
-
-    const handleRootPointerCancel = useCallback(() => {
-      resetClipItemHudMouseTriggerState();
-      clearSuppressActiveFeedback();
-    }, [clearSuppressActiveFeedback, resetClipItemHudMouseTriggerState]);
-
-    const handleRootPointerEnter = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      clipItemHudPointerInsideRef.current = true;
-      if (triggerMouseMode === 'press_release' && isTriggerMouseButtonPressed(e.buttons)) {
-        return;
-      }
-      syncClipItemHudAltState(isTriggerPressed(e));
-    }, [isTriggerPressed, isTriggerMouseButtonPressed, syncClipItemHudAltState, triggerMouseMode]);
-
-    const handleRootPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      if (triggerMouseMode === 'press_release' && isTriggerMouseButtonPressed(e.buttons)) {
-        return;
-      }
-      const pressed = isTriggerPressed(e);
-      if (clipItemHudAltPressedRef.current === pressed) {
-        return;
-      }
-      syncClipItemHudAltState(pressed);
-    }, [isTriggerPressed, isTriggerMouseButtonPressed, syncClipItemHudAltState, triggerMouseMode]);
-
-    const handleRootPointerLeave = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-      clipItemHudPointerInsideRef.current = false;
-      clearSuppressActiveFeedback();
-
-      if (triggerMouseMode === 'press_release' && isTriggerMouseButtonPressed(e.buttons)) {
-        return;
-      }
-
-      if (!clipItemHudAltPressedRef.current && !clipItemHudMouseButtonPressedRef.current) {
-        hideClipItemHud();
-      }
-    }, [clearSuppressActiveFeedback, hideClipItemHud, isTriggerMouseButtonPressed, triggerMouseMode]);
-
-    const handleRootContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-      if (!shouldEnableClipItemHud || triggerMouseButton !== 'right') return;
-      e.preventDefault();
-    }, [shouldEnableClipItemHud, triggerMouseButton]);
-
-    const handleRootAuxClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-      if (triggerMouseButton !== 'middle' || e.button !== 1) return;
-      if (!shouldEnableClipItemHud) return;
-      if (!isHudMouseTriggerEligibleTarget(e.target)) return;
-      e.preventDefault();
-    }, [isHudMouseTriggerEligibleTarget, shouldEnableClipItemHud, triggerMouseButton]);
-
-    useEffect(() => {
-      const handleGlobalPointerDone = (event: PointerEvent) => {
-        if (event.button !== triggerPointerButton) return;
-
-        const targetNode = event.target as Node | null;
-        const rootElement = rootRef.current;
-        if (rootElement && targetNode && rootElement.contains(targetNode)) {
-          return;
-        }
-
-        resetClipItemHudMouseTriggerState();
-      };
-
-      window.addEventListener('pointerup', handleGlobalPointerDone, true);
-      window.addEventListener('pointercancel', handleGlobalPointerDone, true);
-
-      return () => {
-        window.removeEventListener('pointerup', handleGlobalPointerDone, true);
-        window.removeEventListener('pointercancel', handleGlobalPointerDone, true);
-      };
-    }, [resetClipItemHudMouseTriggerState, triggerPointerButton]);
-
-    
-
-    useEffect(() => {
-      if (shouldEnableClipItemHud) return;
-      hideClipItemHud();
-    }, [shouldEnableClipItemHud, hideClipItemHud]);
-
-    useEffect(() => {
-      if (!isTauri) return;
-
-      const onKeyDown = (event: KeyboardEvent) => {
-        if (!isTriggerPressed(event)) return;
-        if (event.repeat) return;
-        event.preventDefault();
-        syncClipItemHudAltState(true);
-      };
-
-      const onKeyUp = (event: KeyboardEvent) => {
-        if (!isTriggerPressed(event)) return;
-        event.preventDefault();
-
-        if (settings.clipItemHudKeepOpenOnHover && !clipItemHudPointerInsideRef.current) {
-          clipItemHudAltPressedRef.current = false;
-          return;
-        }
-
-        syncClipItemHudAltState(false);
-      };
-
-      window.addEventListener('keydown', onKeyDown);
-      window.addEventListener('keyup', onKeyUp);
-
-      return () => {
-        window.removeEventListener('keydown', onKeyDown);
-        window.removeEventListener('keyup', onKeyUp);
-      };
-    }, [isTriggerPressed, settings.clipItemHudKeepOpenOnHover, syncClipItemHudAltState]);
-
-    useEffect(() => {
-      return () => {
-        hideClipItemHud();
-      };
-    }, [hideClipItemHud]);
+    });
 
     useLayoutEffect(() => {
       if (isImage || !hasTags) {
@@ -562,15 +284,19 @@ export const ClipItemComponent = React.memo(
         setTagListHeight(element.scrollHeight);
       };
 
-      syncHeight();
 
       const observer = new ResizeObserver(syncHeight);
       observer.observe(element);
 
       return () => observer.disconnect();
-    }, [isImage, hasTags, item.tags]);
+    }, [isImage, hasTags, itemTags]);
 
     const containerClass = 'clip-item-root';
+    const hudFxMode = settings.clipItemHudRadialMenuFancyFx ? 'fancy' : 'normal';
+    const clipItemHudStyle = {
+      '--clip-item-hud-run-duration': `${settings.clipItemHudBorderRunDurationSec}s`,
+      '--clip-item-hud-ring-width': `${settings.clipItemHudBorderRingWidthPx}px`,
+    } as React.CSSProperties;
 
     return (
       <div
@@ -584,18 +310,21 @@ export const ClipItemComponent = React.memo(
         onContextMenu={handleRootContextMenu}
         onMouseDownCapture={handleMouseDownCapture}
         onPointerDownCapture={handlePointerDownCapture}
-        onPointerEnter={handleRootPointerEnter}
         onPointerMove={handleRootPointerMove}
         onPointerUpCapture={handlePointerUpCapture}
         onPointerCancel={handleRootPointerCancel}
         onPointerLeave={handleRootPointerLeave}
         className={containerClass}
         data-selected={isSelected ? 'true' : 'false'}
-        data-theme={settings.darkMode ? 'dark' : 'light'}
+        data-theme={theme}
         data-files={isFiles ? 'true' : 'false'}
         data-files-gallery={isFilesGallery ? 'true' : 'false'}
+        data-hud-active={isHudActive ? 'true' : 'false'}
+        data-hud-palette={accentType}
+        data-hud-fx={hudFxMode}
         data-meta-display={settings.compactMetaDisplayMode}
         data-press-feedback={suppressActiveFeedback ? 'off' : 'on'}
+        style={clipItemHudStyle}
       >
         {/* 语义化颜色指示线 */}
         <div className="clip-item-accent" data-type={accentType} />
@@ -653,37 +382,7 @@ export const ClipItemComponent = React.memo(
               data-image-slot="true"
             >
               <AnimatePresence>
-                {(item.tags ?? []).map((tag) => {
-                  const tagStyle = tag.color
-                    ? {
-                        backgroundColor: hexToRgba(tag.color, settings.darkMode ? 0.2 : 0.12),
-                        color: tag.color,
-                        borderColor: hexToRgba(tag.color, settings.darkMode ? 0.4 : 0.28),
-                      }
-                    : {};
-
-                  return (
-                    <motion.span
-                      layout
-                      initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
-                      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      transition={{
-                        type: 'spring',
-                        stiffness: TAG_PILL_SPRING_STIFFNESS,
-                        damping: TAG_PILL_SPRING_DAMPING,
-                      }}
-                      key={tag.id}
-                      className="clip-item-tag-pill"
-                      data-default={!tag.color ? 'true' : 'false'}
-                      data-theme={settings.darkMode ? 'dark' : 'light'}
-                      style={tagStyle}
-                    >
-                      <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
-                      {tag.name}
-                    </motion.span>
-                  );
-                })}
+                {itemTags.map(renderTagPill)}
               </AnimatePresence>
             </div>
           ) : (
@@ -712,37 +411,7 @@ export const ClipItemComponent = React.memo(
                 >
                   <div ref={tagListRef} className="clip-item-tag-list" data-has-tags="true">
                     <AnimatePresence>
-                      {(item.tags ?? []).map((tag) => {
-                        const tagStyle = tag.color
-                          ? {
-                              backgroundColor: hexToRgba(tag.color, settings.darkMode ? 0.2 : 0.12),
-                              color: tag.color,
-                              borderColor: hexToRgba(tag.color, settings.darkMode ? 0.4 : 0.28),
-                            }
-                          : {};
-
-                        return (
-                          <motion.span
-                            layout
-                            initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
-                            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            transition={{
-                              type: 'spring',
-                              stiffness: TAG_PILL_SPRING_STIFFNESS,
-                              damping: TAG_PILL_SPRING_DAMPING,
-                            }}
-                            key={tag.id}
-                            className="clip-item-tag-pill"
-                            data-default={!tag.color ? 'true' : 'false'}
-                            data-theme={settings.darkMode ? 'dark' : 'light'}
-                            style={tagStyle}
-                          >
-                            <TagIcon className="clip-item-tag-icon" strokeWidth={2.5} />
-                            {tag.name}
-                          </motion.span>
-                        );
-                      })}
+                      {itemTags.map(renderTagPill)}
                     </AnimatePresence>
                   </div>
                 </motion.div>
@@ -752,61 +421,32 @@ export const ClipItemComponent = React.memo(
         </div>
 
         {/* 右侧：时间 + 操作 */}
-        <div className="clip-item-side-meta" data-theme={settings.darkMode ? 'dark' : 'light'}>
-          <div className="clip-item-time-wrap">
-            <span className="clip-item-time-favorite-slot" aria-hidden="true">
-              <motion.span
-                className="clip-item-time-favorite"
-                data-active={isFavorite ? 'true' : 'false'}
-                initial={false}
-                animate={isFavorite
-                  ? { opacity: 1, scale: 1, y: 0 }
-                  : { opacity: 0, scale: 0.82, y: 1 }}
-                transition={{ duration: 0.18, ease: 'easeOut' }}
-              >
-                <Star className="clip-item-time-favorite-icon" />
-              </motion.span>
-            </span>
-
-            <button
-              type="button"
-              className="clip-item-time"
-              data-selected={isSelected ? 'true' : 'false'}
-              title="点击收藏，Alt+点击置顶"
-              aria-label="点击收藏，Alt+点击置顶"
-              onClick={handleTimeClick}
-              onKeyDown={handleTimeKeyDown}
-              onDoubleClick={(e) => e.stopPropagation()}
-            >
-              <span className="clip-item-time-date">{dateLine}</span>
-              <span className="clip-item-time-clock">{timeLine}</span>
-            </button>
-
-            {showFavoriteBurst && (
-              <span className="clip-item-time-favorite-burst" aria-hidden="true">
-                <Star className="clip-item-time-favorite-burst-core" />
-                {Array.from({ length: 10 }).map((_, index) => (
-                  <span
-                    key={index}
-                    className="clip-item-time-favorite-burst-particle"
-                    style={{ '--burst-angle': `${(360 / 10) * index}deg` } as React.CSSProperties}
-                  />
-                ))}
-              </span>
-            )}
-          </div>
-
-          <ActionButtons
-            item={item}
+        <div className="clip-item-side-meta" data-theme={theme}>
+          <ClipItemTimeMeta
+            isPinned={isPinned}
             isSelected={isSelected}
-            isFiles={isFiles}
-            isImage={isImage}
-            darkMode={settings.darkMode}
-            copiedId={copiedId}
-            onCopy={copyToClipboard}
-            onRemove={handleRemove}
-            onEdit={setEditingClip}
+            showFavoriteIcon={showFavoriteIcon}
+            showFavoriteBurst={showFavoriteBurst}
+            dateLine={dateLine}
+            timeLine={timeLine}
+            onTimeClick={handleTimeClick}
+            onTimeKeyDown={handleTimeKeyDown}
+            favoriteBurstDurationSec={FAVORITE_BURST_DURATION_SEC}
           />
+
+          {settings.clipItemFloatingActionsEnabled && (
+            <ActionButtons
+              item={item}
+              isSelected={isSelected}
+              isFiles={isFiles}
+              isImage={isImage}
+              darkMode={settings.darkMode}
+              copiedId={copiedId}
+              onCopy={copyToClipboard}
+              onRemove={handleRemove}
+              onEdit={setEditingClip}
+            />
+          )}
         </div>
       </div>
     );

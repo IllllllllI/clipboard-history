@@ -43,6 +43,7 @@
 //! | [`window_position`] | 跨平台光标定位、多显示器窗口摆放、状态切换 |
 
 pub mod error;
+pub mod ipc;
 pub mod clipboard;
 pub mod db;
 pub mod image_handler;

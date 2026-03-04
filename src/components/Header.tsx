@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Plus, Sun, Moon, Settings, X, Tag, type LucideIcon } from 'lucide-react';
+import { Search, Plus, Sun, Moon, Settings, X, Tag, List, Pin, Star, FileText, Link2, Palette, Image, FolderOpen, type LucideIcon } from 'lucide-react';
 import { useAppContext, FilterType } from '../contexts/AppContext';
 import './styles/header.css';
 
@@ -8,15 +8,15 @@ import './styles/header.css';
 // ============================================================================
 
 /** 过滤标签 */
-const FILTER_TABS: { id: FilterType; label: string }[] = [
-  { id: 'all',      label: '全部' },
-  { id: 'pinned',   label: '置顶' },
-  { id: 'favorite', label: '收藏' },
-  { id: 'snippet',  label: '片段' },
-  { id: 'url',      label: '链接' },
-  { id: 'color',    label: '颜色' },
-  { id: 'image',    label: '图片' },
-  { id: 'file',     label: '文件' },
+const FILTER_TABS: { id: FilterType; label: string; icon: LucideIcon }[] = [
+  { id: 'all',      label: '全部', icon: List },
+  { id: 'pinned',   label: '置顶', icon: Pin },
+  { id: 'favorite', label: '收藏', icon: Star },
+  { id: 'snippet',  label: '片段', icon: FileText },
+  { id: 'url',      label: '链接', icon: Link2 },
+  { id: 'color',    label: '颜色', icon: Palette },
+  { id: 'image',    label: '图片', icon: Image },
+  { id: 'file',     label: '文件', icon: FolderOpen },
 ];
 
 // ============================================================================
@@ -86,17 +86,23 @@ export const Header = React.memo(function Header() {
       </div>
 
       <div className="app-header__filter-row">
-        {FILTER_TABS.map((tab) => (
-          <button
-            type="button"
-            key={tab.id}
-            onClick={() => { setActiveFilter(tab.id); setSelectedIndex(0); }}
-            className="app-header__filter-tab"
-            data-active={activeFilter === tab.id ? 'true' : 'false'}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {FILTER_TABS.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <button
+              type="button"
+              key={tab.id}
+              onClick={() => { setActiveFilter(tab.id); setSelectedIndex(0); }}
+              className="app-header__filter-tab"
+              data-active={activeFilter === tab.id ? 'true' : 'false'}
+              title={tab.label}
+              aria-label={tab.label}
+            >
+              <Icon className="app-header__filter-icon" aria-hidden="true" />
+              <span className="app-header__filter-label">{tab.label}</span>
+            </button>
+          );
+        })}
       </div>
     </header>
   );

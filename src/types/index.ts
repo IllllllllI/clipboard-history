@@ -26,9 +26,12 @@ export type GalleryDisplayMode = 'grid' | 'carousel' | 'list';
 export type GalleryScrollDirection = 'horizontal' | 'vertical';
 export type GalleryWheelMode = 'always' | 'ctrl';
 export type CompactMetaDisplayMode = 'inside' | 'auto' | 'overlay';
-export type ClipItemHudTriggerKey = 'alt' | 'ctrl' | 'shift';
 export type ClipItemHudTriggerMouseButton = 'middle' | 'right';
 export type ClipItemHudTriggerMouseMode = 'click' | 'press_release';
+export type ClipItemHudRadialMenuLayoutProfile = 'compact' | 'standard' | 'relaxed';
+
+/** 窗口外 HUD 定位模式 */
+export type ClipItemHudPositionMode = 'near_item' | 'fixed';
 
 export interface ImageAdvancedConfig {
   allow_private_network: boolean;
@@ -84,10 +87,20 @@ export interface AppSettings {
   galleryListMaxVisibleItems: number;
   fileListMaxVisibleItems: number;
   compactMetaDisplayMode: CompactMetaDisplayMode;
-  clipItemHudTriggerKey: ClipItemHudTriggerKey;
+  clipItemFloatingActionsEnabled: boolean;
+  clipItemTimeMetaAutoHideWidthPx: number;
+  headerFilterIconModeWidthPx: number;
+  clipItemHudEnabled: boolean;
+  clipItemHudRadialMenuEnabled: boolean;
   clipItemHudTriggerMouseButton: ClipItemHudTriggerMouseButton;
   clipItemHudTriggerMouseMode: ClipItemHudTriggerMouseMode;
-  clipItemHudKeepOpenOnHover: boolean;
+  clipItemHudRadialMenuFancyFx: boolean;
+  clipItemHudRadialMenuLayoutProfile: ClipItemHudRadialMenuLayoutProfile;
+  clipItemHudBorderRunDurationSec: number;
+  clipItemHudBorderRingWidthPx: number;
+  clipItemHudPositionMode: ClipItemHudPositionMode;
+  clipItemHudFixedX: number;
+  clipItemHudFixedY: number;
   windowPlacement: WindowPlacementSettings;
 }
 
@@ -132,7 +145,7 @@ export interface ImageDownloadProgressEvent {
   error_message?: string;
 }
 
-export type ClipItemHudActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste';
+export type ClipItemHudActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste' | 'dismiss';
 
 export interface ClipItemHudSnapshot {
   itemId: number;
@@ -143,10 +156,9 @@ export interface ClipItemHudSnapshot {
   canEdit: boolean;
   isCopied: boolean;
   theme: 'light' | 'dark';
-  triggerKey: ClipItemHudTriggerKey;
   triggerMouseButton: ClipItemHudTriggerMouseButton;
   triggerMouseMode: ClipItemHudTriggerMouseMode;
-  keepOpenOnHover: boolean;  triggerSource?: 'mouse' | 'keyboard';
+  hudAxis?: 'horizontal' | 'vertical';
 }
 
 export interface ClipItemHudActionEvent {
@@ -154,4 +166,21 @@ export interface ClipItemHudActionEvent {
   action: ClipItemHudActionType;
 }
 
+// ── 径向菜单独立窗口类型 ──
+
+export type RadialMenuActionType = 'copy' | 'favorite' | 'pin' | 'delete' | 'paste';
+
+export interface RadialMenuSnapshot {
+  itemId: number;
+  isFavorite: boolean;
+  isPinned: boolean;
+  theme: 'light' | 'dark';
+  triggerMouseButton: ClipItemHudTriggerMouseButton;
+  triggerMouseMode: ClipItemHudTriggerMouseMode;
+}
+
+export interface RadialMenuActionEvent {
+  itemId: number;
+  action: RadialMenuActionType;
+}
 

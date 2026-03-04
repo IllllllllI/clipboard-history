@@ -1,0 +1,330 @@
+.radial-menu-container {
+  position: relative;
+  width: 344px;
+  height: 344px;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  background: transparent;
+  font-family: system-ui, sans-serif;
+  z-index: 9999;
+  --rm-primary: var(--thm-primary-color, #4b87d9);
+  --rm-bg: var(--thm-bg-color, #f3f6fb);
+  --rm-border: var(--thm-border-color, #d3dcea);
+  --rm-text: var(--thm-text-color, #243042);
+  --rm-danger: var(--thm-danger-color, #d83b01);
+}
+
+.radial-menu-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.radial-menu-guide {
+  fill: none;
+  stroke-width: 1;
+}
+
+.radial-menu-guide--outer {
+  stroke: color-mix(in srgb, var(--rm-border) 78%, transparent);
+}
+
+.radial-menu-guide--inner {
+  stroke: color-mix(in srgb, var(--rm-border) 64%, transparent);
+  stroke-dasharray: 3 5;
+}
+
+.radial-menu-sector {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1;
+  transition: fill 100ms ease-out, stroke 100ms ease-out, filter 100ms ease-out;
+}
+
+.radial-menu-sector.active {
+  fill: color-mix(in srgb, var(--rm-primary) 10%, transparent);
+  stroke: color-mix(in srgb, var(--rm-primary) 18%, transparent);
+  filter: none;
+}
+
+.radial-menu-sector.danger.active {
+  fill: color-mix(in srgb, var(--rm-danger) 10%, transparent);
+  stroke: color-mix(in srgb, var(--rm-danger) 18%, transparent);
+  filter: none;
+}
+
+.radial-menu-pointer {
+  stroke: color-mix(in srgb, var(--rm-primary) 72%, transparent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  filter: none;
+  animation: radial-pointer-enter 130ms ease-out;
+}
+
+.radial-menu-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 110px;
+  height: 110px;
+  margin-top: -55px;
+  margin-left: -55px;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--rm-primary) 10%, transparent), transparent 62%),
+    color-mix(in srgb, var(--rm-bg) 98%, white 2%);
+  border: 1px solid color-mix(in srgb, var(--rm-primary) 18%, var(--rm-border) 82%);
+  box-shadow:
+    0 1px 4px rgba(15, 23, 42, 0.06),
+    0 6px 14px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.radial-menu-center-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--rm-text);
+  text-shadow: none;
+}
+
+.radial-menu-center-subtitle {
+  font-size: 0.62rem;
+  color: color-mix(in srgb, var(--rm-text) 74%, transparent);
+}
+
+.radial-menu-node-wrap,
+.radial-menu-label-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  pointer-events: none;
+}
+
+.radial-menu-item {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  margin-top: -30px;
+  margin-left: -30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rm-text);
+  background:
+    radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--rm-primary) 11%, transparent), transparent 58%),
+    color-mix(in srgb, var(--rm-bg) 98%, white 2%);
+  border: 1px solid color-mix(in srgb, var(--rm-primary) 14%, var(--rm-border) 86%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 34%, transparent),
+    0 1px 4px rgba(15, 23, 42, 0.08);
+  transform: scale(1);
+  transition: transform 100ms ease-out, box-shadow 100ms ease-out, border-color 100ms ease-out, background 100ms ease-out;
+}
+
+.radial-menu-item.active {
+  background:
+    radial-gradient(circle at 35% 30%, color-mix(in srgb, white 28%, transparent), transparent 58%),
+    color-mix(in srgb, var(--rm-primary) 78%, white 22%);
+  border-color: color-mix(in srgb, white 38%, var(--rm-primary) 62%);
+  color: #fff;
+  transform: scale(1.08);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--rm-primary) 20%, transparent),
+    0 6px 12px rgba(37, 99, 235, 0.2);
+}
+
+.radial-menu-item.danger.active {
+  background:
+    radial-gradient(circle at 35% 30%, color-mix(in srgb, white 24%, transparent), transparent 58%),
+    color-mix(in srgb, var(--rm-danger) 74%, white 26%);
+  border-color: color-mix(in srgb, white 30%, var(--rm-danger) 70%);
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--rm-danger) 20%, transparent),
+    0 6px 12px rgba(216, 59, 1, 0.2);
+}
+
+@keyframes radial-item-border-orbit {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.radial-menu-item.active::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--rm-primary) 0%, transparent) 0deg,
+    color-mix(in srgb, var(--rm-primary) 90%, transparent) 42deg,
+    color-mix(in srgb, var(--rm-primary) 20%, transparent) 114deg,
+    transparent 160deg,
+    transparent 250deg,
+    color-mix(in srgb, var(--rm-primary) 24%, transparent) 300deg,
+    color-mix(in srgb, var(--rm-primary) 62%, transparent) 340deg,
+    color-mix(in srgb, var(--rm-primary) 0%, transparent) 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  animation: radial-item-border-orbit 1.8s linear infinite;
+}
+
+.radial-menu-item.danger.active::after {
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--rm-danger) 0%, transparent) 0deg,
+    color-mix(in srgb, var(--rm-danger) 90%, transparent) 42deg,
+    color-mix(in srgb, var(--rm-danger) 20%, transparent) 114deg,
+    transparent 160deg,
+    transparent 250deg,
+    color-mix(in srgb, var(--rm-danger) 24%, transparent) 300deg,
+    color-mix(in srgb, var(--rm-danger) 62%, transparent) 340deg,
+    color-mix(in srgb, var(--rm-danger) 0%, transparent) 360deg
+  );
+}
+
+.radial-menu-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--rm-text) 88%, transparent);
+  opacity: 0.92;
+  transition: color 100ms ease-out, transform 100ms ease-out, opacity 100ms ease-out;
+}
+
+.radial-menu-icon-svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.radial-menu-item.active .radial-menu-icon {
+  color: #fff;
+  opacity: 1;
+  transform: scale(1.04);
+}
+
+.radial-menu-label-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--rm-border) 80%, transparent);
+  background: color-mix(in srgb, var(--rm-bg) 99%, white 1%);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  color: color-mix(in srgb, var(--rm-text) 78%, transparent);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.radial-menu-label-pill[data-active='true'] {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--rm-primary) 48%, transparent);
+  background: color-mix(in srgb, var(--rm-primary) 74%, white 26%);
+  box-shadow:
+    0 0 6px color-mix(in srgb, var(--rm-primary) 16%, transparent),
+    0 3px 8px rgba(37, 99, 235, 0.18);
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-guide--outer,
+.radial-menu-container[data-fx='normal'] .radial-menu-guide--inner {
+  opacity: 0;
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-sector {
+  fill: transparent;
+  stroke: color-mix(in srgb, var(--rm-border) 38%, transparent);
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-sector.active {
+  fill: color-mix(in srgb, var(--rm-primary) 10%, transparent);
+  stroke: color-mix(in srgb, var(--rm-primary) 24%, transparent);
+  filter: none;
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-sector.danger.active {
+  fill: color-mix(in srgb, var(--rm-danger) 10%, transparent);
+  stroke: color-mix(in srgb, var(--rm-danger) 24%, transparent);
+  filter: none;
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-pointer {
+  filter: none;
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-center {
+  background: color-mix(in srgb, var(--rm-bg) 99%, white 1%);
+  border-color: var(--rm-border);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08), 0 6px 12px rgba(15, 23, 42, 0.08);
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-center-title {
+  text-shadow: none;
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-item {
+  background: color-mix(in srgb, var(--rm-bg) 99%, white 1%);
+  border-color: var(--rm-border);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-item.active {
+  background: color-mix(in srgb, var(--rm-primary) 74%, white 26%);
+  border-color: color-mix(in srgb, var(--rm-primary) 56%, white 44%);
+  box-shadow: 0 5px 10px rgba(37, 99, 235, 0.2);
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-item.active::after {
+  display: none;
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-item.danger.active {
+  background: color-mix(in srgb, var(--rm-danger) 74%, white 26%);
+  border-color: color-mix(in srgb, var(--rm-danger) 56%, white 44%);
+}
+
+.radial-menu-container[data-fx='normal'] .radial-menu-label-pill[data-active='true'] {
+  background: color-mix(in srgb, var(--rm-primary) 74%, white 26%);
+  border-color: color-mix(in srgb, var(--rm-primary) 56%, white 44%);
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.18);
+}
+
+.radial-menu-debug {
+  display: none !important; /* Hide dev-menu as it obstructs UI */
+}
+
+@keyframes radial-pointer-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

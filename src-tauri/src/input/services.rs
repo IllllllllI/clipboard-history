@@ -6,6 +6,8 @@ use enigo::{
 use tauri::Manager;
 
 use crate::error::AppError;
+use crate::ipc::WINDOW_LABEL_MAIN;
+use crate::window_position;
 
 use super::platform;
 
@@ -14,9 +16,10 @@ pub async fn paste_text(app: tauri::AppHandle, hide_on_action: bool) -> Result<(
         .map_err(|e| AppError::Input(format!("初始化输入模拟失败: {}", e)))?;
 
     if hide_on_action {
-        if let Some(window) = app.get_webview_window("main") {
+        if let Some(window) = app.get_webview_window(WINDOW_LABEL_MAIN) {
             let _ = window.hide();
         }
+        window_position::hide_all_hud_windows(&app);
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     }
 
@@ -41,9 +44,10 @@ pub async fn paste_text(app: tauri::AppHandle, hide_on_action: bool) -> Result<(
 }
 
 pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL_MAIN) {
         let _ = window.hide();
     }
+    window_position::hide_all_hud_windows(&app);
 
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 

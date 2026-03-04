@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, XCircle, CheckCircle2 } from 'lucide-react';
-import { TauriService } from './services/tauri';
-import type { ImageDownloadProgressEvent } from './types';
+import { TauriService } from '../../services/tauri';
+import type { ImageDownloadProgressEvent } from '../../types';
 
 type HudState = {
   status: 'idle' | 'downloading' | 'completed' | 'failed' | 'cancelled';

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+
 import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow, PhysicalPosition } from '@tauri-apps/api/window';
 import { register, unregister, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
@@ -10,15 +11,39 @@ import type {
   ImagePerformanceProfile,
   ClipItemHudActionEvent,
   ClipItemHudSnapshot,
+  RadialMenuSnapshot,
+  RadialMenuActionEvent,
   WindowPlacementSettings,
 } from '../types';
+import { CLIPITEM_HUD_EVENTS, RADIAL_MENU_EVENTS, IMAGE_DOWNLOAD_EVENTS, WINDOW_LABELS } from '../constants/ipc';
 
 export const isTauri = typeof window !== 'undefined' && !!(window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
-const IMAGE_DOWNLOAD_PROGRESS_EVENT = 'image-download-progress';
-const CLIPITEM_HUD_SNAPSHOT_EVENT = 'clipitem-hud-snapshot';
-const CLIPITEM_HUD_ACTION_EVENT = 'clipitem-hud-action';
-const MAIN_WINDOW_LABEL = 'main';
-const CLIPITEM_HUD_WINDOW_LABEL = 'clipitem-hud';
+
+interface ClipItemHudPointerMoveEvent {
+  screenX: number;
+  screenY: number;
+  button: number;
+  buttons: number;
+}
+
+interface ClipItemHudPointerUpEvent {
+  screenX: number;
+  screenY: number;
+  button: number;
+}
+
+interface RadialMenuPointerMoveEvent {
+  screenX: number;
+  screenY: number;
+  button: number;
+  buttons: number;
+}
+
+interface RadialMenuPointerUpEvent {
+  screenX: number;
+  screenY: number;
+  button: number;
+}
 
 // ============================================================================
 // 工具函数
@@ -113,9 +138,15 @@ export const TauriService = {
     await invoke<void>('hide_clipitem_hud');
   },
 
-  async positionClipItemHudNearCursor(mode?: 'linear' | 'radial'): Promise<void> {
-    if (!isTauri) return;
-    await invoke<void>('position_clipitem_hud_near_cursor', { mode: mode || 'linear' });
+  /** 检查当前系统前景窗口是否属于本应用（Windows 使用 GetForegroundWindow） */
+  async isAppForegroundWindow(): Promise<boolean> {
+    if (!isTauri) return true;
+    return await invoke<boolean>('is_app_foreground_window');
+  },
+
+  async positionClipItemHudNearCursor(mode?: 'linear' | 'radial' | 'edge'): Promise<'horizontal' | 'vertical'> {
+    if (!isTauri) return 'horizontal';
+    return await invoke<'horizontal' | 'vertical'>('position_clipitem_hud_near_cursor', { mode: mode || 'edge' });
   },
 
   async setClipItemHudMousePassthrough(passthrough: boolean): Promise<void> {
@@ -123,40 +154,136 @@ export const TauriService = {
     await invoke<void>('set_clipitem_hud_mouse_passthrough', { passthrough });
   },
 
-  async emitClipItemHudGlobalPointerUp(): Promise<void> {
+  async emitClipItemHudGlobalPointerMove(payload: ClipItemHudPointerMoveEvent): Promise<void> {
     if (!isTauri) return;
-    await emitTo(CLIPITEM_HUD_WINDOW_LABEL, 'clipitem-hud-global-pointer-up', {});
+    await emitTo(WINDOW_LABELS.clipItemHud, CLIPITEM_HUD_EVENTS.globalPointerMove, payload);
   },
 
-  async listenClipItemHudGlobalPointerUp(handler: () => void): Promise<UnlistenFn> {
+  async listenClipItemHudGlobalPointerMove(
+    handler: (payload: ClipItemHudPointerMoveEvent) => void,
+  ): Promise<UnlistenFn> {
     if (!isTauri) return () => {};
-    return await listen('clipitem-hud-global-pointer-up', () => handler());
+    return await listen<ClipItemHudPointerMoveEvent>(CLIPITEM_HUD_EVENTS.globalPointerMove, (event) => {
+      handler(event.payload);
+    });
+  },
+
+  async emitClipItemHudGlobalPointerUp(payload: ClipItemHudPointerUpEvent): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.clipItemHud, CLIPITEM_HUD_EVENTS.globalPointerUp, payload);
+  },
+
+  async listenClipItemHudGlobalPointerUp(
+    handler: (payload: ClipItemHudPointerUpEvent) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<ClipItemHudPointerUpEvent>(CLIPITEM_HUD_EVENTS.globalPointerUp, (event) => {
+      handler(event.payload);
+    });
   },
 
   async emitClipItemHudSnapshot(snapshot: ClipItemHudSnapshot): Promise<void> {
     if (!isTauri) return;
-    await emitTo(CLIPITEM_HUD_WINDOW_LABEL, CLIPITEM_HUD_SNAPSHOT_EVENT, snapshot);
+    await emitTo(WINDOW_LABELS.clipItemHud, CLIPITEM_HUD_EVENTS.snapshot, snapshot);
   },
 
   async listenClipItemHudSnapshot(
     handler: (payload: ClipItemHudSnapshot) => void,
   ): Promise<UnlistenFn> {
     if (!isTauri) return () => {};
-    return await listen<ClipItemHudSnapshot>(CLIPITEM_HUD_SNAPSHOT_EVENT, (event) => {
+    return await listen<ClipItemHudSnapshot>(CLIPITEM_HUD_EVENTS.snapshot, (event) => {
       handler(event.payload);
     });
   },
 
   async emitClipItemHudAction(action: ClipItemHudActionEvent): Promise<void> {
     if (!isTauri) return;
-    await emitTo(MAIN_WINDOW_LABEL, CLIPITEM_HUD_ACTION_EVENT, action);
+    await emitTo(WINDOW_LABELS.main, CLIPITEM_HUD_EVENTS.action, action);
   },
 
   async listenClipItemHudAction(
     handler: (payload: ClipItemHudActionEvent) => void,
   ): Promise<UnlistenFn> {
     if (!isTauri) return () => {};
-    return await listen<ClipItemHudActionEvent>(CLIPITEM_HUD_ACTION_EVENT, (event) => {
+    return await listen<ClipItemHudActionEvent>(CLIPITEM_HUD_EVENTS.action, (event) => {
+      handler(event.payload);
+    });
+  },
+
+  // ── 径向菜单独立窗口 ──
+
+  async showRadialMenu(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('show_radial_menu');
+  },
+
+  async hideRadialMenu(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('hide_radial_menu');
+  },
+
+  async positionRadialMenuAtCursor(): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('position_radial_menu_at_cursor');
+  },
+
+  async setRadialMenuMousePassthrough(passthrough: boolean): Promise<void> {
+    if (!isTauri) return;
+    await invoke<void>('set_radial_menu_mouse_passthrough', { passthrough });
+  },
+
+  async emitRadialMenuGlobalPointerMove(payload: RadialMenuPointerMoveEvent): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.radialMenu, RADIAL_MENU_EVENTS.globalPointerMove, payload);
+  },
+
+  async listenRadialMenuGlobalPointerMove(
+    handler: (payload: RadialMenuPointerMoveEvent) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<RadialMenuPointerMoveEvent>(RADIAL_MENU_EVENTS.globalPointerMove, (event) => {
+      handler(event.payload);
+    });
+  },
+
+  async emitRadialMenuGlobalPointerUp(payload: RadialMenuPointerUpEvent): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.radialMenu, RADIAL_MENU_EVENTS.globalPointerUp, payload);
+  },
+
+  async listenRadialMenuGlobalPointerUp(
+    handler: (payload: RadialMenuPointerUpEvent) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<RadialMenuPointerUpEvent>(RADIAL_MENU_EVENTS.globalPointerUp, (event) => {
+      handler(event.payload);
+    });
+  },
+
+  async emitRadialMenuSnapshot(snapshot: RadialMenuSnapshot): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.radialMenu, RADIAL_MENU_EVENTS.snapshot, snapshot);
+  },
+
+  async listenRadialMenuSnapshot(
+    handler: (payload: RadialMenuSnapshot) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<RadialMenuSnapshot>(RADIAL_MENU_EVENTS.snapshot, (event) => {
+      handler(event.payload);
+    });
+  },
+
+  async emitRadialMenuAction(action: RadialMenuActionEvent): Promise<void> {
+    if (!isTauri) return;
+    await emitTo(WINDOW_LABELS.main, RADIAL_MENU_EVENTS.action, action);
+  },
+
+  async listenRadialMenuAction(
+    handler: (payload: RadialMenuActionEvent) => void,
+  ): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await listen<RadialMenuActionEvent>(RADIAL_MENU_EVENTS.action, (event) => {
       handler(event.payload);
     });
   },
@@ -172,6 +299,13 @@ export const TauriService = {
             customY: placement.customY,
           }
         : undefined,
+    });
+  },
+
+  async listenMainWindowMoved(handler: () => void): Promise<UnlistenFn> {
+    if (!isTauri) return () => {};
+    return await getCurrentWindow().onMoved(() => {
+      handler();
     });
   },
 
@@ -245,7 +379,7 @@ export const TauriService = {
     handler: (payload: ImageDownloadProgressEvent) => void,
   ): Promise<UnlistenFn> {
     if (!isTauri) return () => {};
-    return await listen<ImageDownloadProgressEvent>(IMAGE_DOWNLOAD_PROGRESS_EVENT, (event) => {
+    return await listen<ImageDownloadProgressEvent>(IMAGE_DOWNLOAD_EVENTS.progress, (event) => {
       handler(event.payload);
     });
   },
@@ -412,6 +546,4 @@ export const TauriService = {
     return await invoke<{ path: string; size: number }>('db_move_database', { newDir });
   },
 };
-
-
 

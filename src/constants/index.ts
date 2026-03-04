@@ -1,4 +1,5 @@
 import { AppSettings } from '../types';
+import { CLIP_ITEM_HUD_BORDER_RING_WIDTH, CLIP_ITEM_HUD_BORDER_RUN_DURATION } from '../hud/clipitem/constants';
 
 export const COPY_FEEDBACK_DURATION_MS = 2000;
 
@@ -33,10 +34,20 @@ export const DEFAULT_SETTINGS: AppSettings = {
   galleryListMaxVisibleItems: 6,
   fileListMaxVisibleItems: 5,
   compactMetaDisplayMode: 'auto',
-  clipItemHudTriggerKey: 'alt',
+  clipItemFloatingActionsEnabled: true,
+  clipItemTimeMetaAutoHideWidthPx: 0,
+  headerFilterIconModeWidthPx: 640,
+  clipItemHudEnabled: true,
+  clipItemHudRadialMenuEnabled: true,
   clipItemHudTriggerMouseButton: 'middle',
   clipItemHudTriggerMouseMode: 'press_release',
-  clipItemHudKeepOpenOnHover: false,
+  clipItemHudRadialMenuFancyFx: true,
+  clipItemHudRadialMenuLayoutProfile: 'standard',
+  clipItemHudBorderRunDurationSec: CLIP_ITEM_HUD_BORDER_RUN_DURATION.defaultValue,
+  clipItemHudBorderRingWidthPx: CLIP_ITEM_HUD_BORDER_RING_WIDTH.defaultValue,
+  clipItemHudPositionMode: 'near_item',
+  clipItemHudFixedX: 100,
+  clipItemHudFixedY: 100,
   windowPlacement: {
     mode: 'smart_near_cursor',
     customX: 120,

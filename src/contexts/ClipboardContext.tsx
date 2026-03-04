@@ -172,12 +172,28 @@ export function ClipboardProvider({
     ), [loadHistory],
   );
 
-  const handleToggleFavorite = useMemo(
-    () => makeHandler(
-      async (item: ClipItem) => { await ClipboardDB.toggleFavorite(item.id, item.is_favorite); await loadHistory(); },
-      setError, '切换收藏失败',
-    ), [loadHistory],
-  );
+  const handleToggleFavorite = useCallback(async (item: ClipItem) => {
+    const currentFavorite = history.find((entry) => entry.id === item.id)?.is_favorite ?? item.is_favorite;
+    const nextFavorite = currentFavorite === 1 ? 0 : 1;
+
+    setHistory((prev) => prev.map((entry) => (
+      entry.id === item.id
+        ? { ...entry, is_favorite: nextFavorite }
+        : entry
+    )));
+
+    try {
+      await ClipboardDB.toggleFavorite(item.id, currentFavorite);
+      await loadHistory();
+    } catch (err) {
+      setHistory((prev) => prev.map((entry) => (
+        entry.id === item.id
+          ? { ...entry, is_favorite: currentFavorite }
+          : entry
+      )));
+      setError(`切换收藏失败: ${toMsg(err)}`);
+    }
+  }, [history, loadHistory]);
 
   const handleRemove = useMemo(
     () => makeHandler(

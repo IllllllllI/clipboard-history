@@ -19,6 +19,7 @@ import { useShortcuts } from '../hooks/useShortcuts';
 import { useKeyboardNavigation } from '../hooks/useKeyboardNavigation';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { isTauri, TauriService } from '../services/tauri';
+import { requestSync as requestHudSync, notifyExternalHide as notifyHudExternalHide } from '../hud/clipitem/clipItemHudManager';
 
 const toMsg = (err: unknown): string =>
   err instanceof Error ? err.message : String(err);
@@ -237,6 +238,9 @@ function AppBridge({ children }: { children: React.ReactNode }) {
   const handleTogglePinRef = useRef(handleTogglePin);
   const handleRemoveRef = useRef(handleRemove);
   const setEditingClipRef = useRef(setEditingClip);
+  const filterHistoryRef = useRef(filterHistory);
+  const setSelectedIndexRef = useRef(setSelectedIndex);
+  const settingsRef = useRef(settings);
 
   historyRef.current = history;
   copyToClipboardRef.current = copyToClipboard;
@@ -244,16 +248,129 @@ function AppBridge({ children }: { children: React.ReactNode }) {
   handleTogglePinRef.current = handleTogglePin;
   handleRemoveRef.current = handleRemove;
   setEditingClipRef.current = setEditingClip;
+  filterHistoryRef.current = filterHistory;
+  setSelectedIndexRef.current = setSelectedIndex;
+  settingsRef.current = settings;
+
+  // ── 编辑模态窗关闭后恢复 HUD ──
+  // edit action 会隐藏 HUD 并打开编辑器，关闭编辑器时 editingClip → null，
+  // 需请求 HUD 控制器重新评估可见性以恢复显示。
+  const prevEditingClipRef = useRef(editingClip);
+  useEffect(() => {
+    const wasEditing = prevEditingClipRef.current !== null;
+    prevEditingClipRef.current = editingClip;
+    if (wasEditing && editingClip === null) {
+      requestHudSync();
+    }
+  }, [editingClip]);
+
+  // ── 粘贴去重保护 ──
+  // 使用 ref 而非 effect 闭包内的局部变量，确保在 React StrictMode
+  // 双重挂载时两个监听器实例共享同一份去重状态。
+  const pasteDedup = useRef({ key: '', time: 0 });
 
   useEffect(() => {
     if (!isTauri) return;
 
     let mounted = true;
-    let unlisten: (() => void) | null = null;
+    const PASTE_DEDUP_MS = 1500;
 
-    void TauriService.listenClipItemHudAction((payload) => {
-      console.log('[Main Window] received action:', payload);
+    const doPaste = (itemId: number) => {
+      const now = Date.now();
+      const key = `paste:${itemId}`;
+      if (key === pasteDedup.current.key && now - pasteDedup.current.time < PASTE_DEDUP_MS) {
+        if (import.meta.env.DEV) {
+          console.warn('[Paste Dedup] suppressed duplicate paste for itemId=', itemId);
+        }
+        return;
+      }
+      pasteDedup.current = { key, time: now };
+
+      const target = historyRef.current.find((item) => item.id === itemId);
+      if (!target) return;
+      void copyToClipboardRef.current(target).then(() => {
+        setTimeout(() => {
+          void TauriService.pasteText(true);
+        }, 150);
+      });
+    };
+
+    // ── Tauri 事件监听 ──
+    // 存储 Promise 引用用于 cleanup，解决 StrictMode 快速卸载时
+    // dispose 函数尚未 resolve 导致监听器泄漏的问题。
+    let unlistenHud: (() => void) | null = null;
+    let unlistenRadial: (() => void) | null = null;
+
+    const hudListenPromise = TauriService.listenClipItemHudAction((payload) => {
       if (!mounted) return;
+      if (import.meta.env.DEV) {
+        console.info('[HUD Action][Main] received', payload);
+      }
+
+      // dismiss = 用户点击了空白区域或 press_release 模式释放在无操作处
+      // 由主窗口侧统一隐藏 HUD
+      if (payload.action === 'dismiss') {
+        notifyHudExternalHide();
+        void TauriService.setClipItemHudMousePassthrough(true);
+        void TauriService.hideClipItemHud();
+        return;
+      }
+
+      const target = historyRef.current.find((item) => item.id === payload.itemId);
+      if (!target) return;
+
+      // edit/delete 需要在 action 后关闭 HUD
+      const shouldCloseAfterAction = payload.action === 'edit' || payload.action === 'delete';
+      // pin/favorite/copy 可能触发列表重排，action 完成后修正 selectedIndex
+      const shouldTrackIndex = ['copy', 'favorite', 'pin'].includes(payload.action);
+
+      const executeAction = async () => {
+        if (payload.action === 'copy') {
+          await copyToClipboardRef.current(target);
+        } else if (payload.action === 'paste') {
+          doPaste(payload.itemId);
+        } else if (payload.action === 'favorite') {
+          await handleToggleFavoriteRef.current(target);
+        } else if (payload.action === 'pin') {
+          await handleTogglePinRef.current(target);
+        } else if (payload.action === 'edit') {
+          setEditingClipRef.current(target);
+        } else if (payload.action === 'delete') {
+          await handleRemoveRef.current(target.id);
+        }
+      };
+
+      void executeAction().finally(() => {
+        if (shouldCloseAfterAction) {
+          notifyHudExternalHide();
+          void TauriService.setClipItemHudMousePassthrough(true);
+          void TauriService.hideClipItemHud();
+        }
+        if (!shouldTrackIndex) return;
+        // 等 React 提交状态更新后修正 selectedIndex，保证 HUD 跟踪正确的 item。
+        // useClipItemHudController 的宽限定时器会在 selectedIndex 修正后
+        // 被 claimOwnership 清除，避免 HUD 闪烁。
+        requestAnimationFrame(() => {
+          const filtered = filterHistoryRef.current(historyRef.current);
+          const newIndex = filtered.findIndex((item) => item.id === payload.itemId);
+          if (newIndex >= 0) {
+            setSelectedIndexRef.current(newIndex);
+          }
+        });
+      });
+    });
+    hudListenPromise.then((dispose) => {
+      unlistenHud = dispose;
+    }).catch(() => {
+      // 忽略 HUD 监听初始化失败
+    });
+
+    // 监听径向菜单动作（来自独立的 radial-menu 窗口）
+    const radialListenPromise = TauriService.listenRadialMenuAction((payload) => {
+      if (!mounted) return;
+      if (import.meta.env.DEV) {
+        console.info('[RadialMenu Action][Main] received', payload);
+      }
 
       const target = historyRef.current.find((item) => item.id === payload.itemId);
       if (!target) return;
@@ -264,11 +381,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
       }
 
       if (payload.action === 'paste') {
-        void copyToClipboardRef.current(target).then(() => {
-          setTimeout(() => {
-            void TauriService.pasteText(true);
-          }, 150);
-        });
+        doPaste(payload.itemId);
         return;
       }
 
@@ -282,23 +395,28 @@ function AppBridge({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (payload.action === 'edit') {
-        setEditingClipRef.current(target);
-        return;
-      }
-
       if (payload.action === 'delete') {
         void handleRemoveRef.current(target.id);
       }
-    }).then((dispose) => {
-      unlisten = dispose;
-    }).catch(() => {
-      // 忽略 HUD 监听初始化失败
     });
+    radialListenPromise.then((dispose) => {
+      unlistenRadial = dispose;
+    }).catch(() => {});
 
     return () => {
       mounted = false;
-      if (unlisten) unlisten();
+      // 优先同步 unlisten；若 promise 尚未 resolve（StrictMode 快速卸载）
+      // 则通过 .then 链异步补救，确保不泄漏监听器。
+      if (unlistenHud) {
+        unlistenHud();
+      } else {
+        void hudListenPromise.then((d) => d()).catch(() => {});
+      }
+      if (unlistenRadial) {
+        unlistenRadial();
+      } else {
+        void radialListenPromise.then((d) => d()).catch(() => {});
+      }
     };
   }, []);
 

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useCallback, useEffect } from 'react';
 import { AppProvider, useAppContext } from './contexts/AppContext';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -41,6 +41,55 @@ function AppLayout() {
   const handleTopHoverEnter = useCallback(() => setHeaderHover(true), []);
   const handleTopHoverLeave = useCallback(() => setHeaderHover(false), []);
   const immersiveShortcut = settings.immersiveShortcut?.trim() || 'Alt+Z';
+
+  useEffect(() => {
+    if (!immersiveMode) {
+      setHeaderHover(false);
+      return;
+    }
+
+    const hideHeader = () => {
+      setHeaderHover(false);
+    };
+
+    const handleDocumentMouseOut = (event: MouseEvent) => {
+      if (event.relatedTarget === null) {
+        hideHeader();
+      }
+    };
+
+    window.addEventListener('blur', hideHeader);
+    document.addEventListener('mouseleave', hideHeader);
+    document.addEventListener('mouseout', handleDocumentMouseOut);
+
+    return () => {
+      window.removeEventListener('blur', hideHeader);
+      document.removeEventListener('mouseleave', hideHeader);
+      document.removeEventListener('mouseout', handleDocumentMouseOut);
+    };
+  }, [immersiveMode]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateResponsiveFlags = () => {
+      const metaThreshold = Math.max(0, Math.trunc(settings.clipItemTimeMetaAutoHideWidthPx || 0));
+      const shouldHideMeta = metaThreshold > 0 && window.innerWidth <= metaThreshold;
+      root.setAttribute('data-clip-item-time-meta-hidden', shouldHideMeta ? 'true' : 'false');
+
+      const filterIconThreshold = Math.max(0, Math.trunc(settings.headerFilterIconModeWidthPx || 0));
+      const useFilterIconMode = filterIconThreshold > 0 && window.innerWidth <= filterIconThreshold;
+      root.setAttribute('data-header-filter-icon-only', useFilterIconMode ? 'true' : 'false');
+    };
+
+    updateResponsiveFlags();
+    window.addEventListener('resize', updateResponsiveFlags);
+
+    return () => {
+      window.removeEventListener('resize', updateResponsiveFlags);
+      root.removeAttribute('data-clip-item-time-meta-hidden');
+      root.removeAttribute('data-header-filter-icon-only');
+    };
+  }, [settings.clipItemTimeMetaAutoHideWidthPx, settings.headerFilterIconModeWidthPx]);
 
   return (
     <div className={`h-screen w-screen overflow-hidden transition-colors duration-300 ${settings.darkMode ? 'bg-neutral-900 text-neutral-200' : 'bg-neutral-50 text-neutral-800'} font-sans selection:bg-indigo-500/30 flex flex-col relative`}>
