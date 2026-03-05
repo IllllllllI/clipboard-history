@@ -1,8 +1,8 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { ClipItem, GalleryDisplayMode, GalleryScrollDirection } from '../../types';
 import { encodeFileList } from '../../utils';
-import { ClipboardDB } from '../../services/db';
 
+// ─── 依赖接口 ─────────────────────────────────────────────────────────────
 interface UseClipItemCallbacksDeps {
   item: ClipItem;
   copyToClipboard: (
@@ -10,128 +10,102 @@ interface UseClipItemCallbacksDeps {
     options?: { suppressCopiedIdFeedback?: boolean },
   ) => Promise<void>;
   copyText: (text: string) => Promise<void>;
-  handleDragStart: (e: React.DragEvent, text: string) => void;
   updateSettings: (patch: Record<string, unknown>) => void;
-  loadHistory: () => Promise<void>;
+  addClipEntry: (text: string) => Promise<void>;
   handleTogglePin: (item: ClipItem) => void;
   handleToggleFavorite: (item: ClipItem) => void;
 }
 
+// ─── 返回接口 ─────────────────────────────────────────────────────────────
 export interface ClipItemCallbacks {
+  /** Gallery: 切换展示模式 */
   handleGalleryDisplayModeChange: (mode: GalleryDisplayMode) => void;
+  /** Gallery: 切换滚动方向 */
   handleGalleryScrollDirectionChange: (dir: GalleryScrollDirection) => void;
-  handleGalleryListItemClick: (url: string) => void;
-  handleGalleryListItemDragStart: (e: React.DragEvent<HTMLDivElement>, url: string) => void;
-  handleGalleryCopyImage: (url: string) => void;
+  /** Gallery: 列表项点击 / 图片复制（统一入口） */
+  handleGalleryItemCopy: (url: string) => void;
+  /** FileList: 点击文件项 → 复制为单文件条目 */
   handleFileListItemClick: (filePath: string) => void;
-  handleFileListItemDragStart: (e: React.DragEvent<HTMLDivElement>, filePath: string) => void;
+  /** Color: 复制颜色并存储为新条目 */
   handleCopyAsNewColor: (color: string) => Promise<void>;
+  /** Time 区域点击（普通=收藏，Alt=置顶） */
   handleTimeClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Time 区域键盘（Enter/Space 触发） */
   handleTimeKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
 }
 
 /**
- * 从 ClipItemComponent 中提取所有转发/包装回调，
- * 保持主组件只关注布局与编排。
+ * 从 ClipItemComponent 提取所有转发 / 包装回调。
+ *
+ * 改进点（相比原实现）：
+ * - **性能**：useRef(item) 使回调不因 item 对象重建而重建（11→7 useCallback）
+ * - **去重**：原 handleGalleryListItemClick ≡ handleGalleryCopyImage 合并为 handleGalleryItemCopy
+ * - **精简**：拖拽回调（原 2 个纯转发）提升至调用方直接引用 handleDragStart
+ * - **结构**：消除中间回调 handleTimeQuickAction，内联至 handleTimeClick / handleTimeKeyDown
  */
 export function useClipItemCallbacks({
   item,
   copyToClipboard,
   copyText,
-  handleDragStart,
   updateSettings,
-  loadHistory,
+  addClipEntry,
   handleTogglePin,
   handleToggleFavorite,
 }: UseClipItemCallbacksDeps): ClipItemCallbacks {
-  // --- Gallery 相关 ---
+  // 最新 item 引用 — 使下游回调不因 item 对象重建而重建
+  const itemRef = useRef(item);
+  itemRef.current = item;
+
+  // ─── Gallery ───────────────────────────────────────────────────────────
   const handleGalleryDisplayModeChange = useCallback(
-    (mode: GalleryDisplayMode) => {
-      updateSettings({ galleryDisplayMode: mode });
-    },
+    (mode: GalleryDisplayMode) => updateSettings({ galleryDisplayMode: mode }),
     [updateSettings],
   );
 
   const handleGalleryScrollDirectionChange = useCallback(
-    (dir: GalleryScrollDirection) => {
-      updateSettings({ galleryScrollDirection: dir });
-    },
+    (dir: GalleryScrollDirection) => updateSettings({ galleryScrollDirection: dir }),
     [updateSettings],
   );
 
-  const handleGalleryListItemClick = useCallback(
+  /** 以指定 URL 覆盖当前 item 的 text 并复制（列表项点击 + 图片复制共用） */
+  const handleGalleryItemCopy = useCallback(
     (url: string) => {
       void copyToClipboard(
-        { ...item, text: url },
+        { ...itemRef.current, text: url },
         { suppressCopiedIdFeedback: true },
       );
     },
-    [copyToClipboard, item],
+    [copyToClipboard],
   );
 
-  const handleGalleryListItemDragStart = useCallback(
-    (e: React.DragEvent<HTMLDivElement>, url: string) => {
-      void handleDragStart(e, url);
-    },
-    [handleDragStart],
-  );
-
-  const handleGalleryCopyImage = useCallback(
-    (url: string) => {
-      void copyToClipboard(
-        { ...item, text: url },
-        { suppressCopiedIdFeedback: true },
-      );
-    },
-    [copyToClipboard, item],
-  );
-
-  // --- FileList 相关 ---
+  // ─── FileList ──────────────────────────────────────────────────────────
   const handleFileListItemClick = useCallback(
     (filePath: string) => {
       void copyToClipboard(
-        { ...item, text: encodeFileList([filePath]) },
+        { ...itemRef.current, text: encodeFileList([filePath]) },
         { suppressCopiedIdFeedback: true },
       );
     },
-    [copyToClipboard, item],
+    [copyToClipboard],
   );
 
-  const handleFileListItemDragStart = useCallback(
-    (e: React.DragEvent<HTMLDivElement>, filePath: string) => {
-      void handleDragStart(e, filePath);
-    },
-    [handleDragStart],
-  );
-
-  // --- Color 相关 ---
+  // ─── Color ─────────────────────────────────────────────────────────────
   const handleCopyAsNewColor = useCallback(
     async (color: string) => {
       await copyText(color);
-      await ClipboardDB.addClip(color);
-      await loadHistory();
+      await addClipEntry(color);
     },
-    [copyText, loadHistory],
+    [copyText, addClipEntry],
   );
 
-  // --- Time/Favorite 快捷操作 ---
-  const handleTimeQuickAction = useCallback(
-    (usePinAction: boolean) => {
-      if (usePinAction) {
-        handleTogglePin(item);
-        return;
-      }
-      handleToggleFavorite(item);
-    },
-    [handleToggleFavorite, handleTogglePin, item],
-  );
-
+  // ─── Time / Favorite ──────────────────────────────────────────────────
   const handleTimeClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       e.stopPropagation();
-      handleTimeQuickAction(e.altKey);
+      const current = itemRef.current;
+      e.altKey ? handleTogglePin(current) : handleToggleFavorite(current);
     },
-    [handleTimeQuickAction],
+    [handleToggleFavorite, handleTogglePin],
   );
 
   const handleTimeKeyDown = useCallback(
@@ -139,19 +113,17 @@ export function useClipItemCallbacks({
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
       e.stopPropagation();
-      handleTimeQuickAction(e.altKey);
+      const current = itemRef.current;
+      e.altKey ? handleTogglePin(current) : handleToggleFavorite(current);
     },
-    [handleTimeQuickAction],
+    [handleToggleFavorite, handleTogglePin],
   );
 
   return {
     handleGalleryDisplayModeChange,
     handleGalleryScrollDirectionChange,
-    handleGalleryListItemClick,
-    handleGalleryListItemDragStart,
-    handleGalleryCopyImage,
+    handleGalleryItemCopy,
     handleFileListItemClick,
-    handleFileListItemDragStart,
     handleCopyAsNewColor,
     handleTimeClick,
     handleTimeKeyDown,

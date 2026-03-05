@@ -8,11 +8,12 @@
  * - 用 useRef 持有最新值，useEffect 只注册一次监听器，避免高频重注册
  * - 过滤输入元素事件，避免搜索框打字时拦截
  * - Escape 关闭预览独立于 modalOpen 检查
+ * - 快捷键解析 / 匹配复用 shortcut.ts（单一来源，带有界缓存）
  */
 
 import { useEffect, useRef } from 'react';
-import { ClipItem } from '../types';
-import { getImmersiveShortcutConflict } from '../utils';
+import type { ClipItem } from '../types';
+import { getImmersiveShortcutConflict, matchesShortcut } from '../utils';
 
 export const KEYBOARD_NAV_SCROLL_EVENT = 'clip:keyboard-nav-scroll';
 
@@ -29,109 +30,6 @@ interface UseKeyboardNavigationOptions {
   toggleImmersiveMode: () => void;
   /** 当这些弹窗打开时，禁用导航（不包含图片预览，Escape 需要单独处理） */
   modalOpen: boolean;
-}
-
-type ParsedShortcut = {
-  ctrl: boolean;
-  alt: boolean;
-  shift: boolean;
-  meta: boolean;
-  key: string;
-};
-
-const shortcutParseCache = new Map<string, ParsedShortcut | null>();
-
-function parseShortcut(shortcut: string): ParsedShortcut | null {
-  const normalizedShortcut = shortcut.trim();
-  if (!normalizedShortcut) return null;
-
-  const cached = shortcutParseCache.get(normalizedShortcut);
-  if (cached !== undefined) return cached;
-
-  const tokens = shortcut
-    .split('+')
-    .map(t => t.trim())
-    .filter(Boolean);
-
-  if (tokens.length === 0) {
-    shortcutParseCache.set(normalizedShortcut, null);
-    return null;
-  }
-
-  const parsed: ParsedShortcut = {
-    ctrl: false,
-    alt: false,
-    shift: false,
-    meta: false,
-    key: '',
-  };
-
-  for (const tokenRaw of tokens) {
-    const token = tokenRaw.toLowerCase();
-    if (token === 'ctrl' || token === 'control') {
-      parsed.ctrl = true;
-      continue;
-    }
-    if (token === 'alt' || token === 'option') {
-      parsed.alt = true;
-      continue;
-    }
-    if (token === 'shift') {
-      parsed.shift = true;
-      continue;
-    }
-    if (token === 'meta' || token === 'cmd' || token === 'command' || token === 'super') {
-      parsed.meta = true;
-      continue;
-    }
-    if (token === 'commandorcontrol' || token === 'cmdorctrl') {
-      parsed.ctrl = true;
-      parsed.meta = true;
-      continue;
-    }
-    parsed.key = token;
-  }
-
-  if (!parsed.key) {
-    shortcutParseCache.set(normalizedShortcut, null);
-    return null;
-  }
-
-  shortcutParseCache.set(normalizedShortcut, parsed);
-  return parsed;
-}
-
-function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
-  const parsed = parseShortcut(shortcut);
-  if (!parsed) return false;
-  if (e.repeat) return false;
-
-  const expectsCtrl = parsed.ctrl;
-  const expectsMeta = parsed.meta;
-  const wantsEitherCtrlOrMeta = expectsCtrl && expectsMeta;
-
-  if (wantsEitherCtrlOrMeta) {
-    if (!(e.ctrlKey || e.metaKey)) return false;
-  } else {
-    if (e.ctrlKey !== expectsCtrl) return false;
-    if (e.metaKey !== expectsMeta) return false;
-  }
-
-  if (e.altKey !== parsed.alt) return false;
-  if (e.shiftKey !== parsed.shift) return false;
-
-  const key = parsed.key;
-  const eventKey = e.key.toLowerCase();
-
-  if (key.length === 1 && key >= 'a' && key <= 'z') {
-    return e.code === `Key${key.toUpperCase()}` || eventKey === key;
-  }
-
-  if (key.length === 1 && key >= '0' && key <= '9') {
-    return e.code === `Digit${key}` || eventKey === key;
-  }
-
-  return eventKey === key;
 }
 
 /** 是否为可编辑元素（搜索框、textarea 等） */
@@ -152,6 +50,21 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
   optsRef.current = opts;
 
   useEffect(() => {
+    /** 上/下移动选中项并触发虚拟列表滚动 */
+    const moveBy = (
+      delta: number,
+      idx: number,
+      len: number,
+      setIdx: (i: number) => void,
+    ) => {
+      const next = Math.max(0, Math.min(idx + delta, len - 1));
+      if (next === idx) return;
+      setIdx(next);
+      window.dispatchEvent(
+        new CustomEvent<number>(KEYBOARD_NAV_SCROLL_EVENT, { detail: next }),
+      );
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       const {
         filteredHistory,
@@ -167,8 +80,8 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
         modalOpen,
       } = optsRef.current;
 
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('[data-shortcut-recorder="true"]')) {
+      // 快捷键录制器内不拦截
+      if ((e.target as HTMLElement | null)?.closest('[data-shortcut-recorder="true"]')) {
         return;
       }
 
@@ -184,9 +97,11 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
       // 弹窗打开时禁用导航/快捷键拦截（避免影响设置中的按键录制）
       if (modalOpen) return;
 
-      const immersiveConflict = getImmersiveShortcutConflict(immersiveShortcut || 'Alt+Z', globalShortcut || 'Alt+V');
-
-      if (!immersiveConflict && matchesShortcut(e, immersiveShortcut || 'Alt+Z')) {
+      // 沉浸模式切换
+      if (
+        !getImmersiveShortcutConflict(immersiveShortcut || 'Alt+Z', globalShortcut || 'Alt+V') &&
+        matchesShortcut(e, immersiveShortcut || 'Alt+Z')
+      ) {
         e.preventDefault();
         e.stopPropagation();
         toggleImmersiveMode();
@@ -196,39 +111,27 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
       // 输入元素内不拦截（允许搜索框正常输入）
       if (isEditableTarget(e.target)) return;
 
+      // ── 列表导航 & 操作 ──
       switch (e.key) {
-        case 'ArrowDown': {
+        case 'ArrowDown':
           e.preventDefault();
-          const nextIndex = Math.min(selectedIndex + 1, filteredHistory.length - 1);
-          if (nextIndex !== selectedIndex) {
-            setSelectedIndex(nextIndex);
-            window.dispatchEvent(new CustomEvent<number>(KEYBOARD_NAV_SCROLL_EVENT, { detail: nextIndex }));
-          }
+          moveBy(1, selectedIndex, filteredHistory.length, setSelectedIndex);
           break;
-        }
-        case 'ArrowUp': {
+        case 'ArrowUp':
           e.preventDefault();
-          const nextIndex = Math.max(selectedIndex - 1, 0);
-          if (nextIndex !== selectedIndex) {
-            setSelectedIndex(nextIndex);
-            window.dispatchEvent(new CustomEvent<number>(KEYBOARD_NAV_SCROLL_EVENT, { detail: nextIndex }));
-          }
+          moveBy(-1, selectedIndex, filteredHistory.length, setSelectedIndex);
           break;
-        }
         case 'Enter': {
           e.preventDefault();
           const item = filteredHistory[selectedIndex];
-          if (item) {
-            void handleDoubleClick(item);
-          }
+          if (item) void handleDoubleClick(item);
           break;
         }
-        case 'c':
-          if (e.ctrlKey || e.metaKey) {
+        default:
+          // Ctrl+C / Cmd+C — 使用 e.code 保证非 QWERTY 布局兼容
+          if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC') {
             const item = filteredHistory[selectedIndex];
-            if (item) {
-              void copyToClipboard(item);
-            }
+            if (item) void copyToClipboard(item);
           }
           break;
       }

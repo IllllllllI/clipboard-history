@@ -5,6 +5,7 @@ import { ClipItem } from '../../src/types';
 import { useSettingsContext } from '../../src/contexts/SettingsContext';
 import { useClipboardContext } from '../../src/contexts/ClipboardContext';
 import { useUIContext } from '../../src/contexts/UIContext';
+import { useClipItemStableContext } from '../../src/components/ClipItem/ClipItemContext';
 
 // Mock motion/react
 vi.mock('motion/react', () => ({
@@ -34,6 +35,9 @@ vi.mock('../../src/contexts/ClipboardContext', () => ({
 }));
 vi.mock('../../src/contexts/UIContext', () => ({
   useUIContext: vi.fn(),
+}));
+vi.mock('../../src/components/ClipItem/ClipItemContext', () => ({
+  useClipItemStableContext: vi.fn(),
 }));
 
 const defaultSettings = {
@@ -97,13 +101,19 @@ describe('ClipItemComponent Layout', () => {
     (useSettingsContext as any).mockReturnValue({ ...defaultSettingsCtx });
     (useClipboardContext as any).mockReturnValue({ ...defaultClipboardCtx });
     (useUIContext as any).mockReturnValue({ ...defaultUICtx });
+    (useClipItemStableContext as any).mockReturnValue({
+      ...defaultSettingsCtx,
+      ...defaultClipboardCtx,
+      ...defaultUICtx,
+      addClipEntry: vi.fn(),
+    });
   });
 
   it('should use items-start alignment for image items', () => {
     const imageItem = createMockItem('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
     
     const { container } = render(
-      <ClipItemComponent item={imageItem} index={0} />
+      <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Check that the main container uses items-start
@@ -115,7 +125,7 @@ describe('ClipItemComponent Layout', () => {
     const imageItem = createMockItem('https://example.com/image.png');
     
     const { container } = render(
-      <ClipItemComponent item={imageItem} index={0} />
+      <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Check that the content area has proper flex properties
@@ -128,7 +138,7 @@ describe('ClipItemComponent Layout', () => {
     const textItem = createMockItem('This is a regular text item');
     
     const { container } = render(
-      <ClipItemComponent item={textItem} index={0} />
+      <ClipItemComponent item={textItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Text items should still work with the new layout
@@ -141,7 +151,7 @@ describe('ClipItemComponent Layout', () => {
     const colorItem = createMockItem('#FF5733');
     
     const { container } = render(
-      <ClipItemComponent item={colorItem} index={0} />
+      <ClipItemComponent item={colorItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Color items should have proper spacing

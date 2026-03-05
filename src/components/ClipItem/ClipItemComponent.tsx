@@ -1,9 +1,7 @@
 import React, { useCallback, useMemo, useRef } from 'react';
 import { ClipItem } from '../../types';
 import { formatDateParts } from '../../utils';
-import { useSettingsContext } from '../../contexts/SettingsContext';
-import { useClipboardContext } from '../../contexts/ClipboardContext';
-import { useUIContext } from '../../contexts/UIContext';
+import { useClipItemStableContext } from './ClipItemContext';
 import { ClipItemContent } from './ClipItemContent';
 import { ActionButtons } from './actions/ActionButtons';
 import { TagDropdown } from './actions/TagDropdown';
@@ -19,6 +17,12 @@ import './styles/clip-item.css';
 interface ClipItemProps {
   item: ClipItem;
   index: number;
+  /** 是否为当前选中项（由 ClipList 根据 selectedIndex 计算后注入） */
+  isSelected: boolean;
+  /** 是否为最近复制项（由 ClipList 根据 copiedId 计算后注入） */
+  isCopied: boolean;
+  /** 当前搜索关键词（用于高亮） */
+  searchQuery: string;
 }
 
 const FAVORITE_BURST_DURATION_MS = 560;
@@ -28,45 +32,27 @@ const FAVORITE_BURST_DURATION_SEC = `${FAVORITE_BURST_DURATION_MS / 1000}s`;
  *
  * 职责：布局骨架 + 选中/拖拽/交互事件。
  * 实际内容渲染委托给 ClipItemContent，操作按钮委托给 ActionButtons。
+ *
+ * ## 性能设计
+ * - 不再直接订阅 SettingsContext / ClipboardContext / UIContext。
+ *   改为从 **ClipItemStableContext**（低频变化）获取回调与设置，
+ *   高频变化的 isSelected / isCopied / searchQuery 通过 props 注入，
+ *   由 React.memo 比较器精确拦截，避免全量重渲染。
  */
 export const ClipItemComponent = React.memo(
-  function ClipItemComponent({ item, index }: ClipItemProps) {
-    const { settings, updateSettings } = useSettingsContext();
+  function ClipItemComponent({ item, index, isSelected, isCopied, searchQuery }: ClipItemProps) {
     const {
-      copyToClipboard,
-      copyText,
-      copiedId,
-      loadHistory,
+      settings, updateSettings,
+      copyToClipboard, copyText, addClipEntry,
       tags,
-      handleTogglePin,
-      handleToggleFavorite,
-      handleRemove,
-      handleUpdatePickedColor,
-      handleAddTagToItem,
-      handleRemoveTagFromItem,
-    } = useClipboardContext();
-    const {
-      selectedIndex,
-      searchQuery,
+      handleTogglePin, handleToggleFavorite,
+      handleRemove, handleUpdatePickedColor,
+      handleAddTagToItem, handleRemoveTagFromItem,
       setSelectedIndex,
-      handleDoubleClick: doubleClickRaw,
-      handleDragStart: dragStartRaw,
-      handleDragEnd,
-      setPreviewImageUrl,
-      setEditingClip,
-    } = useUIContext();
+      handleDoubleClick, handleDragStart, handleDragEnd,
+      setPreviewImageUrl, setEditingClip,
+    } = useClipItemStableContext();
 
-    // 包装 UI context 的注入式回调
-    const handleDoubleClick = useCallback(
-      (clipItem: ClipItem) => doubleClickRaw(clipItem, copyToClipboard),
-      [doubleClickRaw, copyToClipboard],
-    );
-    const handleDragStart = useCallback(
-      (e: React.DragEvent | React.MouseEvent, text: string) => dragStartRaw(e, text, copyToClipboard),
-      [dragStartRaw, copyToClipboard],
-    );
-
-    const isSelected = selectedIndex === index;
     const rootRef = useRef<HTMLDivElement>(null);
 
     // --- 衍生状态（提取至 hook） ---
@@ -82,11 +68,8 @@ export const ClipItemComponent = React.memo(
     const {
       handleGalleryDisplayModeChange,
       handleGalleryScrollDirectionChange,
-      handleGalleryListItemClick,
-      handleGalleryListItemDragStart,
-      handleGalleryCopyImage,
+      handleGalleryItemCopy,
       handleFileListItemClick,
-      handleFileListItemDragStart,
       handleCopyAsNewColor,
       handleTimeClick,
       handleTimeKeyDown,
@@ -94,9 +77,8 @@ export const ClipItemComponent = React.memo(
       item,
       copyToClipboard,
       copyText,
-      handleDragStart,
       updateSettings,
-      loadHistory,
+      addClipEntry,
       handleTogglePin,
       handleToggleFavorite,
     });
@@ -109,22 +91,21 @@ export const ClipItemComponent = React.memo(
       listMaxVisibleItems: settings.galleryListMaxVisibleItems,
       onDisplayModeChange: handleGalleryDisplayModeChange,
       onScrollDirectionChange: handleGalleryScrollDirectionChange,
-      onListItemClick: handleGalleryListItemClick,
-      onListItemDragStart: handleGalleryListItemDragStart,
-      onCopyImage: handleGalleryCopyImage,
+      onListItemClick: handleGalleryItemCopy,
+      onListItemDragStart: handleDragStart,
+      onCopyImage: handleGalleryItemCopy,
     }), [
       settings.galleryDisplayMode, settings.galleryScrollDirection,
       settings.galleryWheelMode, settings.galleryListMaxVisibleItems,
       handleGalleryDisplayModeChange, handleGalleryScrollDirectionChange,
-      handleGalleryListItemClick, handleGalleryListItemDragStart,
-      handleGalleryCopyImage,
+      handleGalleryItemCopy, handleDragStart,
     ]);
 
     const fileListConfig = useMemo(() => ({
       maxVisibleItems: settings.fileListMaxVisibleItems,
       onItemClick: handleFileListItemClick,
-      onItemDragStart: handleFileListItemDragStart,
-    }), [settings.fileListMaxVisibleItems, handleFileListItemClick, handleFileListItemDragStart]);
+      onItemDragStart: handleDragStart,
+    }), [settings.fileListMaxVisibleItems, handleFileListItemClick, handleDragStart]);
 
     const colorConfig = useMemo(() => ({
       onUpdatePickedColor: handleUpdatePickedColor,
@@ -177,7 +158,7 @@ export const ClipItemComponent = React.memo(
       isFavorite,
       isPinned,
       canEdit: !isFiles && !isImage,
-      isCopied: copiedId === item.id,
+      isCopied,
       theme,
       shouldEnableClipItemHud: settings.clipItemHudEnabled && settings.compactMetaDisplayMode !== 'inside',
       shouldEnableRadialMenuHud: settings.clipItemHudRadialMenuEnabled,
@@ -287,7 +268,7 @@ export const ClipItemComponent = React.memo(
               isFiles={isFiles}
               isImage={isImage}
               darkMode={settings.darkMode}
-              copiedId={copiedId}
+              isCopied={isCopied}
               onCopy={copyToClipboard}
               onRemove={handleRemove}
               onEdit={setEditingClip}
@@ -297,7 +278,12 @@ export const ClipItemComponent = React.memo(
       </div>
     );
   },
-  (prev, next) => prev.item === next.item && prev.index === next.index,
+  (prev, next) =>
+    prev.item === next.item &&
+    prev.index === next.index &&
+    prev.isSelected === next.isSelected &&
+    prev.isCopied === next.isCopied &&
+    prev.searchQuery === next.searchQuery,
 );
 
 

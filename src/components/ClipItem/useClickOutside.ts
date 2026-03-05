@@ -13,28 +13,34 @@ export interface UseClickOutsideOptions {
   escapeKey?: boolean;
 }
 
+// 默认选项（模块级常量，避免每次调用新建对象）
+const DEFAULT_OPTIONS: UseClickOutsideOptions = {};
+
 /**
  * 监听点击外部区域并执行关闭回调。
  *
- * @param refs     被"保护"的 DOM 元素引用列表（点击其内部不触发回调）
- * @param isOpen   是否启用监听（关闭时自动卸载事件）
- * @param onClose  点击外部时的回调
- * @param options  附加选项
+ * 改进点（相比原实现）：
+ * - **性能**：effect 仅依赖 `isOpen`，所有参数均通过 ref 读取，
+ *   消除因 refs 数组 / options 对象重建导致的监听器重挂
+ * - **内存**：每个 hook 实例仅 1 个 ref 对象（合并为 stableRef），不再分散 2 个 ref
+ * - **结构**：handler 不再用闭包捕获 options 值，统一从 ref 读取
+ *
+ * @param refs    被"保护"的 DOM 元素引用列表（点击其内部不触发回调）
+ * @param isOpen  是否启用监听（关闭时自动卸载事件）
+ * @param onClose 点击外部时的回调
+ * @param options 附加选项
  */
 export function useClickOutside(
   refs: React.RefObject<HTMLElement | null>[],
   isOpen: boolean,
   onClose: () => void,
-  options: UseClickOutsideOptions = {},
+  options: UseClickOutsideOptions = DEFAULT_OPTIONS,
 ) {
-  const { event = 'mousedown', capture = false, escapeKey = false } = options;
-
-  // 用 ref 持有最新回调 & refs 列表，避免因引用变化重挂监听器
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  const refsRef = useRef(refs);
-  refsRef.current = refs;
+  // 合并所有可变参数到单个 ref，effect 零外部依赖（除 isOpen）
+  const stableRef = useRef({ refs, onClose, options });
+  stableRef.current.refs = refs;
+  stableRef.current.onClose = onClose;
+  stableRef.current.options = options;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -42,20 +48,25 @@ export function useClickOutside(
     const handlePointer = (e: Event) => {
       const target = e.target;
       if (!(target instanceof Node)) return;
-      if (refsRef.current.some((ref) => ref.current?.contains(target))) return;
-      onCloseRef.current();
+      const { refs: currentRefs, onClose: currentOnClose } = stableRef.current;
+      if (currentRefs.some((ref) => ref.current?.contains(target))) return;
+      currentOnClose();
     };
 
-    const handleKeyDown = escapeKey
-      ? (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); }
-      : null;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && stableRef.current.options.escapeKey) {
+        stableRef.current.onClose();
+      }
+    };
+
+    const { event = 'mousedown', capture = false, escapeKey = false } = stableRef.current.options;
 
     document.addEventListener(event, handlePointer, capture);
-    if (handleKeyDown) document.addEventListener('keydown', handleKeyDown);
+    if (escapeKey) document.addEventListener('keydown', handleKeyDown);
 
     return () => {
       document.removeEventListener(event, handlePointer, capture);
-      if (handleKeyDown) document.removeEventListener('keydown', handleKeyDown);
+      if (escapeKey) document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, event, capture, escapeKey]);
+  }, [isOpen]);
 }

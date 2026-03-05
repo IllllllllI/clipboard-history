@@ -52,27 +52,49 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
   const [isHudActive, setIsHudActive] = useState(false);
   const [suppressActiveFeedback, setSuppressActiveFeedback] = useState(false);
   const [radialMenuActive, setRadialMenuActive] = useState(false);
-  const clipItemHudVisibleRef = useRef(false);
-  const clipItemHudAxisRef = useRef<'horizontal' | 'vertical'>('horizontal');
-  const clipItemHudRepositionInFlightRef = useRef(false);
-  const clipItemHudRepositionQueuedRef = useRef(false);
-  const clipItemHudRepositionRafRef = useRef<number | null>(null);
-  const mainWindowFocusedRef = useRef(typeof document !== 'undefined' ? document.hasFocus() : true);
-  const radialMenuVisibleRef = useRef(false);
-  const mainWindowMovingRef = useRef(false);
-  const mainWindowMoveSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const blurHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** 条目 DOM 元素是否在滚动容器可视区内 */
-  const isInViewportRef = useRef(true);
+
+  /**
+   * 合并所有内部可变状态为单一 ref 对象。
+   * 消除 12 个独立 useRef 的分配 + GC 开销，
+   * 同时便于卸载清理时批量重置。
+   */
+  const r = useRef({
+    hudVisible: false,
+    hudAxis: 'horizontal' as 'horizontal' | 'vertical',
+    repositionInFlight: false,
+    repositionQueued: false,
+    repositionRaf: null as number | null,
+    mainWindowFocused: typeof document !== 'undefined' ? document.hasFocus() : true,
+    radialMenuVisible: false,
+    mainWindowMoving: false,
+    moveSettleTimer: null as ReturnType<typeof setTimeout> | null,
+    blurHideTimer: null as ReturnType<typeof setTimeout> | null,
+    /** 条目 DOM 元素是否在滚动容器可视区内 */
+    isInViewport: true,
+  });
 
   const clearMainWindowMoveSettleTimer = useCallback(() => {
-    if (mainWindowMoveSettleTimerRef.current !== null) {
-      clearTimeout(mainWindowMoveSettleTimerRef.current);
-      mainWindowMoveSettleTimerRef.current = null;
+    if (r.current.moveSettleTimer !== null) {
+      clearTimeout(r.current.moveSettleTimer);
+      r.current.moveSettleTimer = null;
     }
   }, []);
 
   const triggerPointerButton = useMemo(() => (triggerMouseButton === 'right' ? 2 : 1), [triggerMouseButton]);
+
+  /**
+   * 共享的异步焦点验证：调用 Rust IPC 检查前景窗口是否属于本应用。
+   * Section 8 / 8.5 / syncClipItemHudVisibility 共用，消除重复。
+   */
+  const verifyAppForeground = useCallback((onOwned: () => void, onLost: () => void) => {
+    void TauriService.isAppForegroundWindow().then((isOurs) => {
+      r.current.mainWindowFocused = isOurs;
+      if (isOurs) onOwned(); else onLost();
+    }).catch(() => {
+      r.current.mainWindowFocused = false;
+      onLost();
+    });
+  }, []);
 
   const clearSuppressActiveFeedback = useCallback(() => {
     setSuppressActiveFeedback(false);
@@ -92,7 +114,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       theme,
       triggerMouseButton,
       triggerMouseMode,
-      hudAxis: clipItemHudAxisRef.current,
+      hudAxis: r.current.hudAxis,
     });
   }, [
     itemId,
@@ -110,24 +132,24 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
   // ── [Section 1] 状态快照同步：当 props 变化且 HUD 可见时推送新数据到 HUD 窗口 ──
   useEffect(() => {
-    if (!clipItemHudVisibleRef.current) return;
+    if (!r.current.hudVisible) return;
     emitClipItemHudSnapshot();
   }, [emitClipItemHudSnapshot]);
 
   const hideClipItemHud = useCallback((force = false) => {
     if (!isTauri) return;
     if (!force && !HudManager.isOwner(itemId)) return;
-    if (!clipItemHudVisibleRef.current && !HudManager.isVisible()) return;
+    if (!r.current.hudVisible && !HudManager.isVisible()) return;
 
-    clipItemHudVisibleRef.current = false;
+    r.current.hudVisible = false;
     setIsHudActive(false);
     HudManager.setVisible(false);
     HudManager.releaseOwnership(itemId);
 
     // 取消待执行的重定位 RAF，防止滞后 IPC 将窗口移回屏幕内
-    if (clipItemHudRepositionRafRef.current !== null) {
-      window.cancelAnimationFrame(clipItemHudRepositionRafRef.current);
-      clipItemHudRepositionRafRef.current = null;
+    if (r.current.repositionRaf !== null) {
+      window.cancelAnimationFrame(r.current.repositionRaf);
+      r.current.repositionRaf = null;
     }
 
     // 拖拽期间 handleDragStart 已发送 hide 命令，跳过冗余 IPC
@@ -150,28 +172,28 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     } else {
       axis = await TauriService.positionClipItemHudAtMainEdge(positionMode);
     }
-    if (clipItemHudAxisRef.current !== axis) {
-      clipItemHudAxisRef.current = axis;
+    if (r.current.hudAxis !== axis) {
+      r.current.hudAxis = axis;
       emitClipItemHudSnapshot();
     }
   }, [emitClipItemHudSnapshot, positionMode]);
 
   const repositionClipItemHud = useCallback(async () => {
-    if (!clipItemHudVisibleRef.current || !isSelected) return;
+    if (!r.current.hudVisible || !isSelected) return;
     if (HudManager.isDragging()) return;
 
-    if (clipItemHudRepositionInFlightRef.current) {
-      clipItemHudRepositionQueuedRef.current = true;
+    if (r.current.repositionInFlight) {
+      r.current.repositionQueued = true;
       return;
     }
 
-    clipItemHudRepositionInFlightRef.current = true;
+    r.current.repositionInFlight = true;
     try {
       await positionClipItemHudAtEdge();
     } finally {
-      clipItemHudRepositionInFlightRef.current = false;
-      if (clipItemHudRepositionQueuedRef.current) {
-        clipItemHudRepositionQueuedRef.current = false;
+      r.current.repositionInFlight = false;
+      if (r.current.repositionQueued) {
+        r.current.repositionQueued = false;
         void repositionClipItemHud();
       }
     }
@@ -179,21 +201,21 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
   const scheduleRepositionClipItemHud = useCallback(() => {
     if (!rootRef.current) return;
-    if (!clipItemHudVisibleRef.current || !isSelected) return;
+    if (!r.current.hudVisible || !isSelected) return;
     if (HudManager.isDragging()) return;
     // 固定边缘模式下不需要跟随光标重定位
     if (positionMode !== 'dynamic') return;
-    if (clipItemHudRepositionRafRef.current !== null) return;
+    if (r.current.repositionRaf !== null) return;
 
-    clipItemHudRepositionRafRef.current = window.requestAnimationFrame(() => {
-      clipItemHudRepositionRafRef.current = null;
+    r.current.repositionRaf = window.requestAnimationFrame(() => {
+      r.current.repositionRaf = null;
       void repositionClipItemHud();
     });
   }, [isSelected, positionMode, repositionClipItemHud, rootRef]);
 
   const openClipItemHud = useCallback(async () => {
     if (HudManager.isDragging()) return;
-    if (clipItemHudVisibleRef.current && HudManager.isOwner(itemId)) return;
+    if (r.current.hudVisible && HudManager.isOwner(itemId)) return;
     HudManager.claimOwnership(itemId);
 
     await positionClipItemHudAtEdge();
@@ -218,45 +240,35 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       await TauriService.showClipItemHud();
       HudManager.setVisible(true);
     }
-    clipItemHudVisibleRef.current = true;
+    r.current.hudVisible = true;
   }, [emitClipItemHudSnapshot, itemId, positionClipItemHudAtEdge]);
 
   const shouldShowClipItemHud = useCallback(() => {
     if (!shouldEnableClipItemHud || !isSelected) return false;
     if (HudManager.isDragging()) return false;
-    if (mainWindowMovingRef.current) return false;
-    if (!isInViewportRef.current) return false;
-    return mainWindowFocusedRef.current;
+    if (r.current.mainWindowMoving) return false;
+    if (!r.current.isInViewport) return false;
+    return r.current.mainWindowFocused;
   }, [isSelected, shouldEnableClipItemHud]);
 
   const syncClipItemHudVisibility = useCallback(() => {
     if (!isTauri) return;
 
-    if (radialMenuVisibleRef.current) {
+    if (r.current.radialMenuVisible) {
       hideClipItemHud();
       return;
     }
 
-    // mainWindowFocusedRef 可能因 document.hasFocus() 不可靠而为 false（如点击了
+    // mainWindowFocused 可能因 document.hasFocus() 不可靠而为 false（如点击了
     // 不可聚焦的 HUD 窗口）。此时改为异步走 Rust IPC 验证，不立即隐藏。
-    if (!mainWindowFocusedRef.current) {
+    if (!r.current.mainWindowFocused) {
       // 先检查其他条件（如 isDragging、isSelected），能直接判否就跳过 IPC
-      if (!shouldEnableClipItemHud || !isSelected || HudManager.isDragging() || mainWindowMovingRef.current) {
+      if (!shouldEnableClipItemHud || !isSelected || HudManager.isDragging() || r.current.mainWindowMoving) {
         hideClipItemHud();
         return;
       }
       // 不确定焦点状态 → 异步验证
-      void TauriService.isAppForegroundWindow().then((isOurs) => {
-        mainWindowFocusedRef.current = isOurs;
-        if (isOurs) {
-          void openClipItemHud();
-        } else {
-          hideClipItemHud();
-        }
-      }).catch(() => {
-        mainWindowFocusedRef.current = false;
-        hideClipItemHud();
-      });
+      void verifyAppForeground(openClipItemHud, hideClipItemHud);
       return;
     }
 
@@ -271,8 +283,8 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
   // ── [Section 2] 径向菜单（独立窗口）管理 ──
 
   const hideRadialMenu = useCallback(() => {
-    if (!isTauri || !radialMenuVisibleRef.current) return;
-    radialMenuVisibleRef.current = false;
+    if (!isTauri || !r.current.radialMenuVisible) return;
+    r.current.radialMenuVisible = false;
     setRadialMenuActive(false);
     setIsHudActive(false);
     void TauriService.setRadialMenuMousePassthrough(true);
@@ -281,13 +293,13 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
   const openRadialMenu = useCallback(async () => {
     if (!isTauri || !shouldEnableRadialMenuHud) return;
-    if (radialMenuVisibleRef.current) return;
+    if (r.current.radialMenuVisible) return;
 
     setIsHudActive(false);
 
     // 先隐藏线性 HUD（如果可见）— hide 不再销毁窗口，只移到屏外
-    if (clipItemHudVisibleRef.current) {
-      clipItemHudVisibleRef.current = false;
+    if (r.current.hudVisible) {
+      r.current.hudVisible = false;
       HudManager.setVisible(false);
       HudManager.releaseOwnership(itemId);
       void TauriService.hideClipItemHud();
@@ -303,7 +315,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       triggerMouseButton,
       triggerMouseMode,
     });
-    radialMenuVisibleRef.current = true;
+    r.current.radialMenuVisible = true;
     setRadialMenuActive(true);
     setIsHudActive(true);
   }, [itemId, isFavorite, isPinned, canEdit, theme, triggerMouseButton, triggerMouseMode, shouldEnableRadialMenuHud]);
@@ -313,7 +325,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     if (!isTauri || !shouldEnableRadialMenuHud || !radialMenuActive) return;
 
     const forwardPointerMove = (e: PointerEvent) => {
-      if (!radialMenuVisibleRef.current) return;
+      if (!r.current.radialMenuVisible) return;
       setIsHudActive(true);
 
       void TauriService.emitRadialMenuGlobalPointerMove({
@@ -325,14 +337,14 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     };
 
     const forwardPointerUp = (e: PointerEvent) => {
-      if (!radialMenuVisibleRef.current) return;
+      if (!r.current.radialMenuVisible) return;
       void TauriService.emitRadialMenuGlobalPointerUp({
         screenX: e.screenX,
         screenY: e.screenY,
         button: e.button,
       });
       // 径向菜单在 pointerup 后会自行关闭，同步本地状态
-      radialMenuVisibleRef.current = false;
+      r.current.radialMenuVisible = false;
       setRadialMenuActive(false);
       setIsHudActive(false);
       syncClipItemHudVisibility();
@@ -355,12 +367,12 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
     const handleWindowMoved = () => {
       if (!mounted) return;
-      mainWindowMovingRef.current = true;
+      r.current.mainWindowMoving = true;
       hideClipItemHud(true);
       clearMainWindowMoveSettleTimer();
-      mainWindowMoveSettleTimerRef.current = setTimeout(() => {
-        mainWindowMoveSettleTimerRef.current = null;
-        mainWindowMovingRef.current = false;
+      r.current.moveSettleTimer = setTimeout(() => {
+        r.current.moveSettleTimer = null;
+        r.current.mainWindowMoving = false;
         syncClipItemHudVisibility();
       }, MAIN_WINDOW_MOVE_SETTLE_MS);
     };
@@ -378,7 +390,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     return () => {
       mounted = false;
       clearMainWindowMoveSettleTimer();
-      mainWindowMovingRef.current = false;
+      r.current.mainWindowMoving = false;
       if (unlisten) unlisten();
     };
   }, [clearMainWindowMoveSettleTimer, hideClipItemHud, isSelected, shouldEnableClipItemHud, syncClipItemHudVisibility]);
@@ -421,7 +433,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
   const handlePointerUpCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     clearSuppressActiveFeedback();
     if (e.button !== triggerPointerButton) return;
-    if (!clipItemHudVisibleRef.current) return;
+    if (!r.current.hudVisible) return;
     scheduleRepositionClipItemHud();
   }, [clearSuppressActiveFeedback, scheduleRepositionClipItemHud, triggerPointerButton]);
 
@@ -494,8 +506,8 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        const wasInViewport = isInViewportRef.current;
-        isInViewportRef.current = entry.isIntersecting;
+        const wasInViewport = r.current.isInViewport;
+        r.current.isInViewport = entry.isIntersecting;
 
         if (!wasInViewport && entry.isIntersecting) {
           // 条目滚回可视区 → 重新评估 HUD 可见性
@@ -523,7 +535,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     if (!isTauri) return;
 
     if (!isSelected && !radialMenuActive) {
-      if (clipItemHudVisibleRef.current || HudManager.isOwner(itemId)) {
+      if (r.current.hudVisible || HudManager.isOwner(itemId)) {
         // 使用宽限定时器延迟隐藏：
         // 如果 action（pin/favorite）导致列表重排，selectedIndex 会被快速修正，
         // 新的 isSelected=true 触发 claimOwnership → 清除此定时器 → 无闪烁。
@@ -548,17 +560,31 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     }
   }, [hideClipItemHud, hideRadialMenu, isSelected, itemId, radialMenuActive, scheduleHideClipItemHud, shouldEnableClipItemHud, shouldEnableRadialMenuHud, syncClipItemHudVisibility]);
 
+  /** 防抖 blur 验证：clearTimeout → setTimeout → verifyAppForeground */
+  const debouncedBlurVerify = useCallback(() => {
+    if (r.current.blurHideTimer !== null) {
+      clearTimeout(r.current.blurHideTimer);
+    }
+    r.current.blurHideTimer = setTimeout(() => {
+      r.current.blurHideTimer = null;
+      verifyAppForeground(
+        () => { r.current.mainWindowFocused = true; },
+        syncClipItemHudVisibility,
+      );
+    }, BLUR_HIDE_DEBOUNCE_MS);
+  }, [syncClipItemHudVisibility, verifyAppForeground]);
+
   // ── [Section 8] 焦点管理：blur/focus + Rust IPC GetForegroundWindow 验证 ──
   useEffect(() => {
     if (!isTauri || !shouldEnableClipItemHud || !isSelected) return;
 
     const handleWindowFocus = () => {
       // 焦点回到主窗口 → 取消任何待执行的 blur 隐藏
-      if (blurHideTimerRef.current !== null) {
-        clearTimeout(blurHideTimerRef.current);
-        blurHideTimerRef.current = null;
+      if (r.current.blurHideTimer !== null) {
+        clearTimeout(r.current.blurHideTimer);
+        r.current.blurHideTimer = null;
       }
-      mainWindowFocusedRef.current = true;
+      r.current.mainWindowFocused = true;
       syncClipItemHudVisibility();
     };
 
@@ -567,26 +593,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       // Windows 上点击不可聚焦的 HUD 窗口仍会触发主窗口 blur，
       // document.hasFocus() 也不可靠。延迟后调用 Rust 端
       // GetForegroundWindow 真正判断前景窗口是否属于本应用。
-      if (blurHideTimerRef.current !== null) {
-        clearTimeout(blurHideTimerRef.current);
-      }
-      blurHideTimerRef.current = setTimeout(() => {
-        blurHideTimerRef.current = null;
-        void TauriService.isAppForegroundWindow().then((isOurs) => {
-          if (isOurs) {
-            // 前景窗口仍属于本应用（HUD/主窗口），不隐藏
-            mainWindowFocusedRef.current = true;
-            return;
-          }
-          // 真正切换到了其他应用
-          mainWindowFocusedRef.current = false;
-          syncClipItemHudVisibility();
-        }).catch(() => {
-          // IPC 失败时回退为安全隐藏
-          mainWindowFocusedRef.current = false;
-          syncClipItemHudVisibility();
-        });
-      }, BLUR_HIDE_DEBOUNCE_MS);
+      debouncedBlurVerify();
     };
 
     // effect 初始化不信任 document.hasFocus()（HUD 窗口不可聚焦时不可靠），
@@ -600,9 +607,9 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     return () => {
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('blur', handleWindowBlur);
-      if (blurHideTimerRef.current !== null) {
-        clearTimeout(blurHideTimerRef.current);
-        blurHideTimerRef.current = null;
+      if (r.current.blurHideTimer !== null) {
+        clearTimeout(r.current.blurHideTimer);
+        r.current.blurHideTimer = null;
       }
     };
   }, [isSelected, shouldEnableClipItemHud, syncClipItemHudVisibility]);
@@ -620,24 +627,8 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
 
     const handleHudWindowBlur = () => {
       if (!mounted) return;
-      // 与 Section 8 相同的防抖 + IPC 验证逻辑
-      setTimeout(() => {
-        if (!mounted) return;
-        void TauriService.isAppForegroundWindow().then((isOurs) => {
-          if (!mounted) return;
-          if (isOurs) {
-            // 焦点回到了主窗口或其他子窗口，不隐藏
-            mainWindowFocusedRef.current = true;
-            return;
-          }
-          mainWindowFocusedRef.current = false;
-          syncClipItemHudVisibility();
-        }).catch(() => {
-          if (!mounted) return;
-          mainWindowFocusedRef.current = false;
-          syncClipItemHudVisibility();
-        });
-      }, BLUR_HIDE_DEBOUNCE_MS);
+      // 复用共享的防抖 + IPC 焦点验证逻辑
+      debouncedBlurVerify();
     };
 
     void TauriService.listenClipItemHudWindowBlur(handleHudWindowBlur).then((dispose) => {
@@ -682,7 +673,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       }
 
       // 补发径向菜单快照
-      if (shouldEnableRadialMenuHud && radialMenuVisibleRef.current) {
+      if (shouldEnableRadialMenuHud && r.current.radialMenuVisible) {
         void TauriService.emitRadialMenuSnapshot({
           itemId,
           isFavorite,
@@ -744,16 +735,16 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
   useEffect(() => {
     return () => {
       // 取消待执行的重定位 RAF
-      if (clipItemHudRepositionRafRef.current !== null) {
-        window.cancelAnimationFrame(clipItemHudRepositionRafRef.current);
-        clipItemHudRepositionRafRef.current = null;
+      if (r.current.repositionRaf !== null) {
+        window.cancelAnimationFrame(r.current.repositionRaf);
+        r.current.repositionRaf = null;
       }
       // 清理定时器
       clearMainWindowMoveSettleTimer();
       HudManager.clearSwitchGraceTimer();
-      if (blurHideTimerRef.current !== null) {
-        clearTimeout(blurHideTimerRef.current);
-        blurHideTimerRef.current = null;
+      if (r.current.blurHideTimer !== null) {
+        clearTimeout(r.current.blurHideTimer);
+        r.current.blurHideTimer = null;
       }
       // 隐藏 HUD 和径向菜单
       hideClipItemHud();

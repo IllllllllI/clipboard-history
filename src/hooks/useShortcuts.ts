@@ -1,15 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TauriService, isTauri } from '../services/tauri';
 import type { WindowPlacementSettings } from '../types';
 
-
-// Vite 热更新兜底：在模块替换前/销毁时强制清理全局快捷键
+// ── Vite HMR 兜底：模块替换前强制清理全局快捷键 ────────────────
 if (import.meta.hot) {
   const cleanup = () => {
-    if (!isTauri) return;
-    void TauriService.unregisterAllShortcuts();
+    if (isTauri) void TauriService.unregisterAllShortcuts();
   };
-
   import.meta.hot.on('vite:beforeUpdate', cleanup);
   import.meta.hot.dispose(() => {
     import.meta.hot?.off('vite:beforeUpdate', cleanup);
@@ -17,7 +14,7 @@ if (import.meta.hot) {
   });
 }
 
-/** 将 Tauri 插件错误转为用户友好的中文提示 */
+/** Tauri 插件错误 → 用户友好中文提示 */
 function formatShortcutError(shortcut: string, err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (msg.includes('already registered')) {
@@ -26,121 +23,116 @@ function formatShortcutError(shortcut: string, err: unknown): string {
   return msg;
 }
 
-export function useShortcuts(globalShortcut: string, windowPlacement: WindowPlacementSettings) {
+/**
+ * 异步 FIFO 串行队列。
+ * 入列函数严格顺序执行，前驱无论成败都继续下一个，
+ * 杜绝 register/unregister 并发竞态。
+ */
+function createAsyncQueue() {
+  let tail = Promise.resolve();
+  return (fn: () => Promise<void>): Promise<void> => {
+    const next = tail.then(fn, fn);
+    // 静默吞错，避免 unhandled rejection 链式传播
+    tail = next.then(() => {}, () => {});
+    return next;
+  };
+}
+
+// ────────────────────────────────────────────────────────────────
+
+export function useShortcuts(
+  globalShortcut: string,
+  windowPlacement: WindowPlacementSettings,
+) {
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
-  // 并发防护：快速连续变更快捷键时，只以最后一次为准
+
+  /** 当前已注册的快捷键（空串 = 未注册） */
+  const registeredRef = useRef('');
+  /** 回调始终读取最新 windowPlacement，无需重新注册快捷键 */
+  const placementRef = useRef(windowPlacement);
+  placementRef.current = windowPlacement;
+
+  /** 串行队列实例（组件生命周期内唯一） */
+  const queueRef = useRef<ReturnType<typeof createAsyncQueue>>(null!);
+  if (!queueRef.current) queueRef.current = createAsyncQueue();
+  const enqueue = queueRef.current;
+
+  /** 递增版本号——丢弃过期的异步结果 */
   const versionRef = useRef(0);
-  const pendingRef = useRef<Promise<void> | null>(null);
-  const registeredShortcutRef = useRef<string>('');
 
-  // 始终保持 windowPlacement 最新值的引用，
-  // 避免快捷键回调闭包捕获过期的配置（快捷键不变时 effect 不会重新注册回调）
-  const windowPlacementRef = useRef(windowPlacement);
-  windowPlacementRef.current = windowPlacement;
-
-  const cleanupShortcuts = useCallback(() => {
-    if (!isTauri) return;
-    if (registeredShortcutRef.current) {
-      void TauriService.unregisterShortcut(registeredShortcutRef.current);
-      registeredShortcutRef.current = '';
-    }
-  }, []);
-
+  // ── 核心注册 effect ──────────────────────────────────────────
   useEffect(() => {
     if (!isTauri) return;
 
     const thisVersion = ++versionRef.current;
-    let disposed = false;
+    const isStale = () => versionRef.current !== thisVersion;
+
     setShortcutError(null);
+    setIsRegistering(Boolean(globalShortcut));
 
-    const setup = async () => {
-      let task: Promise<void> | null = null;
+    enqueue(async () => {
+      // 1) 注销旧快捷键
+      const prev = registeredRef.current;
+      if (prev && prev !== globalShortcut) {
+        await TauriService.unregisterShortcut(prev);
+        if (registeredRef.current === prev) registeredRef.current = '';
+      }
+      if (isStale()) return;
 
-      try {
-        setIsRegistering(Boolean(globalShortcut));
+      // 2) 无需注册 / 已注册 → 跳过
+      if (!globalShortcut || registeredRef.current === globalShortcut) return;
 
-        // 串行化注册流程，避免重复注册竞态导致的 "already registered"
-        if (pendingRef.current) {
-          await pendingRef.current;
-        }
+      // 3) 注册新快捷键
+      await TauriService.registerShortcut(globalShortcut, () => {
+        void TauriService.handleGlobalShortcut(placementRef.current);
+      });
 
-        task = (async () => {
-          const previous = registeredShortcutRef.current;
-          if (previous && previous !== globalShortcut) {
-            await TauriService.unregisterShortcut(previous);
-            if (registeredShortcutRef.current === previous) {
-              registeredShortcutRef.current = '';
-            }
-          }
-          if (disposed || versionRef.current !== thisVersion) return;
+      // 4) 注册期间版本已变 → 立即回滚
+      if (isStale()) {
+        await TauriService.unregisterShortcut(globalShortcut);
+        return;
+      }
 
-          if (!globalShortcut) {
-            return;
-          }
-
-          if (registeredShortcutRef.current === globalShortcut) {
-            return;
-          }
-
-          await TauriService.registerShortcut(globalShortcut, () => {
-            void TauriService.handleGlobalShortcut(windowPlacementRef.current);
-          });
-
-          if (disposed || versionRef.current !== thisVersion) {
-            await TauriService.unregisterShortcut(globalShortcut);
-            return;
-          }
-
-          registeredShortcutRef.current = globalShortcut;
-        })();
-
-        pendingRef.current = task;
-        await task;
-
-        // 注册成功后确认仍是最新版本
-        if (!disposed && versionRef.current === thisVersion) {
-          setShortcutError(null);
-        }
-      } catch (err) {
-        if (disposed || versionRef.current !== thisVersion) return;
+      registeredRef.current = globalShortcut;
+    })
+      .then(() => {
+        if (!isStale()) setShortcutError(null);
+      })
+      .catch((err: unknown) => {
+        if (isStale()) return;
         console.error('Failed to register global shortcut:', err);
         setShortcutError(formatShortcutError(globalShortcut, err));
-      } finally {
-        if (!disposed && versionRef.current === thisVersion) {
-          setIsRegistering(false);
-        }
-        if (task && pendingRef.current === task) {
-          pendingRef.current = null;
-        }
-      }
-    };
-
-    setup();
+      })
+      .finally(() => {
+        if (!isStale()) setIsRegistering(false);
+      });
 
     return () => {
-      disposed = true;
+      // 使挂起的异步任务过期，防止卸载后继续写入 registeredRef
+      ++versionRef.current;
     };
-  // windowPlacement 通过 ref 传递，无需加入依赖——
-  // 避免仅改位置模式就重新注销/注册快捷键
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // windowPlacement 通过 ref 传递——避免仅改位置就重新注销/注册快捷键
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalShortcut]);
 
-  // 组件卸载时清理快捷键
+  // ── 组件卸载 + 页面关闭 统一清理 ────────────────────────────
   useEffect(() => {
-    return () => cleanupShortcuts();
-  }, [cleanupShortcuts]);
+    const cleanup = () => {
+      if (!isTauri || !registeredRef.current) return;
+      void TauriService.unregisterShortcut(registeredRef.current);
+      registeredRef.current = '';
+    };
 
-  // 页面卸载 / 关闭时兜底清理（刷新、导航、应用退出流程）
-  useEffect(() => {
-    window.addEventListener('beforeunload', cleanupShortcuts);
-    window.addEventListener('pagehide', cleanupShortcuts);
+    window.addEventListener('beforeunload', cleanup);
+    window.addEventListener('pagehide', cleanup);
 
     return () => {
-      window.removeEventListener('beforeunload', cleanupShortcuts);
-      window.removeEventListener('pagehide', cleanupShortcuts);
+      window.removeEventListener('beforeunload', cleanup);
+      window.removeEventListener('pagehide', cleanup);
+      cleanup(); // 组件卸载时也清理
     };
-  }, [cleanupShortcuts]);
+  }, []);
 
-  return { shortcutError, isRegistering };
+  return { shortcutError, isRegistering } as const;
 }

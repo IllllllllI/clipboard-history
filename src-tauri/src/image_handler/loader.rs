@@ -13,6 +13,7 @@
 //! - 网络错误统一映射到 `ImageError`，便于上层处理。
 
 use base64::{Engine as _, engine::general_purpose};
+use bytes::Bytes;
 use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -29,6 +30,8 @@ const NETWORK_RETRY_BASE_DELAY_MS: u64 = 180;
 const BUFFER_INITIAL_CAPACITY: usize = 16 * 1024;
 const DOWNLOAD_CACHE_TTL_SECS: u64 = 25;
 const DOWNLOAD_CACHE_MAX_ENTRIES: usize = 24;
+/// 缓存清理最低间隔（秒），避免每次读写锁内都全量遍历。
+const CACHE_CLEANUP_INTERVAL_SECS: u64 = 5;
 
 impl ImageHandler {
     /// 从 URL 加载图片原始字节。
@@ -53,7 +56,8 @@ impl ImageHandler {
     {
         log::info!("🌐 开始下载图片 - URL: {}", Self::redact_url_for_log(url));
 
-        Self::validate_url_safety(url, config).await?;
+        // URL 安全校验已统一到 download 内部的 validate_url_and_build_clients 中，
+        // 避免与 build_request_clients_for_url 重复 DNS 解析。
         let bytes = self
             .download_with_validation_with_hooks(url, config, &on_progress, &is_cancelled)
             .await?;
@@ -74,24 +78,20 @@ impl ImageHandler {
         log::info!("📝 开始处理 base64 图片");
 
         let bytes = Self::parse_base64_with_limit(data, config.max_file_size)?;
-
-        if bytes.len() as u64 > config.max_file_size {
-            return Err(ImageError::ResourceLimit(format!(
-                "Base64 解码后体积过大：{:.2} MB（限制：{:.2} MB）",
-                bytes.len() as f64 / 1024.0 / 1024.0,
-                config.max_file_size as f64 / 1024.0 / 1024.0
-            )));
-        }
+        // parse_base64_with_limit 已通过上界估算拒绝超限输入，
+        // 实际解码长度 ≤ 上界 ≤ max_file_size，无需二次校验。
         Self::validate_image_signature(&bytes)?;
 
         Ok(RawImageData {
-            bytes,
+            bytes: Bytes::from(bytes),
             source_hint: "base64",
         })
     }
 
     /// 从本地路径加载图片原始字节。
-    pub(super) fn load_from_file(
+    ///
+    /// 使用 `tokio::fs` 异步 I/O，避免阻塞 tokio 工作线程。
+    pub(super) async fn load_from_file(
         &self,
         path: &str,
         config: &ImageConfig,
@@ -99,12 +99,16 @@ impl ImageHandler {
         log::info!("📁 开始读取本地图片 - 路径: {}", path);
 
         let file_path = Path::new(path);
-        if !file_path.exists() {
-            return Err(ImageError::FileSystem(format!("文件不存在：{}", path)));
-        }
 
-        let metadata = std::fs::metadata(file_path)
-            .map_err(|e| ImageError::FileSystem(format!("无法读取文件信息：{}", e)))?;
+        let metadata = tokio::fs::metadata(file_path)
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    ImageError::FileSystem(format!("文件不存在：{}", path))
+                } else {
+                    ImageError::FileSystem(format!("无法读取文件信息：{}", e))
+                }
+            })?;
 
         if metadata.len() > config.max_file_size {
             return Err(ImageError::ResourceLimit(format!(
@@ -114,12 +118,13 @@ impl ImageHandler {
             )));
         }
 
-        let bytes = std::fs::read(file_path)
+        let bytes = tokio::fs::read(file_path)
+            .await
             .map_err(|e| ImageError::FileSystem(format!("无法读取图片文件：{}", e)))?;
         Self::validate_image_signature(&bytes)?;
 
         Ok(RawImageData {
-            bytes,
+            bytes: Bytes::from(bytes),
             source_hint: "file",
         })
     }
@@ -132,7 +137,7 @@ impl ImageHandler {
         &self,
         url: &str,
         config: &ImageConfig,
-    ) -> Result<Vec<u8>, ImageError> {
+    ) -> Result<Bytes, ImageError> {
         self.download_with_validation_with_hooks(url, config, |_, _| {}, || false)
             .await
     }
@@ -143,7 +148,7 @@ impl ImageHandler {
         config: &ImageConfig,
         on_progress: P,
         is_cancelled: C,
-    ) -> Result<Vec<u8>, ImageError>
+    ) -> Result<Bytes, ImageError>
     where
         P: Fn(u64, Option<u64>) + Send + Sync,
         C: Fn() -> bool + Send + Sync,
@@ -174,7 +179,8 @@ impl ImageHandler {
                     "⚠️ 主链接下载失败，尝试回源地址: {}",
                     Self::redact_url_for_log(candidate_url)
                 );
-                Self::validate_url_safety(candidate_url, config).await?;
+                // Bing 回源地址的安全校验由 download_single_url 内部的
+                // validate_url_and_build_clients 统一处理，避免重复 DNS 解析。
             }
 
             if let Some(cached) = self.get_cached_download(candidate_url) {
@@ -184,7 +190,7 @@ impl ImageHandler {
             }
 
             match self
-                .download_single_url_with_validation_with_hooks(
+                .download_single_url(
                     candidate_url,
                     config,
                     &on_progress,
@@ -217,13 +223,16 @@ impl ImageHandler {
         Err(last_err.unwrap_or_else(|| ImageError::Network("下载流程异常结束".to_string())))
     }
 
-    async fn download_single_url_with_validation_with_hooks<P, C>(
+    /// 执行单个 URL 的带校验流式下载。
+    ///
+    /// 合并了 URL 安全校验和 HTTP 客户端构建，避免重复 DNS 解析。
+    async fn download_single_url<P, C>(
         &self,
         url: &str,
         config: &ImageConfig,
         on_progress: &P,
         is_cancelled: &C,
-    ) -> Result<Vec<u8>, ImageError>
+    ) -> Result<Bytes, ImageError>
     where
         P: Fn(u64, Option<u64>) + Send + Sync,
         C: Fn() -> bool + Send + Sync,
@@ -237,7 +246,8 @@ impl ImageHandler {
             }
 
             let referer = format!("{}://{}/", current_url.scheme(), current_url.host_str().unwrap_or(""));
-            let request_clients = self.build_request_clients_for_url(&current_url, config).await?;
+            // 合并 URL 安全校验 + DNS 解析 + 客户端构建，单次解析即可。
+            let request_clients = Self::validate_url_and_build_clients(&current_url, config).await?;
             let response = {
                 let mut attempt: u8 = 1;
                 loop {
@@ -324,6 +334,8 @@ impl ImageHandler {
                     .join(location_str)
                     .map_err(|e| ImageError::InvalidFormat(format!("重定向 URL 解析失败：{}", e)))?;
 
+                // 对重定向目标做轻量安全校验（协议+主机名+IP），
+                // DNS 级别的校验由下一轮循环顶部的 validate_url_and_build_clients 处理。
                 Self::validate_url_safety(next_url.as_str(), config).await?;
 
                 log::debug!("↪️ 跳转到: {}", Self::redact_url_for_log(next_url.as_str()));
@@ -431,7 +443,7 @@ impl ImageHandler {
             on_progress(total, total_len.or(Some(total)));
             log::debug!("✅ 下载完成 - {} bytes", total);
 
-            return Ok(buffer);
+            return Ok(Bytes::from(buffer));
         }
 
         Err(ImageError::Network("下载流程异常结束".to_string()))
@@ -452,24 +464,54 @@ impl ImageHandler {
             .await
     }
 
-    async fn build_request_clients_for_url(
-        &self,
+    /// 合并 URL 安全校验 + DNS 解析 + HTTP 客户端构建，避免重复解析。
+    ///
+    /// 将原来 `validate_url_safety` + `build_request_clients_for_url` 两步合为一步，
+    /// 对同一主机只做一次 DNS 解析。
+    async fn validate_url_and_build_clients(
         url: &reqwest::Url,
         config: &ImageConfig,
     ) -> Result<Vec<reqwest::Client>, ImageError> {
-        if config.allow_private_network || !config.resolve_dns_for_url_safety {
+        // 1. 协议校验
+        if url.scheme() != "http" && url.scheme() != "https" {
+            return Err(ImageError::InvalidFormat("仅支持 HTTP/HTTPS".to_string()));
+        }
+
+        let host = url
+            .host_str()
+            .ok_or_else(|| ImageError::InvalidFormat("URL 缺少主机地址".to_string()))?;
+
+        // 2. localhost 系主机名始终阻止（即使 allow_private_network=true），
+        //    防止通过重定向绕过安全校验。
+        if Self::is_local_hostname(host) {
+            return Err(ImageError::InvalidFormat(format!(
+                "禁止访问本地网络地址：{}",
+                host
+            )));
+        }
+
+        // 3. 允许内网 → 直接返回基础客户端
+        if config.allow_private_network {
             return Ok(vec![Self::build_base_http_client(config)?]);
         }
 
-        let host = match url.host_str() {
-            Some(host) => host,
-            None => return Ok(vec![Self::build_base_http_client(config)?]),
-        };
-
-        if host.parse::<IpAddr>().is_ok() {
+        // 4. 纯 IP 地址路径
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            if Self::is_private_or_local_ip(ip) {
+                return Err(ImageError::InvalidFormat(format!(
+                    "禁止访问内网 IP：{}",
+                    ip
+                )));
+            }
             return Ok(vec![Self::build_base_http_client(config)?]);
         }
 
+        // 5. 不需要 DNS 解析校验 → 返回基础客户端
+        if !config.resolve_dns_for_url_safety {
+            return Ok(vec![Self::build_base_http_client(config)?]);
+        }
+
+        // 6. DNS 解析 + SSRF 校验 + 构建绑定客户端（单次解析）
         let port = url
             .port_or_known_default()
             .ok_or_else(|| ImageError::InvalidFormat("URL 缺少端口信息".to_string()))?;
@@ -569,17 +611,29 @@ impl ImageHandler {
         format!("{}://{}{}{}", parsed.scheme(), host, port, path)
     }
 
-    fn get_cached_download(&self, url: &str) -> Option<Vec<u8>> {
+    fn get_cached_download(&self, url: &str) -> Option<Bytes> {
         let mut cache = match self.download_cache.lock() {
             Ok(guard) => guard,
             Err(_) => return None,
         };
 
-        cache.retain(|_, item| item.created_at.elapsed() <= Duration::from_secs(DOWNLOAD_CACHE_TTL_SECS));
+        // 懒清理：仅当距上次清理超过阈值时才遍历清理，降低热路径开销。
+        let now = std::time::Instant::now();
+        let ttl = Duration::from_secs(DOWNLOAD_CACHE_TTL_SECS);
+        let needs_cleanup = cache.len() > 0
+            && cache
+                .values()
+                .next()
+                .map(|first| first.created_at.elapsed() > ttl)
+                .unwrap_or(false);
+        if needs_cleanup {
+            cache.retain(|_, item| now.duration_since(item.created_at) <= ttl);
+        }
+
         cache.get(url).map(|item| item.bytes.clone())
     }
 
-    fn store_download_cache(&self, url: &str, bytes: &[u8]) {
+    fn store_download_cache(&self, url: &str, bytes: &Bytes) {
         if bytes.is_empty() {
             return;
         }
@@ -589,15 +643,21 @@ impl ImageHandler {
             Err(_) => return,
         };
 
-        cache.retain(|_, item| item.created_at.elapsed() <= Duration::from_secs(DOWNLOAD_CACHE_TTL_SECS));
-
+        // 懒清理：缓存数量接近上限时才清理过期条目。
         if cache.len() >= DOWNLOAD_CACHE_MAX_ENTRIES {
-            if let Some(oldest_key) = cache
-                .iter()
-                .min_by_key(|(_, item)| item.created_at)
-                .map(|(key, _)| key.clone())
-            {
-                cache.remove(&oldest_key);
+            let ttl = Duration::from_secs(DOWNLOAD_CACHE_TTL_SECS);
+            let now = std::time::Instant::now();
+            cache.retain(|_, item| now.duration_since(item.created_at) <= ttl);
+
+            // 清理后仍满则驱逐最老条目
+            if cache.len() >= DOWNLOAD_CACHE_MAX_ENTRIES {
+                if let Some(oldest_key) = cache
+                    .iter()
+                    .min_by_key(|(_, item)| item.created_at)
+                    .map(|(key, _)| key.clone())
+                {
+                    cache.remove(&oldest_key);
+                }
             }
         }
 
@@ -605,7 +665,7 @@ impl ImageHandler {
             url.to_string(),
             CachedUrlDownload {
                 created_at: std::time::Instant::now(),
-                bytes: bytes.to_vec(),
+                bytes: bytes.clone(),
             },
         );
     }
@@ -648,19 +708,20 @@ impl ImageHandler {
             return Err(ImageError::InvalidFormat("仅支持 HTTP/HTTPS".to_string()));
         }
 
-        if config.allow_private_network {
-            return Ok(());
-        }
-
         let host = parsed
             .host_str()
             .ok_or_else(|| ImageError::InvalidFormat("URL 缺少主机地址".to_string()))?;
 
+        // localhost 系主机名始终阻止，即使 allow_private_network=true。
         if Self::is_local_hostname(host) {
             return Err(ImageError::InvalidFormat(format!(
                 "禁止访问本地网络地址：{}",
                 host
             )));
+        }
+
+        if config.allow_private_network {
+            return Ok(());
         }
 
         if let Ok(ip) = host.parse::<IpAddr>() {
@@ -862,161 +923,5 @@ impl ImageHandler {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::image_handler::ImageConfig;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::thread;
-
-    #[tokio::test]
-    async fn url_safety_blocks_private_targets_by_default() {
-        let config = ImageConfig::default();
-
-        assert!(matches!(
-            ImageHandler::validate_url_safety("http://127.0.0.1/image.png", &config).await,
-            Err(ImageError::InvalidFormat(_))
-        ));
-
-        assert!(matches!(
-            ImageHandler::validate_url_safety("https://localhost/image.png", &config).await,
-            Err(ImageError::InvalidFormat(_))
-        ));
-    }
-
-    #[tokio::test]
-    async fn url_safety_allows_private_targets_when_enabled() {
-        let mut config = ImageConfig::default();
-        config.allow_private_network = true;
-
-        assert!(ImageHandler::validate_url_safety("http://127.0.0.1/image.png", &config)
-            .await
-            .is_ok());
-    }
-
-    #[test]
-    fn load_from_base64_rejects_non_image_payload() {
-        let handler = ImageHandler::new(ImageConfig::default()).expect("handler init failed");
-        let config = ImageConfig::default();
-
-        let result = handler.load_from_base64("SGVsbG8=", &config);
-
-        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
-    }
-
-    #[test]
-    fn parse_base64_with_limit_rejects_large_payload_before_decode() {
-        let huge = "A".repeat(1024 * 1024);
-        let result = ImageHandler::parse_base64_with_limit(&huge, 32);
-
-        assert!(matches!(result, Err(ImageError::ResourceLimit(_))));
-    }
-
-    #[test]
-    fn content_type_parser_accepts_image_with_params() {
-        assert!(ImageHandler::is_image_content_type("image/png; charset=utf-8"));
-        assert!(ImageHandler::is_image_content_type("IMAGE/JPEG"));
-        assert!(!ImageHandler::is_image_content_type("text/html; charset=utf-8"));
-    }
-
-    #[test]
-    fn retryable_http_status_is_expected() {
-        assert!(ImageHandler::is_retryable_http_status(reqwest::StatusCode::TOO_MANY_REQUESTS));
-        assert!(ImageHandler::is_retryable_http_status(reqwest::StatusCode::INTERNAL_SERVER_ERROR));
-        assert!(!ImageHandler::is_retryable_http_status(reqwest::StatusCode::BAD_REQUEST));
-    }
-
-    #[test]
-    fn redact_url_for_log_removes_query_and_fragment() {
-        let redacted = ImageHandler::redact_url_for_log(
-            "https://example.com:8443/path/img.png?token=abc123#hash",
-        );
-
-        assert_eq!(redacted, "https://example.com:8443/path/img.png");
-    }
-
-    #[test]
-    fn stream_signature_probe_recognizes_png_header() {
-        let png_signature = [137_u8, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13];
-        let result = ImageHandler::validate_stream_signature_probe(&png_signature, 64);
-
-        assert!(matches!(result, Ok(true)));
-    }
-
-    #[test]
-    fn stream_signature_probe_rejects_non_image_payload() {
-        let payload = b"<html><body>not an image</body></html>";
-        let result = ImageHandler::validate_stream_signature_probe(payload, 64);
-
-        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
-    }
-
-    #[tokio::test]
-    async fn load_from_url_rejects_non_image_body_even_when_content_type_is_image() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server failed");
-        let addr = listener.local_addr().expect("read local addr failed");
-
-        let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept failed");
-
-            let mut req_buf = [0u8; 1024];
-            let _ = stream.read(&mut req_buf);
-
-            let body = b"hello world";
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                body.len()
-            );
-
-            stream
-                .write_all(response.as_bytes())
-                .expect("write headers failed");
-            stream.write_all(body).expect("write body failed");
-            stream.flush().expect("flush failed");
-        });
-
-        let handler = ImageHandler::new(ImageConfig::default()).expect("handler init failed");
-        let mut config = ImageConfig::default();
-        config.allow_private_network = true;
-
-        let url = format!("http://127.0.0.1:{}/fake.png", addr.port());
-        let result = handler.load_from_url(&url, &config).await;
-
-        server.join().expect("server thread failed");
-
-        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
-    }
-
-    #[tokio::test]
-    async fn download_with_validation_blocks_redirect_to_localhost() {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server failed");
-        let addr = listener.local_addr().expect("read local addr failed");
-
-        let server = thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept failed");
-
-            let mut req_buf = [0u8; 1024];
-            let _ = stream.read(&mut req_buf);
-
-            let response = format!(
-                "HTTP/1.1 302 Found\r\nLocation: http://localhost:{}/final.png\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                addr.port()
-            );
-
-            stream
-                .write_all(response.as_bytes())
-                .expect("write redirect response failed");
-            stream.flush().expect("flush failed");
-        });
-
-        let handler = ImageHandler::new(ImageConfig::default()).expect("handler init failed");
-        let config = ImageConfig::default();
-        let url = format!("http://127.0.0.1:{}/start.png", addr.port());
-
-        let result = handler.download_with_validation(&url, &config).await;
-
-        server.join().expect("server thread failed");
-
-        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
-    }
-}
+#[path = "tests/loader_tests.rs"]
+mod tests;

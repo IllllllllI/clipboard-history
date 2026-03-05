@@ -5,6 +5,7 @@ import { ClipItem } from '../../src/types';
 import { useSettingsContext } from '../../src/contexts/SettingsContext';
 import { useClipboardContext } from '../../src/contexts/ClipboardContext';
 import { useUIContext } from '../../src/contexts/UIContext';
+import { useClipItemStableContext } from '../../src/components/ClipItem/ClipItemContext';
 
 // Mock motion/react
 vi.mock('motion/react', () => ({
@@ -34,6 +35,9 @@ vi.mock('../../src/contexts/ClipboardContext', () => ({
 }));
 vi.mock('../../src/contexts/UIContext', () => ({
   useUIContext: vi.fn(),
+}));
+vi.mock('../../src/components/ClipItem/ClipItemContext', () => ({
+  useClipItemStableContext: vi.fn(),
 }));
 
 const defaultSettings = {
@@ -96,6 +100,12 @@ describe('Image Display Integration Tests', () => {
     (useSettingsContext as any).mockReturnValue({ ...defaultSettingsCtx, ...settingsOv });
     (useClipboardContext as any).mockReturnValue({ ...defaultClipboardCtx, ...clipboardOv });
     (useUIContext as any).mockReturnValue({ ...defaultUICtx, ...uiOv });
+    (useClipItemStableContext as any).mockReturnValue({
+      ...defaultSettingsCtx, ...settingsOv,
+      ...defaultClipboardCtx, ...clipboardOv,
+      ...defaultUICtx, ...uiOv,
+      addClipEntry: vi.fn(),
+    });
   };
 
   const createMockItem = (text: string, overrides?: Partial<ClipItem>): ClipItem => ({
@@ -123,7 +133,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const itemElement = container.querySelector('.group');
@@ -139,7 +149,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('https://example.com/image.jpg');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const itemElement = container.querySelector('.group');
@@ -155,7 +165,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/png;base64,test');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const copyButton = container.querySelector('button[title="复制"]');
@@ -170,7 +180,7 @@ describe('Image Display Integration Tests', () => {
       setupMocks({ selectedIndex: 0, copiedId: imageItem.id });
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // Check icon should be visible when copied
@@ -187,7 +197,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('C:\\Users\\test\\photo.jpg');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const pinButton = container.querySelector('button[title="置顶"]');
@@ -203,7 +213,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/jpeg;base64,test', { is_pinned: 1 });
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const pinButton = container.querySelector('button[title="取消置顶"]');
@@ -220,7 +230,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('https://example.com/image.webp');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const deleteButton = container.querySelector('button[title="删除"]');
@@ -243,7 +253,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/gif;base64,test');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const itemElement = container.querySelector('.group');
@@ -263,7 +273,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('https://example.com/photo.png');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const itemElement = container.querySelector('.group');
@@ -285,7 +295,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('/path/to/image.bmp');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const itemElement = container.querySelector('.group');
@@ -302,7 +312,7 @@ describe('Image Display Integration Tests', () => {
       const textItem = createMockItem('This is a test item');
       
       render(
-        <ClipItemComponent item={textItem} index={0} />
+        <ClipItemComponent item={textItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const highlightedText = screen.getByText('test');
@@ -315,7 +325,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/png;base64,test');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // Image should still be rendered
@@ -331,7 +341,7 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('https://example.com/image.svg');
       
       const { container } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const selectedItem = container.querySelector('.group');
@@ -347,11 +357,11 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/png;base64,test');
       
       const { container: textContainer } = render(
-        <ClipItemComponent item={textItem} index={0} />
+        <ClipItemComponent item={textItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const { container: imageContainer } = render(
-        <ClipItemComponent item={imageItem} index={1} />
+        <ClipItemComponent item={imageItem} index={1} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // Both should render without issues
@@ -366,11 +376,11 @@ describe('Image Display Integration Tests', () => {
       const imageUrlItem = createMockItem('https://example.com/image.jpg');
       
       const { container: urlContainer } = render(
-        <ClipItemComponent item={urlItem} index={0} />
+        <ClipItemComponent item={urlItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const { container: imageUrlContainer } = render(
-        <ClipItemComponent item={imageUrlItem} index={1} />
+        <ClipItemComponent item={imageUrlItem} index={1} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // Both should render with correct icons
@@ -388,11 +398,11 @@ describe('Image Display Integration Tests', () => {
       const imageItem = createMockItem('data:image/png;base64,test');
       
       const { container: colorContainer } = render(
-        <ClipItemComponent item={colorItem} index={0} />
+        <ClipItemComponent item={colorItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       const { container: imageContainer } = render(
-        <ClipItemComponent item={imageItem} index={1} />
+        <ClipItemComponent item={imageItem} index={1} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // Color preview should exist
@@ -417,7 +427,7 @@ describe('Image Display Integration Tests', () => {
       
       imageItems.forEach((item, index) => {
         render(
-          <ClipItemComponent item={item} index={index} />
+          <ClipItemComponent item={item} index={index} isSelected={false} isCopied={false} searchQuery="" />
         );
       });
 
@@ -438,7 +448,7 @@ describe('Image Display Integration Tests', () => {
       });
       
       const { container: withPreview } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       setupMocks({
@@ -446,7 +456,7 @@ describe('Image Display Integration Tests', () => {
       });
 
       const { container: withoutPreview } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // With preview enabled, ImageDisplay should be present
@@ -464,7 +474,7 @@ describe('Image Display Integration Tests', () => {
       });
       
       const { container: lightMode } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       setupMocks({
@@ -472,7 +482,7 @@ describe('Image Display Integration Tests', () => {
       });
 
       const { container: darkMode } = render(
-        <ClipItemComponent item={imageItem} index={0} />
+        <ClipItemComponent item={imageItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
       );
 
       // Both should render, with different color schemes

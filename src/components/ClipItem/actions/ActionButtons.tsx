@@ -12,7 +12,7 @@ interface ActionButtonsProps {
   isFiles: boolean;
   isImage: boolean;
   darkMode: boolean;
-  copiedId: number | null;
+  isCopied: boolean;
   onCopy: (item: ClipItem) => void;
   onRemove: (id: number) => void;
   onEdit: (item: ClipItem) => void;
@@ -25,7 +25,7 @@ export const ActionButtons = React.memo(function ActionButtons({
   isFiles,
   isImage,
   darkMode,
-  copiedId,
+  isCopied,
   onCopy,
   onRemove,
   onEdit,
@@ -55,7 +55,7 @@ export const ActionButtons = React.memo(function ActionButtons({
         title="复制"
       >
         <AnimatePresence mode="wait" initial={false}>
-          {copiedId === item.id ? (
+          {isCopied ? (
             <motion.div
               key="copied"
               initial={{ opacity: 0, scale: 0.5, rotate: -45 }}

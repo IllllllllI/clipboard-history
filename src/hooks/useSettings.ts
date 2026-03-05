@@ -1,287 +1,201 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { AppSettings } from '../types';
+import type { AppSettings } from '../types';
 import { DEFAULT_SETTINGS } from '../constants';
-import { CLIP_ITEM_HUD_BORDER_RING_WIDTH, CLIP_ITEM_HUD_BORDER_RUN_DURATION } from '../hud/clipitem/constants';
+import {
+  CLIP_ITEM_HUD_BORDER_RING_WIDTH,
+  CLIP_ITEM_HUD_BORDER_RUN_DURATION,
+} from '../hud/clipitem/constants';
 import { TauriService } from '../services/tauri';
 
 const SAVE_DEBOUNCE_MS = 300;
 const THEME_TRANSITION_MS = 240;
 
 // ============================================================================
-// 声明式迁移管道 — 新增迁移只需加一条记录，符合开闭原则
+// 声明式字段约束 — 新增字段只需加一行规则，违反约束自动回退到 DEFAULT_SETTINGS
 // ============================================================================
 
-type Migration = (data: Record<string, unknown>) => void;
+// ── 约束类型 ──
 
-/** 按顺序执行的迁移列表 */
-const MIGRATIONS: Migration[] = [
-  // v0.1: 旧快捷键迁移
-  (data) => {
-    if (
-      data.globalShortcut === 'CmdOrControl+Shift+V' ||
-      data.globalShortcut === 'CommandOrControl+Shift+V'
-    ) {
-      data.globalShortcut = 'Alt+V';
-    }
-  },
-  // v0.2: 图片性能档位兜底
-  (data) => {
-    const profile = data.imagePerformanceProfile;
-    if (profile !== 'quality' && profile !== 'balanced' && profile !== 'speed') {
-      data.imagePerformanceProfile = 'balanced';
-    }
-  },
-  // v0.3: 高级配置兜底
-  (data) => {
-    if (typeof data.allowPrivateNetwork !== 'boolean') {
-      data.allowPrivateNetwork = false;
-    }
-    if (typeof data.resolveDnsForUrlSafety !== 'boolean') {
-      data.resolveDnsForUrlSafety = true;
-    }
+type Constraint =
+  | Readonly<{ kind: 'bool' }>
+  | Readonly<{ kind: 'enum'; values: ReadonlySet<string> }>
+  | Readonly<{
+      kind: 'num';
+      min: number;
+      max: number;
+      /** 截断为整数 */    trunc?: boolean;
+      /** 越界时钳位到边界（默认重置为 DEFAULT_SETTINGS 值） */
+      clamp?: boolean;
+    }>;
 
-    const bytes = Number(data.maxDecodedBytes);
-    if (!Number.isFinite(bytes) || bytes < 8 * 1024 * 1024) {
-      data.maxDecodedBytes = 160 * 1024 * 1024;
-    }
-  },
-  // v0.4: 全局快捷键窗口定位策略
-  (data) => {
-    const placement = data.windowPlacement;
-    const allowedModes = new Set([
-      'smart_near_cursor',
-      'cursor_top_left',
-      'cursor_center',
-      'custom_anchor',
-      'monitor_center',
-      'screen_center',
-      'custom',
-      'last_position',
-    ]);
+// ── 便捷构造器（模块级单例，Set 只分配一次）──
 
-    const fallback = {
-      mode: 'smart_near_cursor',
-      customX: 120,
-      customY: 120,
-    };
+const BOOL: Constraint = { kind: 'bool' };
+const enumOf = (...vs: string[]): Constraint =>
+  ({ kind: 'enum', values: new Set(vs) });
+const gateInt = (min: number, max = Infinity): Constraint =>
+  ({ kind: 'num', min, max, trunc: true });
+const clampInt = (min: number, max: number): Constraint =>
+  ({ kind: 'num', min, max, trunc: true, clamp: true });
+const clampFloat = (min: number, max: number): Constraint =>
+  ({ kind: 'num', min, max, clamp: true });
 
-    if (typeof placement !== 'object' || placement === null) {
-      data.windowPlacement = fallback;
-      return;
+/** 根据约束校验单个值，不通过则返回 fallback */
+function applyConstraint(
+  value: unknown,
+  rule: Constraint,
+  fallback: unknown,
+): unknown {
+  switch (rule.kind) {
+    case 'bool':
+      return typeof value === 'boolean' ? value : fallback;
+    case 'enum':
+      return rule.values.has(value as string) ? value : fallback;
+    case 'num': {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return fallback;
+      const v = rule.trunc ? Math.trunc(n) : n;
+      if (v >= rule.min && v <= rule.max) return v;
+      return rule.clamp
+        ? Math.min(rule.max, Math.max(rule.min, v))
+        : fallback;
     }
+  }
+}
 
-    const placementObj = placement as Record<string, unknown>;
-    const mode = typeof placementObj.mode === 'string' ? placementObj.mode : fallback.mode;
-    const customX = Number(placementObj.customX);
-    const customY = Number(placementObj.customY);
+/**
+ * 字段约束表
+ *
+ * - 存储值不在约束范围内 → 回退到 DEFAULT_SETTINGS 中对应的默认值
+ * - 未列出的字段仅靠 `{ ...DEFAULT_SETTINGS, ...stored }` 填充缺失值
+ */
+const FIELD_CONSTRAINTS: ReadonlyArray<
+  readonly [keyof AppSettings, Constraint]
+> = [
+  // ── 布尔 ──
+  ['allowPrivateNetwork',              BOOL],
+  ['resolveDnsForUrlSafety',           BOOL],
+  ['showDragDownloadHud',              BOOL],
+  ['prefetchImageOnDragStart',         BOOL],
+  ['clipItemFloatingActionsEnabled',   BOOL],
+  ['clipItemHudEnabled',               BOOL],
+  ['clipItemHudRadialMenuEnabled',     BOOL],
+  ['clipItemHudRadialMenuFancyFx',     BOOL],
+  ['alwaysOnTop',                      BOOL],
 
-    data.windowPlacement = {
-      mode: allowedModes.has(mode) ? mode : fallback.mode,
-      customX: Number.isFinite(customX) ? Math.trunc(customX) : fallback.customX,
-      customY: Number.isFinite(customY) ? Math.trunc(customY) : fallback.customY,
-    };
-  },
-  // v0.5: 拖拽下载 HUD 开关兜底
-  (data) => {
-    if (typeof data.showDragDownloadHud !== 'boolean') {
-      data.showDragDownloadHud = true;
-    }
-  },
-  // v0.6: 拖拽开始预取开关兜底
-  (data) => {
-    if (typeof data.prefetchImageOnDragStart !== 'boolean') {
-      data.prefetchImageOnDragStart = false;
-    }
-  },
-  // v0.7: 图片下载分阶段超时兜底
-  (data) => {
-    const connect = Number(data.imageConnectTimeout);
-    const firstByte = Number(data.imageFirstByteTimeoutMs);
-    const chunk = Number(data.imageChunkTimeoutMs);
+  // ── 枚举 ──
+  ['imagePerformanceProfile',            enumOf('quality', 'balanced', 'speed')],
+  ['galleryDisplayMode',                 enumOf('grid', 'carousel', 'list')],
+  ['galleryScrollDirection',             enumOf('horizontal', 'vertical')],
+  ['galleryWheelMode',                   enumOf('always', 'ctrl')],
+  ['compactMetaDisplayMode',             enumOf('inside', 'auto', 'overlay')],
+  ['clipItemHudTriggerMouseButton',      enumOf('middle', 'right')],
+  ['clipItemHudTriggerMouseMode',        enumOf('click', 'press_release')],
+  ['clipItemHudRadialMenuLayoutProfile', enumOf('compact', 'standard', 'relaxed')],
+  ['clipItemHudPositionMode',            enumOf('dynamic', 'top', 'bottom', 'left', 'right')],
 
-    data.imageConnectTimeout = Number.isFinite(connect) && connect >= 1 ? Math.trunc(connect) : 8;
-    data.imageFirstByteTimeoutMs = Number.isFinite(firstByte) && firstByte >= 500 ? Math.trunc(firstByte) : 10_000;
-    data.imageChunkTimeoutMs = Number.isFinite(chunk) && chunk >= 500 ? Math.trunc(chunk) : 15_000;
-  },
-  // v0.8: 剪贴板写入重试预算兜底
-  (data) => {
-    const retryBudget = Number(data.imageClipboardRetryMaxTotalMs);
-    const retryMaxDelay = Number(data.imageClipboardRetryMaxDelayMs);
+  // ── 数值（门限：越界 → 重置为默认值）──
+  ['maxDecodedBytes',                  gateInt(8 * 1024 * 1024)],
+  ['imageConnectTimeout',             gateInt(1)],
+  ['imageFirstByteTimeoutMs',         gateInt(500)],
+  ['imageChunkTimeoutMs',             gateInt(500)],
+  ['imageClipboardRetryMaxTotalMs',   gateInt(200)],
+  ['imageClipboardRetryMaxDelayMs',   gateInt(10)],
 
-    data.imageClipboardRetryMaxTotalMs =
-      Number.isFinite(retryBudget) && retryBudget >= 200
-        ? Math.trunc(retryBudget)
-        : 1_800;
+  // ── 数值（钳位：越界 → 夹到最近边界）──
+  ['clipboardEventMinIntervalMs',     clampInt(20, 5_000)],
+  ['galleryListMaxVisibleItems',      clampInt(1, 30)],
+  ['fileListMaxVisibleItems',         clampInt(1, 30)],
+  ['clipItemTimeMetaAutoHideWidthPx', clampInt(0, 1_600)],
+  ['headerFilterIconModeWidthPx',     clampInt(0, 1_600)],
+  ['clipItemHudBorderRunDurationSec', clampFloat(
+    CLIP_ITEM_HUD_BORDER_RUN_DURATION.min,
+    CLIP_ITEM_HUD_BORDER_RUN_DURATION.max,
+  )],
+  ['clipItemHudBorderRingWidthPx',    clampFloat(
+    CLIP_ITEM_HUD_BORDER_RING_WIDTH.min,
+    CLIP_ITEM_HUD_BORDER_RING_WIDTH.max,
+  )],
+];
 
-    data.imageClipboardRetryMaxDelayMs =
-      Number.isFinite(retryMaxDelay) && retryMaxDelay >= 10
-        ? Math.trunc(retryMaxDelay)
-        : 900;
-  },
-  // v0.9: 剪贴板监听事件节流间隔兜底
-  (data) => {
-    const interval = Number(data.clipboardEventMinIntervalMs);
-    data.clipboardEventMinIntervalMs =
-      Number.isFinite(interval)
-        ? Math.min(5000, Math.max(20, Math.trunc(interval)))
-        : 80;
-  },
-  // v0.10: 多图相册显示模式 / 滚动方向兜底
-  (data) => {
-    const allowedModes = new Set(['grid', 'carousel', 'list']);
-    const allowedDirs = new Set(['horizontal', 'vertical']);
-    if (!allowedModes.has(data.galleryDisplayMode as string)) {
-      data.galleryDisplayMode = 'carousel';
-    }
-    if (!allowedDirs.has(data.galleryScrollDirection as string)) {
-      data.galleryScrollDirection = 'horizontal';
+// ============================================================================
+// 数据迁移 — 仅做键名 / 值的历史变换，与约束校验完全解耦
+// ============================================================================
+
+const DATA_MIGRATIONS: ReadonlyArray<
+  (raw: Record<string, unknown>) => void
+> = [
+  // 旧快捷键 → Alt+V
+  (raw) => {
+    const sc = raw.globalShortcut;
+    if (sc === 'CmdOrControl+Shift+V' || sc === 'CommandOrControl+Shift+V') {
+      raw.globalShortcut = 'Alt+V';
     }
   },
-  // v0.11: 多图相册滚轮触发方式兜底
-  (data) => {
-    const allowedWheelModes = new Set(['always', 'ctrl']);
-    if (!allowedWheelModes.has(data.galleryWheelMode as string)) {
-      data.galleryWheelMode = 'ctrl';
+  // 线性 HUD 位置模式重命名 + 清理废弃字段
+  (raw) => {
+    const mode = raw.clipItemHudPositionMode;
+    if (mode === 'near_item' || mode === 'fixed') {
+      raw.clipItemHudPositionMode = 'dynamic';
     }
-  },
-  // v0.12: 列表模式最大显示条目兜底
-  (data) => {
-    const maxVisible = Number(data.galleryListMaxVisibleItems);
-    data.galleryListMaxVisibleItems =
-      Number.isFinite(maxVisible)
-        ? Math.min(30, Math.max(1, Math.trunc(maxVisible)))
-        : 6;
-  },
-  // v0.13: 文件列表最大显示条目兜底
-  (data) => {
-    const maxVisible = Number(data.fileListMaxVisibleItems);
-    data.fileListMaxVisibleItems =
-      Number.isFinite(maxVisible)
-        ? Math.min(30, Math.max(1, Math.trunc(maxVisible)))
-        : 5;
-  },
-  // v0.14: 窄宽度工具区显示策略兜底
-  (data) => {
-    const allowedModes = new Set(['inside', 'auto', 'overlay']);
-    if (!allowedModes.has(data.compactMetaDisplayMode as string)) {
-      data.compactMetaDisplayMode = 'auto';
-    }
-  },
-  // v0.17: 条目 HUD 鼠标触发按钮兜底
-  (data) => {
-    const allowedButtons = new Set(['middle', 'right']);
-    if (!allowedButtons.has(data.clipItemHudTriggerMouseButton as string)) {
-      data.clipItemHudTriggerMouseButton = 'middle';
-    }
-  },
-  // v0.18: 条目 HUD 鼠标触发模式兜底
-  (data) => {
-    const allowedModes = new Set(['click', 'press_release']);
-    if (!allowedModes.has(data.clipItemHudTriggerMouseMode as string)) {
-      data.clipItemHudTriggerMouseMode = 'press_release';
-    }
-  },
-  // v0.19: 条目 HUD 径向菜单动效开关兜底
-  (data) => {
-    if (typeof data.clipItemHudRadialMenuFancyFx !== 'boolean') {
-      data.clipItemHudRadialMenuFancyFx = true;
-    }
-  },
-  // v0.20: 条目 HUD 径向菜单布局档位兜底
-  (data) => {
-    const allowedProfiles = new Set(['compact', 'standard', 'relaxed']);
-    if (!allowedProfiles.has(data.clipItemHudRadialMenuLayoutProfile as string)) {
-      data.clipItemHudRadialMenuLayoutProfile = 'standard';
-    }
-  },
-  // v0.21: 条目 HUD 流光边框速度兜底
-  (data) => {
-    const next = Number(data.clipItemHudBorderRunDurationSec);
-    if (!Number.isFinite(next)) {
-      data.clipItemHudBorderRunDurationSec = CLIP_ITEM_HUD_BORDER_RUN_DURATION.defaultValue;
-      return;
-    }
-    data.clipItemHudBorderRunDurationSec = Math.min(
-      CLIP_ITEM_HUD_BORDER_RUN_DURATION.max,
-      Math.max(CLIP_ITEM_HUD_BORDER_RUN_DURATION.min, next),
-    );
-  },
-  // v0.22: 条目 HUD 流光边框宽度兜底
-  (data) => {
-    const next = Number(data.clipItemHudBorderRingWidthPx);
-    if (!Number.isFinite(next)) {
-      data.clipItemHudBorderRingWidthPx = CLIP_ITEM_HUD_BORDER_RING_WIDTH.defaultValue;
-      return;
-    }
-    data.clipItemHudBorderRingWidthPx = Math.min(
-      CLIP_ITEM_HUD_BORDER_RING_WIDTH.max,
-      Math.max(CLIP_ITEM_HUD_BORDER_RING_WIDTH.min, next),
-    );
-  },
-  // v0.23: 右侧悬浮操作按钮开关兜底
-  (data) => {
-    if (typeof data.clipItemFloatingActionsEnabled !== 'boolean') {
-      data.clipItemFloatingActionsEnabled = true;
-    }
-  },
-  // v0.24: 窗口外 HUD 总开关兜底
-  (data) => {
-    if (typeof data.clipItemHudEnabled !== 'boolean') {
-      data.clipItemHudEnabled = true;
-    }
-  },
-  // v0.25: 窗口外圆形 HUD 开关兜底
-  (data) => {
-    if (typeof data.clipItemHudRadialMenuEnabled !== 'boolean') {
-      data.clipItemHudRadialMenuEnabled = true;
-    }
-  },
-  // v0.26: 条目时间信息自动隐藏阈值兜底（0=禁用）
-  (data) => {
-    const next = Number(data.clipItemTimeMetaAutoHideWidthPx);
-    data.clipItemTimeMetaAutoHideWidthPx =
-      Number.isFinite(next)
-        ? Math.min(1600, Math.max(0, Math.trunc(next)))
-        : 0;
-  },
-  // v0.27: 筛选按钮图标模式阈值兜底
-  (data) => {
-    const next = Number(data.headerFilterIconModeWidthPx);
-    data.headerFilterIconModeWidthPx =
-      Number.isFinite(next)
-        ? Math.min(1600, Math.max(0, Math.trunc(next)))
-        : 640;
-  },
-  // v0.28: 线性 HUD 定位模式兜底（near_item → dynamic，fixed → dynamic）
-  (data) => {
-    const allowedModes = new Set(['dynamic', 'top', 'bottom', 'left', 'right']);
-    // 兼容旧值迁移
-    if (data.clipItemHudPositionMode === 'near_item') {
-      data.clipItemHudPositionMode = 'dynamic';
-    } else if (data.clipItemHudPositionMode === 'fixed') {
-      data.clipItemHudPositionMode = 'dynamic';
-    }
-    if (!allowedModes.has(data.clipItemHudPositionMode as string)) {
-      data.clipItemHudPositionMode = 'dynamic';
-    }
-    // 清理已废弃的固定坐标字段
-    delete data.clipItemHudFixedX;
-    delete data.clipItemHudFixedY;
-  },
-  // v0.29: 主窗口置顶开关兜底
-  (data) => {
-    if (typeof data.alwaysOnTop !== 'boolean') {
-      data.alwaysOnTop = true;
-    }
+    delete raw.clipItemHudFixedX;
+    delete raw.clipItemHudFixedY;
   },
   // 后续迁移在此追加...
 ];
 
-function normalizeSettings(data: Record<string, unknown>): AppSettings {
-  const next = { ...data };
-  MIGRATIONS.forEach((migration) => migration(next));
-  return { ...DEFAULT_SETTINGS, ...next };
+// ============================================================================
+// windowPlacement 结构校验
+// ============================================================================
+
+const ALLOWED_PLACEMENT_MODES: ReadonlySet<string> = new Set([
+  'smart_near_cursor', 'cursor_top_left', 'cursor_center', 'custom_anchor',
+  'monitor_center', 'screen_center', 'custom', 'last_position',
+]);
+
+function validateWindowPlacement(
+  raw: unknown,
+): AppSettings['windowPlacement'] {
+  const fb = DEFAULT_SETTINGS.windowPlacement;
+  if (typeof raw !== 'object' || raw === null) return fb;
+
+  const obj = raw as Record<string, unknown>;
+  const mode =
+    typeof obj.mode === 'string' && ALLOWED_PLACEMENT_MODES.has(obj.mode)
+      ? (obj.mode as AppSettings['windowPlacement']['mode'])
+      : fb.mode;
+  const cx = Number(obj.customX);
+  const cy = Number(obj.customY);
+
+  return {
+    mode,
+    customX: Number.isFinite(cx) ? Math.trunc(cx) : fb.customX,
+    customY: Number.isFinite(cy) ? Math.trunc(cy) : fb.customY,
+  };
+}
+
+// ============================================================================
+// normalizeSettings
+// ============================================================================
+
+function normalizeSettings(raw: Record<string, unknown>): AppSettings {
+  // 1. 数据迁移（历史键名 / 值变换）
+  for (const migrate of DATA_MIGRATIONS) migrate(raw);
+
+  // 2. 合并默认值（填充缺失字段）
+  const merged: Record<string, unknown> = { ...DEFAULT_SETTINGS, ...raw };
+
+  // 3. 声明式约束校验
+  const defaults = DEFAULT_SETTINGS as unknown as Record<string, unknown>;
+  for (const [key, rule] of FIELD_CONSTRAINTS) {
+    merged[key] = applyConstraint(merged[key], rule, defaults[key]);
+  }
+
+  // 4. 结构体字段单独校验
+  merged.windowPlacement = validateWindowPlacement(raw.windowPlacement);
+
+  return merged as unknown as AppSettings;
 }
 
 // ============================================================================
@@ -291,40 +205,41 @@ function normalizeSettings(data: Record<string, unknown>): AppSettings {
 export function useSettings() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bootstrappedSettingsRef = useRef(false);
+  const bootstrappedRef = useRef(false);
+
+  /** 始终指向最新 settings，供卸载冲洗读取 */
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
+  // ── 1. 从后端加载设置 ──
 
   useEffect(() => {
     let cancelled = false;
 
-    TauriService
-      .getAppSettings()
+    TauriService.getAppSettings()
       .then((stored) => {
         if (cancelled || !stored || typeof stored !== 'object') return;
         setSettings(normalizeSettings(stored));
       })
-      .catch((error) => {
-        console.warn('读取后端应用设置失败：', error);
-      })
+      .catch((err) => console.warn('读取后端应用设置失败：', err))
       .finally(() => {
-        if (!cancelled) bootstrappedSettingsRef.current = true;
+        if (!cancelled) bootstrappedRef.current = true;
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
-  // 防抖写入后端设置存储
+  // ── 2. 防抖写入后端存储 ──
+
   useEffect(() => {
-    if (!bootstrappedSettingsRef.current) return;
+    if (!bootstrappedRef.current) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
+      timerRef.current = null;
       TauriService
         .setAppSettings(settings as unknown as Record<string, unknown>)
-        .catch((error) => {
-          console.warn('写入后端应用设置失败：', error);
-        });
+        .catch((err) => console.warn('写入后端应用设置失败：', err));
     }, SAVE_DEBOUNCE_MS);
 
     return () => {
@@ -332,54 +247,62 @@ export function useSettings() {
     };
   }, [settings]);
 
-  // 同步窗口标题栏主题和 HTML 根节点暗黑模式类
+  // 卸载 / 页面关闭时冲洗未保存的 debounce（防止最后一次变更丢失）
+  useEffect(() => {
+    const flush = () => {
+      if (!timerRef.current) return;
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      TauriService
+        .setAppSettings(settingsRef.current as unknown as Record<string, unknown>)
+        .catch((err) => console.warn('冲洗设置失败：', err));
+    };
+
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      window.removeEventListener('beforeunload', flush);
+      flush(); // 组件卸载时也冲洗
+    };
+  }, []);
+
+  // ── 3. 主题同步 ──
+
   useEffect(() => {
     const root = document.documentElement;
-    const hadDarkMode = root.classList.contains('dark');
-    const hasThemeChanged = hadDarkMode !== settings.darkMode;
+    const wasDark = root.classList.contains('dark');
     let transitionTimer: ReturnType<typeof setTimeout> | null = null;
 
-    if (hasThemeChanged) {
+    if (wasDark !== settings.darkMode) {
       root.classList.add('theme-switching');
-      transitionTimer = setTimeout(() => {
-        root.classList.remove('theme-switching');
-      }, THEME_TRANSITION_MS);
+      transitionTimer = setTimeout(
+        () => root.classList.remove('theme-switching'),
+        THEME_TRANSITION_MS,
+      );
     }
 
-    if (settings.darkMode) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    root.classList.toggle('dark', settings.darkMode);
 
     try {
       getCurrentWindow().setTheme(settings.darkMode ? 'dark' : 'light');
-    } catch {
-      // 非 Tauri 环境下忽略
-    }
+    } catch { /* 非 Tauri 环境 */ }
 
     return () => {
-      if (transitionTimer) {
-        clearTimeout(transitionTimer);
-        transitionTimer = null;
-      }
+      if (transitionTimer) clearTimeout(transitionTimer);
       root.classList.remove('theme-switching');
     };
   }, [settings.darkMode]);
 
-  useEffect(() => {
-    if (!bootstrappedSettingsRef.current) return;
+  // ── 4. 后端属性同步 ──
 
+  useEffect(() => {
+    if (!bootstrappedRef.current) return;
     TauriService
       .setImagePerformanceProfile(settings.imagePerformanceProfile)
-      .catch((error) => {
-        console.warn('同步图片性能档位失败：', error);
-      });
+      .catch((err) => console.warn('同步图片性能档位失败：', err));
   }, [settings.imagePerformanceProfile]);
 
   useEffect(() => {
-    if (!bootstrappedSettingsRef.current) return;
-
+    if (!bootstrappedRef.current) return;
     TauriService
       .setImageAdvancedConfig({
         allow_private_network: settings.allowPrivateNetwork,
@@ -391,9 +314,7 @@ export function useSettings() {
         clipboard_retry_max_total_ms: settings.imageClipboardRetryMaxTotalMs,
         clipboard_retry_max_delay_ms: settings.imageClipboardRetryMaxDelayMs,
       })
-      .catch((error) => {
-        console.warn('同步图片高级配置失败：', error);
-      });
+      .catch((err) => console.warn('同步图片高级配置失败：', err));
   }, [
     settings.allowPrivateNetwork,
     settings.resolveDnsForUrlSafety,
@@ -405,25 +326,23 @@ export function useSettings() {
     settings.imageClipboardRetryMaxDelayMs,
   ]);
 
-  // 同步主窗口置顶状态
   useEffect(() => {
-    if (!bootstrappedSettingsRef.current) return;
-
+    if (!bootstrappedRef.current) return;
     TauriService
       .setAlwaysOnTop(settings.alwaysOnTop)
-      .catch((error) => {
-        console.warn('同步主窗口置顶状态失败：', error);
-      });
+      .catch((err) => console.warn('同步主窗口置顶状态失败：', err));
   }, [settings.alwaysOnTop]);
 
+  // ── 5. 对外 API ──
+
   const updateSettings = useCallback((updates: Partial<AppSettings>) => {
-    setSettings(prev => {
+    setSettings((prev) => {
       const next = { ...prev, ...updates };
       const changed = (Object.keys(updates) as Array<keyof AppSettings>)
-        .some((key) => prev[key] !== next[key]);
+        .some((k) => prev[k] !== next[k]);
       return changed ? next : prev;
     });
   }, []);
 
-  return { settings, updateSettings };
+  return { settings, updateSettings } as const;
 }

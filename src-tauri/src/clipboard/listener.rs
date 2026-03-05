@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -8,11 +8,15 @@ use tauri::{AppHandle, Emitter, Wry};
 
 use super::try_consume_ignore_budget;
 
+// ── 常量 ──────────────────────────────────────────────────────
+
 const CLIPBOARD_EVENT_MIN_INTERVAL_DEFAULT_MS: u64 = 80;
 const CLIPBOARD_EVENT_MIN_INTERVAL_MIN_MS: u64 = 20;
 const CLIPBOARD_EVENT_MIN_INTERVAL_MAX_MS: u64 = 5_000;
 const MONITOR_RESTART_BASE_DELAY_MS: u64 = 100;
 const MONITOR_RESTART_MAX_DELAY_MS: u64 = 5_000;
+
+// ── 全局节流间隔 ─────────────────────────────────────────────
 
 static CLIPBOARD_EVENT_MIN_INTERVAL_MS: AtomicU64 =
     AtomicU64::new(CLIPBOARD_EVENT_MIN_INTERVAL_DEFAULT_MS);
@@ -45,6 +49,8 @@ fn compute_restart_backoff_ms(restart_attempt: u32) -> u64 {
         .min(MONITOR_RESTART_MAX_DELAY_MS)
 }
 
+// ── 纯函数：节流判定 ─────────────────────────────────────────
+
 fn debounce_remaining(elapsed: Duration, min_interval: Duration) -> Option<Duration> {
     if elapsed >= min_interval {
         None
@@ -53,27 +59,15 @@ fn debounce_remaining(elapsed: Duration, min_interval: Duration) -> Option<Durat
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum DebounceDecision {
-    EmitNow,
-    Throttle {
-        remaining: Duration,
-        start_tail_worker: bool,
-    },
-}
+// ── 事件负载 ─────────────────────────────────────────────────
 
-fn decide_debounce_action(
-    elapsed: Duration,
-    min_interval: Duration,
-    tail_worker_running: bool,
-) -> DebounceDecision {
-    match debounce_remaining(elapsed, min_interval) {
-        Some(remaining) => DebounceDecision::Throttle {
-            remaining,
-            start_tail_worker: !tail_worker_running,
-        },
-        None => DebounceDecision::EmitNow,
-    }
+/// 剪贴板变化事件的负载
+///
+/// 前端通过 `source` 字段区分变化来源，无需维护独立的忽略标志。
+#[derive(serde::Serialize, Clone)]
+struct ClipboardEventPayload {
+    /// 变化来源：`"external"` 表示外部应用，`"internal"` 表示本应用
+    source: &'static str,
 }
 
 fn emit_external_clipboard_changed(app: &AppHandle<Wry>) {
@@ -85,154 +79,185 @@ fn emit_external_clipboard_changed(app: &AppHandle<Wry>) {
     }
 }
 
-#[derive(Debug, Default)]
-struct DebounceState {
-    last_external_emit_at: Option<Instant>,
-    pending_external_change: bool,
-    tail_worker_running: bool,
+// ── TailEmitter：持久化尾沿发射线程 ──────────────────────────
+
+/// 尾沿发射器的共享状态
+struct TailState {
+    /// 有未发射的外部剪贴板变化事件
+    pending: bool,
+    /// 最近一次发射时间戳
+    last_emit_at: Option<Instant>,
+    /// 关闭信号
+    shutdown: bool,
 }
 
-/// 剪贴板事件处理器（内部实现）
+struct TailEmitterShared {
+    state: Mutex<TailState>,
+    wake: Condvar,
+    app: AppHandle<Wry>,
+}
+
+/// 尾沿发射器：确保节流窗口内最后一次剪贴板变化不丢失
+///
+/// ## 设计思路
+///
+/// 使用单个持久线程 + `Condvar` 替代原先每次节流都 `thread::spawn` 的方式。
+/// 线程在无待处理事件时通过 `Condvar::wait` 阻塞（零 CPU 开销），
+/// 被唤醒后按节流间隔延迟发射，若期间有新事件则重置等待。
+///
+/// ## 优势
+///
+/// - **零线程创建开销**：整个监听生命周期只创建一个尾沿线程
+/// - **精确的延迟控制**：`Condvar::wait_timeout` 语义清晰，无需手动 sleep 循环
+/// - **干净的生命周期**：`Drop` 时发送 shutdown 信号，线程安全退出
+struct TailEmitter {
+    shared: Arc<TailEmitterShared>,
+}
+
+impl TailEmitter {
+    fn new(app: AppHandle<Wry>) -> Self {
+        let shared = Arc::new(TailEmitterShared {
+            state: Mutex::new(TailState {
+                pending: false,
+                last_emit_at: None,
+                shutdown: false,
+            }),
+            wake: Condvar::new(),
+            app,
+        });
+
+        let worker = Arc::clone(&shared);
+        thread::Builder::new()
+            .name("clipboard-tail-emitter".into())
+            .spawn(move || Self::worker_loop(worker))
+            .expect("启动尾沿发射线程失败");
+
+        Self { shared }
+    }
+
+    /// 标记有待发射的事件并唤醒工作线程
+    fn schedule(&self) {
+        let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.pending = true;
+        self.shared.wake.notify_one();
+    }
+
+    /// 锁定共享状态，供 Handler 读写 `last_emit_at` 等字段
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, TailState> {
+        self.shared.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn worker_loop(shared: Arc<TailEmitterShared>) {
+        log::debug!("📋 尾沿发射线程已启动");
+        let mut state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+
+        loop {
+            // 阶段 1：等待待处理事件（无事件时零 CPU 消耗）
+            while !state.pending && !state.shutdown {
+                state = shared.wake.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+            if state.shutdown {
+                break;
+            }
+
+            // 阶段 2：等待节流间隔满足
+            let min_interval = Duration::from_millis(current_event_min_interval_ms());
+            let elapsed = state
+                .last_emit_at
+                .map(|t| Instant::now().saturating_duration_since(t))
+                .unwrap_or(min_interval);
+
+            if let Some(remaining) = debounce_remaining(elapsed, min_interval) {
+                // 带超时等待：到期或被提前唤醒（有新事件/关闭信号）
+                let (new_state, _) = shared
+                    .wake
+                    .wait_timeout(state, remaining)
+                    .unwrap_or_else(|e| e.into_inner());
+                state = new_state;
+                // 重新进入循环顶部：可能 pending 已被主线程清除，
+                // 也可能时间已满足需要发射
+                continue;
+            }
+
+            // 阶段 3：发射事件
+            state.pending = false;
+            state.last_emit_at = Some(Instant::now());
+            // 释放锁再发射，避免在持有锁时调用可能阻塞的 app.emit
+            drop(state);
+
+            emit_external_clipboard_changed(&shared.app);
+
+            // 重新获取锁进入下一轮循环
+            state = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        }
+
+        log::debug!("📋 尾沿发射线程已退出");
+    }
+}
+
+impl Drop for TailEmitter {
+    fn drop(&mut self) {
+        let mut state = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.shutdown = true;
+        self.shared.wake.notify_one();
+        // 注意：不 join 线程——避免在 clipboard_master 的回调线程中死锁
+    }
+}
+
+// ── Handler ──────────────────────────────────────────────────
+
+/// 剪贴板事件处理器
 ///
 /// 监听系统剪贴板变化，过滤应用自身触发的变化，
-/// 并对外部变化做轻量节流后通知前端。
+/// 并对外部变化做 leading-edge 节流后通知前端。
+/// 被节流的尾部事件由 [`TailEmitter`] 延迟补发，保证不丢失。
 struct Handler {
     app: AppHandle<Wry>,
-    debounce_state: Arc<Mutex<DebounceState>>,
+    tail_emitter: TailEmitter,
 }
 
 impl Handler {
     fn new(app: AppHandle<Wry>) -> Self {
-        Self {
-            app,
-            debounce_state: Arc::new(Mutex::new(DebounceState::default())),
-        }
+        let tail_emitter = TailEmitter::new(app.clone());
+        Self { app, tail_emitter }
     }
-
-    fn spawn_tail_worker(&self, initial_wait: Duration) {
-        let app = self.app.clone();
-        let debounce_state = Arc::clone(&self.debounce_state);
-
-        thread::spawn(move || {
-            let mut wait_for = initial_wait;
-
-            loop {
-                if !wait_for.is_zero() {
-                    thread::sleep(wait_for);
-                }
-
-                let now = Instant::now();
-                let min_interval = Duration::from_millis(current_event_min_interval_ms());
-                let should_emit;
-
-                {
-                    let lock = debounce_state.lock();
-                    let mut state = match lock {
-                        Ok(guard) => guard,
-                        Err(poisoned) => {
-                            log::warn!("剪贴板节流状态锁中毒，继续使用恢复数据");
-                            poisoned.into_inner()
-                        }
-                    };
-
-                    if !state.pending_external_change {
-                        state.tail_worker_running = false;
-                        break;
-                    }
-
-                    let elapsed = state
-                        .last_external_emit_at
-                        .map(|last| now.saturating_duration_since(last))
-                        .unwrap_or(min_interval);
-
-                    if let Some(remaining) = debounce_remaining(elapsed, min_interval) {
-                        wait_for = remaining;
-                        continue;
-                    }
-
-                    state.pending_external_change = false;
-                    state.last_external_emit_at = Some(now);
-                    state.tail_worker_running = false;
-                    should_emit = true;
-                }
-
-                if should_emit {
-                    emit_external_clipboard_changed(&app);
-                }
-
-                break;
-            }
-        });
-    }
-}
-
-/// 剪贴板变化事件的负载
-///
-/// 前端通过 `source` 字段区分变化来源，无需维护独立的忽略标志。
-#[derive(serde::Serialize, Clone)]
-struct ClipboardEventPayload {
-    /// 变化来源：`"external"` 表示外部应用，`"internal"` 表示本应用
-    source: &'static str,
 }
 
 impl ClipboardHandler for Handler {
     fn on_clipboard_change(&mut self) -> CallbackResult {
-        if let Some(remaining_budget) = try_consume_ignore_budget() {
-            log::debug!("⏭️  忽略应用主动触发的剪贴板变化，剩余预算: {}", remaining_budget);
+        if let Some(remaining) = try_consume_ignore_budget() {
+            log::debug!(
+                "⏭️  忽略应用主动触发的剪贴板变化，剩余预算: {}",
+                remaining
+            );
             return CallbackResult::Next;
         }
 
         let now = Instant::now();
         let min_interval_ms = current_event_min_interval_ms();
         let min_interval = Duration::from_millis(min_interval_ms);
-        let mut emit_now = false;
-        let mut schedule_tail_wait = None;
 
-        {
-            let lock = self.debounce_state.lock();
-            let mut state = match lock {
-                Ok(guard) => guard,
-                Err(poisoned) => {
-                    log::warn!("剪贴板节流状态锁中毒，继续使用恢复数据");
-                    poisoned.into_inner()
-                }
-            };
+        let mut state = self.tail_emitter.lock_state();
+        let elapsed = state
+            .last_emit_at
+            .map(|t| now.saturating_duration_since(t))
+            .unwrap_or(min_interval);
 
-            let elapsed = state
-                .last_external_emit_at
-                .map(|last| now.saturating_duration_since(last))
-                .unwrap_or(min_interval);
-
-            match decide_debounce_action(elapsed, min_interval, state.tail_worker_running) {
-                DebounceDecision::Throttle {
-                    remaining,
-                    start_tail_worker,
-                } => {
-                    state.pending_external_change = true;
-                    if start_tail_worker {
-                        state.tail_worker_running = true;
-                        schedule_tail_wait = Some(remaining);
-                    }
-                    log::trace!(
-                        "⏱️ 剪贴板变化事件节流：{}ms < {}ms（尾沿补发）",
-                        elapsed.as_millis(),
-                        min_interval_ms
-                    );
-                }
-                DebounceDecision::EmitNow => {
-                    state.last_external_emit_at = Some(now);
-                    state.pending_external_change = false;
-                    emit_now = true;
-                }
-            }
-        }
-
-        if let Some(wait_for) = schedule_tail_wait {
-            self.spawn_tail_worker(wait_for);
-        }
-
-        if emit_now {
+        if debounce_remaining(elapsed, min_interval).is_none() {
+            // 间隔已满，立即发射
+            state.last_emit_at = Some(now);
+            state.pending = false;
+            drop(state);
             emit_external_clipboard_changed(&self.app);
+        } else {
+            // 间隔不足，交给尾沿发射器延迟处理
+            drop(state);
+            self.tail_emitter.schedule();
+            log::trace!(
+                "⏱️ 剪贴板变化事件节流：{}ms < {}ms（尾沿补发）",
+                elapsed.as_millis(),
+                min_interval_ms
+            );
         }
 
         CallbackResult::Next
@@ -243,6 +268,8 @@ impl ClipboardHandler for Handler {
         CallbackResult::Next
     }
 }
+
+// ── 公共 API ─────────────────────────────────────────────────
 
 /// 在后台线程启动剪贴板监控
 ///
@@ -270,84 +297,16 @@ pub fn start_monitoring(app: AppHandle<Wry>) {
 
             restart_attempt = restart_attempt.saturating_add(1);
             let backoff_ms = compute_restart_backoff_ms(restart_attempt);
-            log::warn!("📋 剪贴板监听 {}ms 后重试（attempt={}）", backoff_ms, restart_attempt);
+            log::warn!(
+                "📋 剪贴板监听 {}ms 后重试（attempt={}）",
+                backoff_ms,
+                restart_attempt
+            );
             thread::sleep(Duration::from_millis(backoff_ms));
         }
     });
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        compute_restart_backoff_ms, debounce_remaining, decide_debounce_action,
-        normalize_clipboard_event_min_interval_ms,
-        DebounceDecision,
-    };
-    use std::time::Duration;
-
-    #[test]
-    fn normalize_clipboard_event_min_interval_clamps_bounds() {
-        assert_eq!(normalize_clipboard_event_min_interval_ms(5), 20);
-        assert_eq!(normalize_clipboard_event_min_interval_ms(80), 80);
-        assert_eq!(normalize_clipboard_event_min_interval_ms(6_000), 5_000);
-    }
-
-    #[test]
-    fn debounce_remaining_returns_expected_values() {
-        let min = Duration::from_millis(80);
-        assert_eq!(debounce_remaining(Duration::from_millis(20), min), Some(Duration::from_millis(60)));
-        assert_eq!(debounce_remaining(Duration::from_millis(80), min), None);
-        assert_eq!(debounce_remaining(Duration::from_millis(120), min), None);
-    }
-
-    #[test]
-    fn debounce_decision_emit_now_when_interval_reached() {
-        let decision = decide_debounce_action(
-            Duration::from_millis(80),
-            Duration::from_millis(80),
-            false,
-        );
-        assert_eq!(decision, DebounceDecision::EmitNow);
-    }
-
-    #[test]
-    fn debounce_decision_starts_tail_worker_when_throttled_first_time() {
-        let decision = decide_debounce_action(
-            Duration::from_millis(20),
-            Duration::from_millis(80),
-            false,
-        );
-        assert_eq!(
-            decision,
-            DebounceDecision::Throttle {
-                remaining: Duration::from_millis(60),
-                start_tail_worker: true,
-            }
-        );
-    }
-
-    #[test]
-    fn debounce_decision_does_not_restart_tail_worker_when_already_running() {
-        let decision = decide_debounce_action(
-            Duration::from_millis(10),
-            Duration::from_millis(80),
-            true,
-        );
-        assert_eq!(
-            decision,
-            DebounceDecision::Throttle {
-                remaining: Duration::from_millis(70),
-                start_tail_worker: false,
-            }
-        );
-    }
-
-    #[test]
-    fn restart_backoff_grows_then_caps() {
-        assert_eq!(compute_restart_backoff_ms(1), 100);
-        assert_eq!(compute_restart_backoff_ms(2), 200);
-        assert_eq!(compute_restart_backoff_ms(3), 400);
-        assert_eq!(compute_restart_backoff_ms(7), 5_000);
-        assert_eq!(compute_restart_backoff_ms(20), 5_000);
-    }
-}
+#[path = "tests/listener_tests.rs"]
+mod tests;

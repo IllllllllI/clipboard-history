@@ -12,83 +12,35 @@
 //!
 //! 对外仅暴露少量稳定 API：
 //! - `process_source`：执行完整图片处理链路
-//! - `set_performance_profile`：切换性能档位
-//! - `get_performance_profile`：读取当前档位
+//! - `process_url_with_progress`：带进度事件的 URL 处理
+//! - `cancel_download`：取消正在进行的下载
+//! - `set/get_performance_profile`：切换/读取性能档位
+//! - `set/get_advanced_config`：设置/读取高级参数
+//!
+//! ## 架构细节
+//!
+//! - `ProgressReporter`：封装进度节流、事件发射和最终状态汇总
+//! - `CancelFlagGuard`：RAII 守卫，确保取消标志在 panic / 提前返回时自动清理
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use super::{ImageConfig, ImageError, ImageHandler, ImagePerformanceProfile, ImageSource};
+use super::{ImageAdvancedConfig, ImageConfig, ImageError, ImageHandler, ImagePerformanceProfile, ImageSource};
 use tauri::{AppHandle, Emitter, Wry};
 
 pub const IMAGE_DOWNLOAD_PROGRESS_EVENT: &str = "image-download-progress";
-const DOWNLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(50);
-const DOWNLOAD_PROGRESS_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(400);
-const DOWNLOAD_PROGRESS_MIN_BYTES_DELTA: u64 = 256 * 1024;
-const DOWNLOAD_PROGRESS_MIN_PERCENT_DELTA: u8 = 1;
-const DOWNLOAD_PROGRESS_FORCE_PERCENT_DELTA: u8 = 5;
 
-#[derive(Debug)]
-struct DownloadProgressThrottleState {
-    last_emit_at: Option<Instant>,
-    last_progress: u8,
-    last_downloaded: u64,
-    last_total: Option<u64>,
-}
+// ─── 进度节流常量 ───────────────────────────────────────────────────
 
-impl DownloadProgressThrottleState {
-    fn new() -> Self {
-        Self {
-            last_emit_at: None,
-            last_progress: 0,
-            last_downloaded: 0,
-            last_total: None,
-        }
-    }
+const PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(50);
+const PROGRESS_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(400);
+const PROGRESS_MIN_BYTES_DELTA: u64 = 256 * 1024;
+const PROGRESS_MIN_PERCENT_DELTA: u8 = 1;
+const PROGRESS_FORCE_PERCENT_DELTA: u8 = 5;
 
-    fn update(&mut self, progress: u8, downloaded: u64, total: Option<u64>) {
-        self.last_emit_at = Some(Instant::now());
-        self.last_progress = progress;
-        self.last_downloaded = downloaded;
-        self.last_total = total;
-    }
-}
-
-fn should_emit_downloading_progress(
-    state: &DownloadProgressThrottleState,
-    progress: u8,
-    downloaded: u64,
-    total: Option<u64>,
-) -> bool {
-    let Some(last_emit_at) = state.last_emit_at else {
-        return true;
-    };
-
-    let elapsed = last_emit_at.elapsed();
-    let progress_delta = progress.saturating_sub(state.last_progress);
-    let downloaded_delta = downloaded.saturating_sub(state.last_downloaded);
-    let total_changed = total != state.last_total;
-
-    if progress_delta >= DOWNLOAD_PROGRESS_FORCE_PERCENT_DELTA {
-        return true;
-    }
-
-    if progress_delta >= DOWNLOAD_PROGRESS_MIN_PERCENT_DELTA && elapsed >= DOWNLOAD_PROGRESS_MIN_INTERVAL {
-        return true;
-    }
-
-    if downloaded_delta >= DOWNLOAD_PROGRESS_MIN_BYTES_DELTA && elapsed >= DOWNLOAD_PROGRESS_MIN_INTERVAL {
-        return true;
-    }
-
-    if total_changed {
-        return true;
-    }
-
-    elapsed >= DOWNLOAD_PROGRESS_HEARTBEAT_INTERVAL
-}
+// ─── 进度事件载荷 ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ImageDownloadProgressPayload {
@@ -102,17 +54,220 @@ pub struct ImageDownloadProgressPayload {
     pub error_message: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ImageAdvancedConfig {
-    pub allow_private_network: bool,
-    pub resolve_dns_for_url_safety: bool,
-    pub max_decoded_bytes: u64,
-    pub connect_timeout: u64,
-    pub stream_first_byte_timeout_ms: u64,
-    pub stream_chunk_timeout_ms: u64,
-    pub clipboard_retry_max_total_ms: u64,
-    pub clipboard_retry_max_delay_ms: u64,
+// ─── 进度节流状态（ProgressReporter 内部） ─────────────────────────
+
+#[derive(Debug)]
+struct ThrottleState {
+    last_emit_at: Option<Instant>,
+    last_progress: u8,
+    last_downloaded: u64,
+    last_total: Option<u64>,
 }
+
+impl ThrottleState {
+    fn new() -> Self {
+        Self {
+            last_emit_at: None,
+            last_progress: 0,
+            last_downloaded: 0,
+            last_total: None,
+        }
+    }
+
+    fn should_emit(&self, progress: u8, downloaded: u64, total: Option<u64>) -> bool {
+        let Some(last_emit_at) = self.last_emit_at else {
+            return true;
+        };
+
+        let elapsed = last_emit_at.elapsed();
+        let progress_delta = progress.saturating_sub(self.last_progress);
+        let downloaded_delta = downloaded.saturating_sub(self.last_downloaded);
+
+        if progress_delta >= PROGRESS_FORCE_PERCENT_DELTA {
+            return true;
+        }
+        if progress_delta >= PROGRESS_MIN_PERCENT_DELTA && elapsed >= PROGRESS_MIN_INTERVAL {
+            return true;
+        }
+        if downloaded_delta >= PROGRESS_MIN_BYTES_DELTA && elapsed >= PROGRESS_MIN_INTERVAL {
+            return true;
+        }
+        if total != self.last_total {
+            return true;
+        }
+        elapsed >= PROGRESS_HEARTBEAT_INTERVAL
+    }
+
+    fn update(&mut self, progress: u8, downloaded: u64, total: Option<u64>) {
+        self.last_emit_at = Some(Instant::now());
+        self.last_progress = progress;
+        self.last_downloaded = downloaded;
+        self.last_total = total;
+    }
+}
+
+// ─── ProgressReporter ──────────────────────────────────────────────
+
+/// 下载进度事件发射器。
+///
+/// 封装节流逻辑与事件序列化，使 `process_url_with_progress` 方法体保持简洁。
+struct ProgressReporter<'a> {
+    request_id: &'a str,
+    app: &'a AppHandle<Wry>,
+    throttle: Mutex<ThrottleState>,
+}
+
+impl<'a> ProgressReporter<'a> {
+    fn new(request_id: &'a str, app: &'a AppHandle<Wry>) -> Self {
+        Self {
+            request_id,
+            app,
+            throttle: Mutex::new(ThrottleState::new()),
+        }
+    }
+
+    /// 将已下载量/总量映射为 0-100 百分比。
+    fn compute_percent(status: &str, downloaded: u64, total: Option<u64>) -> u8 {
+        if status == "completed" {
+            return 100;
+        }
+        match total {
+            Some(0) | None => 0,
+            Some(t) => (downloaded.saturating_mul(100) / t).min(100) as u8,
+        }
+    }
+
+    /// 发射一条原始进度事件（不节流）。
+    fn emit_raw(
+        &self,
+        status: &'static str,
+        downloaded: u64,
+        total: Option<u64>,
+        stage: Option<&'static str>,
+        error_code: Option<&'static str>,
+        error_message: Option<String>,
+    ) {
+        let progress = Self::compute_percent(status, downloaded, total);
+        let payload = ImageDownloadProgressPayload {
+            request_id: self.request_id.to_owned(),
+            progress,
+            downloaded_bytes: downloaded,
+            total_bytes: total,
+            status,
+            stage,
+            error_code,
+            error_message,
+        };
+        let _ = self.app.emit(IMAGE_DOWNLOAD_PROGRESS_EVENT, payload);
+    }
+
+    /// 发射 downloading 事件（带节流）。
+    fn emit_downloading(&self, downloaded: u64, total: Option<u64>) {
+        let progress = Self::compute_percent("downloading", downloaded, total);
+
+        let mut guard = match self.throttle.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if !guard.should_emit(progress, downloaded, total) {
+            return;
+        }
+        guard.update(progress, downloaded, total);
+        drop(guard);
+
+        self.emit_raw("downloading", downloaded, total, None, None, None);
+    }
+
+    /// 读取最后一次记录的进度快照。
+    fn last_snapshot(&self) -> (u64, Option<u64>) {
+        match self.throttle.lock() {
+            Ok(g) => (g.last_downloaded, g.last_total),
+            Err(_) => (0, None),
+        }
+    }
+
+    /// 发射最终状态事件（completed / cancelled / failed）。
+    fn emit_final(&self, result: &Result<(), ImageError>) {
+        let (last_downloaded, last_total) = self.last_snapshot();
+
+        match result {
+            Ok(()) => {
+                let completed_total = last_total.or(Some(last_downloaded.max(1)));
+                self.emit_raw(
+                    "completed",
+                    last_downloaded.max(1),
+                    completed_total,
+                    None,
+                    None,
+                    None,
+                );
+            }
+            Err(ImageError::Cancelled(_)) => {
+                self.emit_raw(
+                    "cancelled",
+                    last_downloaded,
+                    last_total,
+                    None,
+                    Some("E_CANCELLED"),
+                    None,
+                );
+            }
+            Err(err) => {
+                self.emit_raw(
+                    "failed",
+                    last_downloaded,
+                    last_total,
+                    Some(err.stage()),
+                    Some(err.code()),
+                    Some(err.to_string()),
+                );
+            }
+        }
+    }
+}
+
+// ─── CancelFlagGuard ───────────────────────────────────────────────
+
+/// RAII 守卫：在作用域结束时自动从 `cancel_flags` 中移除对应条目。
+///
+/// 防止 panic 或提前 return 导致取消标志泄漏。
+struct CancelFlagGuard<'a> {
+    cancel_flags: &'a Mutex<HashMap<String, Arc<AtomicBool>>>,
+    request_id: String,
+}
+
+impl<'a> CancelFlagGuard<'a> {
+    /// 注册取消标志并返回守卫 + 共享标志引用。
+    fn register(
+        cancel_flags: &'a Mutex<HashMap<String, Arc<AtomicBool>>>,
+        request_id: String,
+    ) -> Result<(Self, Arc<AtomicBool>), ImageError> {
+        let flag = Arc::new(AtomicBool::new(false));
+        {
+            let mut guard = cancel_flags
+                .lock()
+                .map_err(|_| ImageError::ResourceLimit("下载取消标志锁已中毒".to_string()))?;
+            guard.insert(request_id.clone(), Arc::clone(&flag));
+        }
+        Ok((
+            Self {
+                cancel_flags,
+                request_id,
+            },
+            flag,
+        ))
+    }
+}
+
+impl Drop for CancelFlagGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.cancel_flags.lock() {
+            guard.remove(&self.request_id);
+        }
+    }
+}
+
+// ─── ImageServiceState ─────────────────────────────────────────────
 
 /// 图片处理服务状态。
 ///
@@ -175,125 +330,42 @@ impl ImageServiceState {
         self.handler.process_and_copy(source).await
     }
 
+    /// 带进度上报的 URL 下载处理流程。
+    ///
+    /// 进度通过 Tauri 事件发射到前端，节流策略避免高频发射。
+    /// 取消标志使用 RAII 守卫管理，确保异常路径不泄漏。
     pub async fn process_url_with_progress(
         &self,
         app: &AppHandle<Wry>,
         request_id: String,
         url: String,
     ) -> Result<(), ImageError> {
-        let cancel_flag = Arc::new(AtomicBool::new(false));
-        {
-            let mut guard = self
-                .cancel_flags
-                .lock()
-                .map_err(|_| ImageError::ResourceLimit("下载取消标志锁已中毒".to_string()))?;
-            guard.insert(request_id.clone(), Arc::clone(&cancel_flag));
-        }
+        let (_cancel_guard, cancel_flag) =
+            CancelFlagGuard::register(&self.cancel_flags, request_id.clone())?;
 
-        let throttle_state = Arc::new(Mutex::new(DownloadProgressThrottleState::new()));
-
-        let emit_progress = |
-            status: &'static str,
-            downloaded: u64,
-            total: Option<u64>,
-            stage: Option<&'static str>,
-            error_code: Option<&'static str>,
-            error_message: Option<String>,
-        | {
-            let progress = match status {
-                "completed" => 100,
-                _ => match total {
-                    Some(0) | None => 0,
-                    Some(total_bytes) => {
-                        let ratio = downloaded.saturating_mul(100) / total_bytes;
-                        ratio.min(100) as u8
-                    }
-                },
-            };
-
-            if status == "downloading" {
-                let mut guard = match throttle_state.lock() {
-                    Ok(guard) => guard,
-                    Err(_) => return,
-                };
-
-                if !should_emit_downloading_progress(&guard, progress, downloaded, total) {
-                    return;
-                }
-
-                guard.update(progress, downloaded, total);
-            }
-
-            let payload = ImageDownloadProgressPayload {
-                request_id: request_id.clone(),
-                progress,
-                downloaded_bytes: downloaded,
-                total_bytes: total,
-                status,
-                stage,
-                error_code,
-                error_message,
-            };
-
-            let _ = app.emit(IMAGE_DOWNLOAD_PROGRESS_EVENT, payload);
-        };
-
-        emit_progress("downloading", 0, None, None, None, None);
+        let reporter = ProgressReporter::new(&request_id, app);
+        reporter.emit_downloading(0, None);
 
         let result = self
             .handler
             .process_url_and_copy_with_progress(
                 &url,
-                |downloaded, total| emit_progress("downloading", downloaded, total, None, None, None),
+                |downloaded, total| reporter.emit_downloading(downloaded, total),
                 || cancel_flag.load(Ordering::SeqCst),
             )
             .await;
 
-        {
-            let mut guard = self
-                .cancel_flags
-                .lock()
-                .map_err(|_| ImageError::ResourceLimit("下载取消标志锁已中毒".to_string()))?;
-            guard.remove(&request_id);
-        }
+        // 显式 drop 守卫：在发射最终事件前移除取消标志，
+        // 使 cancel_download 在下载已结束后正确返回 false。
+        drop(_cancel_guard);
 
-        let (last_downloaded, last_total) = {
-            let guard = throttle_state
-                .lock()
-                .map_err(|_| ImageError::ResourceLimit("下载进度节流状态锁已中毒".to_string()))?;
-            (guard.last_downloaded, guard.last_total)
-        };
-
-        match &result {
-            Ok(()) => {
-                let completed_total = last_total.or(Some(last_downloaded.max(1)));
-                emit_progress(
-                    "completed",
-                    last_downloaded.max(1),
-                    completed_total,
-                    None,
-                    None,
-                    None,
-                );
-            }
-            Err(ImageError::Cancelled(_)) => {
-                emit_progress("cancelled", last_downloaded, last_total, None, Some("E_CANCELLED"), None);
-            }
-            Err(err) => {
-                emit_progress(
-                    "failed",
-                    last_downloaded,
-                    last_total,
-                    Some(err.stage()),
-                    Some(err.code()),
-                    Some(err.to_string()),
-                );
-            }
-        }
-
+        reporter.emit_final(&result);
         result
     }
 
+    /// 请求取消指定下载。
+    ///
+    /// 若目标 request_id 存在且仍在下载中，标记取消并返回 `true`。
     pub fn cancel_download(&self, request_id: &str) -> Result<bool, ImageError> {
         let guard = self
             .cancel_flags
@@ -339,173 +411,17 @@ impl ImageServiceState {
         Ok(profile.as_str().to_string())
     }
 
+    /// 设置高级配置（验证 + 应用由 `ImageAdvancedConfig` 内聚完成）。
     pub fn set_advanced_config(&self, config: ImageAdvancedConfig) -> Result<(), ImageError> {
-        self.handler.set_advanced_config(
-            config.allow_private_network,
-            config.resolve_dns_for_url_safety,
-            config.max_decoded_bytes,
-            config.connect_timeout,
-            config.stream_first_byte_timeout_ms,
-            config.stream_chunk_timeout_ms,
-            config.clipboard_retry_max_total_ms,
-            config.clipboard_retry_max_delay_ms,
-        )
+        self.handler.set_advanced_config(&config)
     }
 
+    /// 获取高级配置快照。
     pub fn get_advanced_config(&self) -> Result<ImageAdvancedConfig, ImageError> {
-        let (
-            allow_private_network,
-            resolve_dns_for_url_safety,
-            max_decoded_bytes,
-            connect_timeout,
-            stream_first_byte_timeout_ms,
-            stream_chunk_timeout_ms,
-            clipboard_retry_max_total_ms,
-            clipboard_retry_max_delay_ms,
-        ) =
-            self.handler.get_advanced_config()?;
-
-        Ok(ImageAdvancedConfig {
-            allow_private_network,
-            resolve_dns_for_url_safety,
-            max_decoded_bytes,
-            connect_timeout,
-            stream_first_byte_timeout_ms,
-            stream_chunk_timeout_ms,
-            clipboard_retry_max_total_ms,
-            clipboard_retry_max_delay_ms,
-        })
+        self.handler.get_advanced_config()
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-    use std::thread;
-
-    #[test]
-    fn service_set_and_get_profile_roundtrip() {
-        let service = ImageServiceState::new().expect("service init failed");
-
-        service.set_performance_profile("quality").expect("set quality should succeed");
-        let quality = service.get_performance_profile().expect("get profile should succeed");
-        assert_eq!(quality, "quality");
-
-        service.set_performance_profile("balanced").expect("set balanced should succeed");
-        let balanced = service.get_performance_profile().expect("get profile should succeed");
-        assert_eq!(balanced, "balanced");
-
-        service.set_performance_profile("speed").expect("set speed should succeed");
-        let speed = service.get_performance_profile().expect("get profile should succeed");
-        assert_eq!(speed, "speed");
-
-        service.set_performance_profile("balanced").expect("restore default profile should succeed");
-    }
-
-    #[test]
-    fn service_rejects_invalid_profile() {
-        let service = ImageServiceState::new().expect("service init failed");
-
-        let result = service.set_performance_profile("unknown-profile");
-        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
-    }
-
-    #[test]
-    fn service_profile_concurrent_access_stress() {
-        let service = Arc::new(ImageServiceState::new().expect("service init failed"));
-
-        let workers = 8;
-        let iterations = 200;
-
-        let mut handles = Vec::with_capacity(workers);
-        for worker_id in 0..workers {
-            let service = Arc::clone(&service);
-            handles.push(thread::spawn(move || {
-                let profiles = ["quality", "balanced", "speed"];
-
-                for i in 0..iterations {
-                    let profile = profiles[(worker_id + i) % profiles.len()];
-                    service.set_performance_profile(profile).expect("set profile should succeed");
-
-                    let current = service.get_performance_profile().expect("get profile should succeed");
-                    assert!(matches!(current.as_str(), "quality" | "balanced" | "speed"));
-                }
-            }));
-        }
-
-        for handle in handles {
-            handle.join().expect("worker thread should not panic");
-        }
-
-        service.set_performance_profile("balanced").expect("restore default profile should succeed");
-    }
-
-    #[test]
-    fn service_profile_concurrent_mixed_invalid_inputs() {
-        let service = Arc::new(ImageServiceState::new().expect("service init failed"));
-
-        let workers = 10;
-        let iterations = 120;
-
-        let mut handles = Vec::with_capacity(workers);
-        for worker_id in 0..workers {
-            let service = Arc::clone(&service);
-            handles.push(thread::spawn(move || {
-                let valid_profiles = ["quality", "balanced", "speed"];
-                let invalid_profiles = ["", "ultra", "fastest", "balance-d"];
-
-                for i in 0..iterations {
-                    if (worker_id + i) % 3 == 0 {
-                        let invalid = invalid_profiles[(worker_id + i) % invalid_profiles.len()];
-                        let result = service.set_performance_profile(invalid);
-                        assert!(matches!(result, Err(ImageError::InvalidFormat(_))));
-                    } else {
-                        let valid = valid_profiles[(worker_id + i) % valid_profiles.len()];
-                        service.set_performance_profile(valid).expect("set valid profile should succeed");
-                    }
-
-                    let current = service.get_performance_profile().expect("get profile should succeed");
-                    assert!(matches!(current.as_str(), "quality" | "balanced" | "speed"));
-                }
-            }));
-        }
-
-        for handle in handles {
-            handle.join().expect("worker thread should not panic");
-        }
-
-        service.set_performance_profile("balanced").expect("restore default profile should succeed");
-    }
-
-    #[test]
-    #[ignore = "long-running soak test"]
-    fn service_profile_long_running_soak() {
-        let service = Arc::new(ImageServiceState::new().expect("service init failed"));
-
-        let workers = 12;
-        let iterations = 10_000;
-
-        let mut handles = Vec::with_capacity(workers);
-        for worker_id in 0..workers {
-            let service = Arc::clone(&service);
-            handles.push(thread::spawn(move || {
-                let profiles = ["quality", "balanced", "speed"];
-
-                for i in 0..iterations {
-                    let profile = profiles[(worker_id + i) % profiles.len()];
-                    service.set_performance_profile(profile).expect("set profile should succeed");
-
-                    let current = service.get_performance_profile().expect("get profile should succeed");
-                    assert!(matches!(current.as_str(), "quality" | "balanced" | "speed"));
-                }
-            }));
-        }
-
-        for handle in handles {
-            handle.join().expect("worker thread should not panic");
-        }
-
-        service.set_performance_profile("balanced").expect("restore default profile should succeed");
-    }
-}
+#[path = "tests/service_tests.rs"]
+mod tests;

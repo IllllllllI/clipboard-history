@@ -28,6 +28,8 @@ export interface ClipboardContextValue {
   loadTags: () => Promise<void>;
   copyToClipboard: (item: ClipItem, options?: { suppressCopiedIdFeedback?: boolean }) => Promise<void>;
   copyText: (text: string) => Promise<void>;
+  /** 添加一条普通（非 snippet）条目并刷新历史 */
+  addClipEntry: (text: string) => Promise<void>;
   copiedId: number | null;
   stats: AppStats;
   handleTogglePin: (item: ClipItem) => Promise<void>;
@@ -216,6 +218,13 @@ export function ClipboardProvider({
     ), [loadHistory],
   );
 
+  const addClipEntry = useMemo(
+    () => makeHandler(
+      async (text: string) => { await ClipboardDB.addClip(text); await loadHistory(); },
+      setError, '添加条目失败',
+    ), [loadHistory],
+  );
+
   const handleUpdateClip = useMemo(
     () => makeHandler(
       async (id: number, text: string) => { await ClipboardDB.updateClip(id, text); await loadHistory(); },
@@ -319,6 +328,7 @@ export function ClipboardProvider({
     handleUpdatePickedColor,
     handleCreateTag, handleUpdateTag, handleDeleteTag,
     handleAddTagToItem, handleRemoveTagFromItem,
+    addClipEntry,
     exportData, importData,
     error,
   }), [
@@ -331,6 +341,7 @@ export function ClipboardProvider({
     handleUpdatePickedColor,
     handleCreateTag, handleUpdateTag, handleDeleteTag,
     handleAddTagToItem, handleRemoveTagFromItem,
+    addClipEntry,
     exportData, importData,
     error,
   ]);

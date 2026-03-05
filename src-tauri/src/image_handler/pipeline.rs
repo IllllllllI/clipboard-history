@@ -7,14 +7,15 @@
 //!
 //! ## 实现思路
 //!
-//! 1. 猜测格式并读取 header 尺寸
+//! 1. 读取 header 尺寸（格式识别由 ImageReader 统一完成）
 //! 2. 按像素上限快速拒绝
-//! 3. 完整解码
-//! 4. 根据配置决定是否降采样
-//! 5. 转换 RGBA，并校验字节长度一致性
+//! 3. 完整解码，尽早释放编码字节缓冲
+//! 4. 一次性转换 RGBA（`into_rgba8` 对已有 RGBA8 零拷贝）
+//! 5. 根据配置决定是否降采样
+//! 6. 校验字节长度一致性
 
 use fast_image_resize as fr;
-use image::{DynamicImage, GenericImageView, ImageBuffer, ImageFormat, ImageReader, Rgba};
+use image::{DynamicImage, GenericImageView, ImageBuffer, ImageReader, Rgba};
 use std::io::Cursor;
 
 use super::source::{PreparedClipboardImage, RawImageData};
@@ -22,29 +23,39 @@ use super::{ImageConfig, ImageError, ImageHandler};
 
 impl ImageHandler {
     /// 将原始字节解码为可写入剪贴板的 RGBA 数据。
+    ///
+    /// 该函数为纯计算函数（不依赖 `&self`），可安全在 `spawn_blocking` 中调用。
     pub(crate) fn decode_and_prepare_for_clipboard(
-        &self,
         raw: RawImageData,
         config: &ImageConfig,
     ) -> Result<PreparedClipboardImage, ImageError> {
-        let _format: ImageFormat = image::guess_format(&raw.bytes)
-            .map_err(|e| ImageError::InvalidFormat(format!("不支持的图片格式：{}", e)))?;
+        let RawImageData {
+            bytes: raw_bytes,
+            source_hint,
+        } = raw;
 
-        let (header_width, header_height) = Self::inspect_dimensions_from_memory(&raw.bytes)?;
-        self.validate_pixel_limits(config, header_width, header_height)?;
-        self.validate_decoded_memory_limits(config, header_width, header_height)?;
+        let (header_width, header_height) = Self::inspect_dimensions_from_memory(&raw_bytes)?;
+        Self::validate_pixel_limits(config, header_width, header_height)?;
+        Self::validate_decoded_memory_limits(config, header_width, header_height)?;
 
-        let decoded = image::load_from_memory(&raw.bytes)
+        let decoded = image::load_from_memory(&raw_bytes)
             .map_err(|e| ImageError::Decode(format!("图片解码失败：{}", e)))?;
 
-        let (raw_width, raw_height) = decoded.dimensions();
-        self.validate_pixel_limits(&config, raw_width, raw_height)?;
-        self.validate_decoded_memory_limits(config, raw_width, raw_height)?;
+        // 编码字节在完成解码后不再需要，尽早释放以降低峰值内存
+        drop(raw_bytes);
 
-        let optimized = self.maybe_downscale_for_clipboard(decoded, &config)?;
+        let (raw_width, raw_height) = decoded.dimensions();
+        // 仅在实际尺寸与头部声明不一致时才做第二轮校验（防畸形图片）
+        if raw_width != header_width || raw_height != header_height {
+            Self::validate_pixel_limits(config, raw_width, raw_height)?;
+            Self::validate_decoded_memory_limits(config, raw_width, raw_height)?;
+        }
+
+        let optimized = Self::maybe_downscale_for_clipboard(decoded, config)?;
         let (width, height) = optimized.dimensions();
 
-        let rgba = optimized.to_rgba8();
+        // into_rgba8 对已经是 RGBA8 的图像零拷贝移动，避免 to_rgba8 的深拷贝
+        let rgba = optimized.into_rgba8();
         let bytes = rgba.into_raw();
 
         let expected_len = (width as usize)
@@ -58,7 +69,7 @@ impl ImageHandler {
 
         log::info!(
             "✅ 图片解码成功 - 来源: {} 原始尺寸: {}x{} 输出尺寸: {}x{}",
-            raw.source_hint,
+            source_hint,
             raw_width,
             raw_height,
             width,
@@ -88,7 +99,6 @@ impl ImageHandler {
 
     /// 校验像素数量是否超过配置上限。
     fn validate_pixel_limits(
-        &self,
         config: &ImageConfig,
         width: u32,
         height: u32,
@@ -108,7 +118,6 @@ impl ImageHandler {
     }
 
     fn validate_decoded_memory_limits(
-        &self,
         config: &ImageConfig,
         width: u32,
         height: u32,
@@ -133,7 +142,6 @@ impl ImageHandler {
     ///
     /// 目标是在视觉可接受范围内降低复制耗时与内存压力。
     fn maybe_downscale_for_clipboard(
-        &self,
         image: DynamicImage,
         config: &ImageConfig,
     ) -> Result<DynamicImage, ImageError> {
@@ -142,6 +150,10 @@ impl ImageHandler {
         }
 
         let (width, height) = image.dimensions();
+        if width == 0 || height == 0 {
+            return Err(ImageError::Decode("图片宽或高为 0，无法计算缩放比".to_string()));
+        }
+
         let source_pixels = (width as u64)
             .checked_mul(height as u64)
             .ok_or_else(|| ImageError::ResourceLimit("图片像素数溢出".to_string()))?;

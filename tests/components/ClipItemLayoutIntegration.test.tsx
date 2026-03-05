@@ -5,6 +5,7 @@ import { ClipItem } from '../../src/types';
 import { useSettingsContext } from '../../src/contexts/SettingsContext';
 import { useClipboardContext } from '../../src/contexts/ClipboardContext';
 import { useUIContext } from '../../src/contexts/UIContext';
+import { useClipItemStableContext } from '../../src/components/ClipItem/ClipItemContext';
 
 const tauriMocks = vi.hoisted(() => ({
   openFile: vi.fn(),
@@ -39,6 +40,9 @@ vi.mock('../../src/contexts/ClipboardContext', () => ({
 }));
 vi.mock('../../src/contexts/UIContext', () => ({
   useUIContext: vi.fn(),
+}));
+vi.mock('../../src/components/ClipItem/ClipItemContext', () => ({
+  useClipItemStableContext: vi.fn(),
 }));
 
 vi.mock('../../src/services/tauri', () => ({
@@ -112,6 +116,12 @@ describe('ClipItemComponent Layout Integration', () => {
     (useSettingsContext as any).mockReturnValue({ ...defaultSettingsCtx });
     (useClipboardContext as any).mockReturnValue({ ...defaultClipboardCtx });
     (useUIContext as any).mockReturnValue({ ...defaultUICtx });
+    (useClipItemStableContext as any).mockReturnValue({
+      ...defaultSettingsCtx,
+      ...defaultClipboardCtx,
+      ...defaultUICtx,
+      addClipEntry: vi.fn(),
+    });
   });
 
   it('should properly layout Base64 image items', () => {
@@ -119,7 +129,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const item = createMockItem(base64Image);
     
     const { container } = render(
-      <ClipItemComponent item={item} index={0} />
+      <ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Verify the layout structure
@@ -138,7 +148,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const item = createMockItem(httpImage);
     
     const { container } = render(
-      <ClipItemComponent item={item} index={0} />
+      <ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Verify ImageDisplay is rendered
@@ -155,7 +165,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const item = createMockItem(localImage);
     
     const { container } = render(
-      <ClipItemComponent item={item} index={0} />
+      <ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Verify layout accommodates the image
@@ -167,7 +177,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const localImage = 'C:\\Users\\test\\image.jpg';
     const item = createMockItem(localImage);
 
-    render(<ClipItemComponent item={item} index={0} />);
+    render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
 
     const pathLink = screen.getByText(localImage);
     fireEvent.click(pathLink);
@@ -180,7 +190,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const textItem = createMockItem('This is a regular text item that should be displayed normally');
     
     const { container } = render(
-      <ClipItemComponent item={textItem} index={0} />
+      <ClipItemComponent item={textItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Text should be displayed with proper truncation
@@ -194,7 +204,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const colorItem = createMockItem('#FF5733');
     
     const { container } = render(
-      <ClipItemComponent item={colorItem} index={0} />
+      <ClipItemComponent item={colorItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Color preview should have proper alignment
@@ -207,7 +217,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const urlItem = createMockItem('https://example.com/page');
     
     const { container } = render(
-      <ClipItemComponent item={urlItem} index={0} />
+      <ClipItemComponent item={urlItem} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // URL should be displayed as text
@@ -219,7 +229,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const item = createMockItem('Test item');
     
     const { container } = render(
-      <ClipItemComponent item={item} index={0} />
+      <ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Verify gap between elements
@@ -235,7 +245,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const item = createMockItem('Test item');
     
     const { container } = render(
-      <ClipItemComponent item={item} index={0} />
+      <ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Icon should have top margin for alignment
@@ -247,7 +257,7 @@ describe('ClipItemComponent Layout Integration', () => {
     const item = createMockItem('Test item');
     
     const { container } = render(
-      <ClipItemComponent item={item} index={0} />
+      <ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Actions should align to the top

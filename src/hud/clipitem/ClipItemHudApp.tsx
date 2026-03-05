@@ -1,13 +1,45 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Copy, Edit3, Pin, Star, Trash2 } from '../icons';
 import { TauriService } from '../../services/tauri';
+import { subscribeTauriEvent } from '../subscribe';
 import type { ClipItemHudActionType, ClipItemHudSnapshot } from '../../types';
 
+// ── 按钮配置定义 ──
+
+interface ActionButtonDef {
+  action: ClipItemHudActionType;
+  Icon: typeof Copy;
+  getTitle: (s: ClipItemHudSnapshot) => string;
+  /** 返回 boolean 则渲染 data-active="true"/"false"；undefined 则不渲染 data-active */
+  getActive?: (s: ClipItemHudSnapshot) => boolean;
+  /** 返回 true 时按钮为 disabled 状态 */
+  isDisabled?: (s: ClipItemHudSnapshot) => boolean;
+  /** 点击后是否触发闪烁反馈 */
+  hasFlash: boolean;
+  /** 额外 CSS 类名 */
+  extraClass?: string;
+}
+
 /**
- * 线性 HUD 窗口（clipitem-hud）的 React 入口组件。
+ * 操作按钮声明式配置。
+ * 新增/删除按钮只需修改此数组，无需改动 JSX。
+ */
+const ACTION_BUTTONS: ActionButtonDef[] = [
+  { action: 'copy',     Icon: Copy,   getTitle: () => '复制',                                    getActive: (s) => s.isCopied,   hasFlash: true },
+  { action: 'favorite', Icon: Star,   getTitle: (s) => (s.isFavorite ? '取消收藏' : '收藏'),     getActive: (s) => s.isFavorite, hasFlash: true },
+  { action: 'pin',      Icon: Pin,    getTitle: () => '置顶',                                    getActive: (s) => s.isPinned,   hasFlash: true },
+  { action: 'edit',     Icon: Edit3,  getTitle: () => '编辑',  isDisabled: (s) => !s.canEdit,                                    hasFlash: false },
+  { action: 'delete',   Icon: Trash2, getTitle: () => '删除',                                                                    hasFlash: false, extraClass: 'clipitem-hud-btn-delete' },
+];
+
+const FLASH_DURATION_MS = 360;
+
+// ── 组件 ──
+
+/**
+ * 线性 HUD 窗口的 React 入口组件。
  *
- * 仅负责线性条状 HUD 卡片的渲染，不再包含径向菜单逻辑。
- * 径向菜单已移至独立的 radial-menu 窗口（RadialMenuApp）。
+ * 仅负责线性条状 HUD 卡片的渲染，不包含径向菜单逻辑。
  *
  * **设计原则**：HUD 窗口只发事件，不直接调用 hide/show IPC。
  * 显示/隐藏的控制权完全在主窗口侧的 useClipItemHudController，
@@ -19,31 +51,17 @@ export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: 
   const [flashedAction, setFlashedAction] = useState<ClipItemHudActionType | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    let unlisten: (() => void) | null = null;
-
-    void TauriService.listenClipItemHudSnapshot((payload) => {
-      if (!mounted) return;
+  // ── 监听快照更新 ──
+  useEffect(() =>
+    subscribeTauriEvent(TauriService.listenClipItemHudSnapshot, (payload) => {
       setSnapshot(payload);
       setHoveredAction(null);
-    }).then((dispose) => {
-      unlisten = dispose;
-    }).catch(() => {
-      // 忽略 HUD 监听初始化失败
-    });
+    }),
+  []);
 
-    return () => {
-      mounted = false;
-      if (unlisten) unlisten();
-    };
-  }, []);
-
-  // HUD 窗口失焦时通知主窗口，让主窗口决定是否隐藏 HUD
+  // ── 窗口失焦通知主窗口 ──
   useEffect(() => {
-    const handleBlur = () => {
-      void TauriService.emitClipItemHudWindowBlur();
-    };
+    const handleBlur = () => { void TauriService.emitClipItemHudWindowBlur(); };
     window.addEventListener('blur', handleBlur);
     return () => window.removeEventListener('blur', handleBlur);
   }, []);
@@ -54,17 +72,15 @@ export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: 
     flashTimerRef.current = setTimeout(() => {
       setFlashedAction(null);
       flashTimerRef.current = null;
-    }, 360);
+    }, FLASH_DURATION_MS);
   }, []);
 
   const sendAction = useCallback(async (action: ClipItemHudActionType) => {
     if (!snapshot) return;
-    await TauriService.emitClipItemHudAction({
-      itemId: snapshot.itemId,
-      action,
-    });
+    await TauriService.emitClipItemHudAction({ itemId: snapshot.itemId, action });
   }, [snapshot]);
 
+  // ── press_release 模式：全局 pointerup 触发动作 ──
   useEffect(() => {
     if (!snapshot || snapshot.triggerMouseMode !== 'press_release') return;
 
@@ -76,7 +92,6 @@ export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: 
       const currentAction = hoveredAction;
 
       if (!currentAction || (currentAction === 'edit' && !snapshot.canEdit)) {
-        // 释放在空白处 / 不可用按钮上 → 发送 dismiss 让主窗口关闭
         void sendAction('dismiss');
         return;
       }
@@ -98,16 +113,12 @@ export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: 
   return (
     <div
       className="clipitem-hud-root"
-      onMouseDown={(event) => {
-        if (snapshot.triggerMouseMode !== 'click') return;
-        if (event.target !== event.currentTarget) return;
-        // 点击空白背景 → 发送 dismiss 让主窗口关闭
+      onMouseDown={(e) => {
+        if (snapshot.triggerMouseMode !== 'click' || e.target !== e.currentTarget) return;
         void sendAction('dismiss');
       }}
-      onContextMenu={(event) => {
-        if (snapshot.triggerMouseButton === 'right') {
-          event.preventDefault();
-        }
+      onContextMenu={(e) => {
+        if (snapshot.triggerMouseButton === 'right') e.preventDefault();
       }}
     >
       <div
@@ -117,6 +128,7 @@ export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: 
         data-theme={snapshot.theme ?? 'dark'}
         data-axis={hudAxis}
       >
+        {/* 时间与收藏状态 */}
         <div className="clipitem-hud-time-wrap">
           <span className="clipitem-hud-fav-slot" aria-hidden="true">
             <Star className="clipitem-hud-fav-icon" data-active={snapshot.isFavorite ? 'true' : 'false'} />
@@ -127,82 +139,36 @@ export default function ClipItemHudApp({ initialSnapshot }: { initialSnapshot?: 
           </div>
         </div>
 
+        {/* 操作按钮组 — 配置驱动渲染 */}
         <div className="clipitem-hud-actions" aria-label="条目快捷操作">
-          <button
-            type="button"
-            className="clipitem-hud-btn"
-            title="复制"
-            data-flash={flashedAction === 'copy' ? 'true' : undefined}
-            onClick={() => {
-              triggerFlash('copy');
-              void sendAction('copy');
-            }}
-            onPointerEnter={() => setHoveredAction('copy')}
-            onPointerLeave={() => setHoveredAction((value) => (value === 'copy' ? null : value))}
-          >
-            <Copy className="clipitem-hud-btn-icon" data-active={snapshot.isCopied ? 'true' : 'false'} />
-          </button>
-          <button
-            type="button"
-            className="clipitem-hud-btn"
-            title={snapshot.isFavorite ? '取消收藏' : '收藏'}
-            data-flash={flashedAction === 'favorite' ? 'true' : undefined}
-            onClick={() => {
-              triggerFlash('favorite');
-              void sendAction('favorite');
-            }}
-            onPointerEnter={() => setHoveredAction('favorite')}
-            onPointerLeave={() => setHoveredAction((value) => (value === 'favorite' ? null : value))}
-          >
-            <Star className="clipitem-hud-btn-icon" data-active={snapshot.isFavorite ? 'true' : 'false'} />
-          </button>
-          <button
-            type="button"
-            className="clipitem-hud-btn"
-            title="置顶"
-            data-flash={flashedAction === 'pin' ? 'true' : undefined}
-            onClick={() => {
-              triggerFlash('pin');
-              void sendAction('pin');
-            }}
-            onPointerEnter={() => setHoveredAction('pin')}
-            onPointerLeave={() => setHoveredAction((value) => (value === 'pin' ? null : value))}
-          >
-            <Pin className="clipitem-hud-btn-icon" data-active={snapshot.isPinned ? 'true' : 'false'} />
-          </button>
-          <button
-            type="button"
-            className="clipitem-hud-btn"
-            title="编辑"
-            disabled={!snapshot.canEdit}
-            onClick={() => {
-              void sendAction('edit');
-            }}
-            onPointerEnter={() => {
-              if (snapshot.canEdit) {
-                setHoveredAction('edit');
-              }
-            }}
-            onPointerLeave={() => setHoveredAction((value) => (value === 'edit' ? null : value))}
-          >
-            <Edit3 className="clipitem-hud-btn-icon" />
-          </button>
-          <button
-            type="button"
-            className="clipitem-hud-btn clipitem-hud-btn-delete"
-            title="删除"
-            onClick={() => {
-              void sendAction('delete');
-            }}
-            onPointerEnter={() => setHoveredAction('delete')}
-            onPointerLeave={() => setHoveredAction((value) => (value === 'delete' ? null : value))}
-          >
-            <Trash2 className="clipitem-hud-btn-icon" />
-          </button>
+          {ACTION_BUTTONS.map(({ action, Icon, getTitle, getActive, isDisabled: getDisabled, hasFlash, extraClass }) => {
+            const disabled = getDisabled?.(snapshot) ?? false;
+            const active = getActive?.(snapshot);
+
+            return (
+              <button
+                key={action}
+                type="button"
+                className={extraClass ? `clipitem-hud-btn ${extraClass}` : 'clipitem-hud-btn'}
+                title={getTitle(snapshot)}
+                disabled={disabled}
+                data-flash={hasFlash && flashedAction === action ? 'true' : undefined}
+                onClick={() => {
+                  if (hasFlash) triggerFlash(action);
+                  void sendAction(action);
+                }}
+                onPointerEnter={() => { if (!disabled) setHoveredAction(action); }}
+                onPointerLeave={() => setHoveredAction((v) => (v === action ? null : v))}
+              >
+                <Icon
+                  className="clipitem-hud-btn-icon"
+                  data-active={active != null ? String(active) : undefined}
+                />
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
-
-

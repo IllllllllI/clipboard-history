@@ -1,9 +1,26 @@
+//! 业务编排层 — 平台无关的流程控制
+//!
+//! 本模块负责：
+//! - 窗口隐藏 / 焦点切换等待 / 输入模拟节奏控制
+//! - 所有平台相关细节委托给 [`super::platform`]
+//!
+//! ## 设计要点
+//!
+//! - 粘贴按键模拟通过 [`simulate_paste`] 统一实现，
+//!   消除 `paste_text` / `click_and_paste` 的重复代码
+//! - `Enigo` 实例延迟到实际使用前才创建（sleep 之后），最小化资源持有时间
+//! - 延迟常量命名化（[`FOCUS_SETTLE_MS`] / [`CLICK_SETTLE_MS`]），避免 magic number
+
+use std::time::Duration;
+
 use enigo::{
-    Button,
     Direction::{Click, Press, Release},
-    Enigo, Key, Keyboard, Mouse, Settings,
+    Enigo, Key, Keyboard, Settings,
 };
+#[cfg(target_os = "windows")]
+use enigo::{Button, Mouse};
 use tauri::Manager;
+use tokio::time::sleep;
 
 use crate::error::AppError;
 use crate::ipc::WINDOW_LABEL_MAIN;
@@ -11,48 +28,66 @@ use crate::window_position;
 
 use super::platform;
 
-pub async fn paste_text(app: tauri::AppHandle, hide_on_action: bool) -> Result<(), AppError> {
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| AppError::Input(format!("初始化输入模拟失败: {}", e)))?;
+/// 窗口隐藏后等待目标窗口获得焦点的延迟（毫秒）。
+///
+/// 300ms 是经验值：过短时目标窗口可能尚未激活，过长则用户体感迟钝。
+const FOCUS_SETTLE_MS: u64 = 300;
 
-    if hide_on_action {
-        if let Some(window) = app.get_webview_window(WINDOW_LABEL_MAIN) {
-            let _ = window.hide();
-        }
-        window_position::hide_all_hud_windows(&app);
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    }
+/// 模拟鼠标点击后等待焦点稳定的延迟（毫秒）。
+const CLICK_SETTLE_MS: u64 = 100;
 
-    #[cfg(target_os = "macos")]
-    {
-        enigo
-            .key(Key::Meta, Press)
-            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
-            .and_then(|_| enigo.key(Key::Meta, Release))
-            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        enigo
-            .key(Key::Control, Press)
-            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
-            .and_then(|_| enigo.key(Key::Control, Release))
-            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
-    }
+// ═══════════════════════════════════════════════════════════
+//  内部辅助
+// ═══════════════════════════════════════════════════════════
 
-    Ok(())
+/// 创建 `Enigo` 输入模拟实例。
+fn create_enigo() -> Result<Enigo, AppError> {
+    Enigo::new(&Settings::default())
+        .map_err(|e| AppError::Input(format!("初始化输入模拟失败: {}", e)))
 }
 
-pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
+/// 隐藏主窗口和所有 HUD 窗口。
+fn hide_windows(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(WINDOW_LABEL_MAIN) {
         let _ = window.hide();
     }
-    window_position::hide_all_hud_windows(&app);
+    window_position::hide_all_hud_windows(app);
+}
 
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+/// 模拟系统粘贴快捷键（macOS: ⌘V，其它: Ctrl+V）。
+fn simulate_paste(enigo: &mut Enigo) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    let modifier = Key::Meta;
+    #[cfg(not(target_os = "macos"))]
+    let modifier = Key::Control;
 
-    let mut enigo = Enigo::new(&Settings::default())
-        .map_err(|e| AppError::Input(format!("初始化输入模拟失败: {}", e)))?;
+    enigo
+        .key(modifier, Press)
+        .and_then(|_| enigo.key(Key::Unicode('v'), Click))
+        .and_then(|_| enigo.key(modifier, Release))
+        .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))
+}
+
+// ═══════════════════════════════════════════════════════════
+//  公开服务
+// ═══════════════════════════════════════════════════════════
+
+pub async fn paste_text(app: tauri::AppHandle, hide_on_action: bool) -> Result<(), AppError> {
+    if hide_on_action {
+        hide_windows(&app);
+        sleep(Duration::from_millis(FOCUS_SETTLE_MS)).await;
+    }
+
+    // Enigo 在 sleep 之后创建，最小化资源持有时间
+    let mut enigo = create_enigo()?;
+    simulate_paste(&mut enigo)
+}
+
+pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
+    hide_windows(&app);
+    sleep(Duration::from_millis(FOCUS_SETTLE_MS)).await;
+
+    let mut enigo = create_enigo()?;
 
     #[cfg(target_os = "windows")]
     {
@@ -62,25 +97,9 @@ pub async fn click_and_paste(app: tauri::AppHandle) -> Result<(), AppError> {
         log::debug!("已模拟鼠标点击");
     }
 
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    sleep(Duration::from_millis(CLICK_SETTLE_MS)).await;
 
-    #[cfg(target_os = "macos")]
-    {
-        enigo
-            .key(Key::Meta, Press)
-            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
-            .and_then(|_| enigo.key(Key::Meta, Release))
-            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        enigo
-            .key(Key::Control, Press)
-            .and_then(|_| enigo.key(Key::Unicode('v'), Click))
-            .and_then(|_| enigo.key(Key::Control, Release))
-            .map_err(|e| AppError::Input(format!("模拟粘贴按键失败: {}", e)))?;
-    }
-
+    simulate_paste(&mut enigo)?;
     log::debug!("已点击并粘贴");
     Ok(())
 }
@@ -93,54 +112,12 @@ pub fn copy_files_to_clipboard(paths: Vec<String>) -> Result<(), AppError> {
     platform::copy_files_to_clipboard(paths)
 }
 
-#[cfg(target_os = "windows")]
 pub async fn open_file(path: String) -> Result<(), AppError> {
     platform::open_file(&path)
 }
 
-#[cfg(target_os = "macos")]
-pub async fn open_file(path: String) -> Result<(), AppError> {
-    std::process::Command::new("open")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| AppError::Input(format!("打开文件失败: {}", e)))?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-pub async fn open_file(path: String) -> Result<(), AppError> {
-    std::process::Command::new("xdg-open")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| AppError::Input(format!("打开文件失败: {}", e)))?;
-    Ok(())
-}
-
-#[cfg(target_os = "windows")]
 pub async fn open_file_location(path: String) -> Result<(), AppError> {
     platform::open_file_location(&path)
-}
-
-#[cfg(target_os = "macos")]
-pub async fn open_file_location(path: String) -> Result<(), AppError> {
-    std::process::Command::new("open")
-        .args(["-R", &path])
-        .spawn()
-        .map_err(|e| AppError::Input(format!("打开文件位置失败: {}", e)))?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-pub async fn open_file_location(path: String) -> Result<(), AppError> {
-    let parent = std::path::Path::new(&path)
-        .parent()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.clone());
-    std::process::Command::new("xdg-open")
-        .arg(&parent)
-        .spawn()
-        .map_err(|e| AppError::Input(format!("打开文件位置失败: {}", e)))?;
-    Ok(())
 }
 
 pub async fn get_file_icon(input: String) -> Result<Option<String>, AppError> {

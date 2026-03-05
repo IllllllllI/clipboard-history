@@ -40,6 +40,11 @@ vi.mock('../../src/contexts/AppContext', () => ({
   useAppContext: vi.fn(),
 }));
 
+// Mock ClipItemProvider as pass-through (ClipList wraps children in it)
+vi.mock('../../src/components/ClipItem/ClipItemContext', () => ({
+  ClipItemProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 const defaultSettings = {
   autoCapture: true,
   maxItems: 100,

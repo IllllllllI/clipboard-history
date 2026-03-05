@@ -5,7 +5,7 @@
 //! 命令层仅做 IPC 参数接收与结果返回，不承载业务逻辑。
 //! 所有实际处理交由 `ImageServiceState`，保持命令函数薄、稳定、易测试。
 
-use super::{service, ImageError, ImageSource};
+use super::{service, ImageAdvancedConfig, ImageError, ImageSource};
 use tauri::{AppHandle, State, Wry};
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -95,7 +95,7 @@ pub fn get_image_performance_profile(
 #[tauri::command]
 pub fn set_image_advanced_config(
     state: State<'_, service::ImageServiceState>,
-    config: service::ImageAdvancedConfig,
+    config: ImageAdvancedConfig,
 ) -> Result<(), crate::error::AppError> {
     state.set_advanced_config(config)?;
     Ok(())
@@ -104,6 +104,6 @@ pub fn set_image_advanced_config(
 #[tauri::command]
 pub fn get_image_advanced_config(
     state: State<'_, service::ImageServiceState>,
-) -> Result<service::ImageAdvancedConfig, crate::error::AppError> {
+) -> Result<ImageAdvancedConfig, crate::error::AppError> {
     Ok(state.get_advanced_config()?)
 }

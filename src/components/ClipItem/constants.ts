@@ -10,7 +10,7 @@ import {
   FileCode2,
   Files,
 } from 'lucide-react';
-import { ClipItem, ImageType } from '../../types';
+import { ImageType } from '../../types';
 
 /**
  * 内容类型 → 图标映射
@@ -31,14 +31,18 @@ const IMAGE_TYPE_ICON_MAP = {
   [ImageType.Base64]: FileCode2,
 } satisfies Partial<Record<ImageType, LucideIcon>>;
 
-/** 根据内容类型决定该条目的图标 */
-export function getItemIcon(item: ClipItem, type: string, imageType: ImageType): LucideIcon {
-  if (item.is_snippet) return Plus;
-  const typeIcon = TYPE_ICON_MAP[type];
+/**
+ * 根据内容类型决定该条目的图标
+ *
+ * @param isSnippet - ClipItem.is_snippet（0 | 1）
+ */
+export function getItemIcon(isSnippet: number, type: string, imageType: ImageType): LucideIcon {
+  if (isSnippet) return Plus;
+  const typeIcon = TYPE_ICON_MAP[type as keyof typeof TYPE_ICON_MAP];
   if (typeIcon) return typeIcon;
 
   if (imageType === ImageType.None) return Clipboard;
-  const imageTypeIcon = IMAGE_TYPE_ICON_MAP[imageType];
+  const imageTypeIcon = IMAGE_TYPE_ICON_MAP[imageType as keyof typeof IMAGE_TYPE_ICON_MAP];
   if (imageTypeIcon) return imageTypeIcon;
 
   return Clipboard;

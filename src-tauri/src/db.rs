@@ -28,6 +28,25 @@ mod schema;
 mod storage;
 mod tags;
 
+// ── 子模块共享 helper ──────────────────────────────────────
+
+/// 生成 SQL IN 占位符：`"?,?,?"` (n 个)
+pub(crate) fn sql_placeholders(n: usize) -> String {
+    let mut s = String::with_capacity(n * 2);
+    for i in 0..n {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push('?');
+    }
+    s
+}
+
+/// 统一 `rusqlite` 错误到 `AppError::Database`
+pub(crate) fn db_err(context: &str, e: impl std::fmt::Display) -> AppError {
+    AppError::Database(format!("{}: {}", context, e))
+}
+
 pub use history::*;
 pub use storage::*;
 pub use tags::*;

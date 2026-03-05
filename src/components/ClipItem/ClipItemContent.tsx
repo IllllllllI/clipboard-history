@@ -76,7 +76,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 }: ClipItemContentProps) {
   // --- URL 打开状态管理（提取至 hook） ---
   const trimmedText = useMemo(() => item.text.trim(), [item.text]);
-  const { urlOpenState, openStatusTitle, handleUrlDoubleClick } = useUrlOpenState(imageType, trimmedText);
+  const { openPhase, statusLabel, handleDoubleClick: handleUrlDoubleClick } = useUrlOpenState(imageType, trimmedText);
 
   // --- 衍生状态 ---
   const displayText = useMemo(() => item.text.replace(/\n/g, ' ↵ '), [item.text]);
@@ -99,17 +99,17 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   const theme = darkMode ? 'dark' : 'light';
 
   const renderUrlOpenStatus = () => (
-    <span className="clip-item-content-link-status" data-state={urlOpenState} aria-hidden="true">
-      <LinkOpenStatus state={urlOpenState} />
+    <span className="clip-item-content-link-status" data-state={openPhase} aria-hidden="true">
+      <LinkOpenStatus state={openPhase} />
     </span>
   );
 
   const imageOpenTitle = buildOpenTargetTitle(
     imageType === ImageType.HttpUrl ? '链接: ' : '文件: ',
     item.text,
-    openStatusTitle,
+    statusLabel,
   );
-  const urlOpenTitle = buildOpenTargetTitle('链接: ', trimmedText, openStatusTitle);
+  const urlOpenTitle = buildOpenTargetTitle('链接: ', trimmedText, statusLabel);
 
   // --- 文件列表 ---
   if (type === 'files' && !showFilesAsGallery) {
@@ -179,7 +179,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
           <div
             className="clip-item-content-image-link"
             data-theme={theme}
-            data-open-state={urlOpenState}
+            data-open-state={openPhase}
           >
             {imageType === ImageType.HttpUrl ? (
               <Globe className="clip-item-content-icon-12" />
@@ -207,7 +207,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         <span
           className="clip-item-content-image-link"
           data-theme={theme}
-          data-open-state={urlOpenState}
+          data-open-state={openPhase}
         >
           {imageType === ImageType.HttpUrl ? (
             <Globe className="clip-item-content-icon-14" />
@@ -250,7 +250,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         <span
           className="clip-item-content-link"
           data-theme={theme}
-          data-open-state={urlOpenState}
+          data-open-state={openPhase}
           title={urlOpenTitle}
           onDoubleClick={handleUrlDoubleClick}
         >

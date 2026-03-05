@@ -24,6 +24,11 @@ use super::IgnoreGuard;
 
 const FILES_PREFIX: &str = "[FILES]\n";
 
+/// 打开系统剪贴板，统一错误转换
+fn open_clipboard() -> Result<arboard::Clipboard, AppError> {
+    arboard::Clipboard::new().map_err(|e| AppError::Clipboard(e.to_string()))
+}
+
 fn encode_file_list(files: &[String]) -> Option<String> {
     if files.is_empty() {
         return None;
@@ -210,8 +215,7 @@ pub async fn save_clipboard_image(
     app: tauri::AppHandle,
     custom_dir: Option<String>,
 ) -> Result<Option<String>, AppError> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+    let mut clipboard = open_clipboard()?;
 
     let maybe_text = clipboard.get_text().ok();
     if let Ok(image_data) = clipboard.get_image() {
@@ -236,8 +240,7 @@ pub async fn save_clipboard_svg(
     app: tauri::AppHandle,
     custom_dir: Option<String>,
 ) -> Result<Option<String>, AppError> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+    let mut clipboard = open_clipboard()?;
 
     if let Ok(text) = clipboard.get_text() {
         return save_svg_text(&app, custom_dir, &text);
@@ -265,8 +268,7 @@ pub async fn capture_clipboard_snapshot(
         }
     }
 
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+    let mut clipboard = open_clipboard()?;
 
     let maybe_text = clipboard.get_text().ok();
 
@@ -299,8 +301,7 @@ pub async fn capture_clipboard_snapshot(
 /// 从文件读取图片并复制到剪贴板
 #[tauri::command]
 pub async fn copy_image_from_file(file_path: String) -> Result<(), AppError> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+    let mut clipboard = open_clipboard()?;
 
     let img = image::open(&file_path)
         .map_err(|e| AppError::Clipboard(format!("打开图片失败: {}", e)))?;
@@ -326,8 +327,7 @@ pub async fn copy_image_from_file(file_path: String) -> Result<(), AppError> {
 /// 从文件读取 SVG 内容并作为文本复制到剪贴板
 #[tauri::command]
 pub async fn copy_svg_from_file(file_path: String) -> Result<(), AppError> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+    let mut clipboard = open_clipboard()?;
     let content = fs::read_to_string(&file_path)?;
 
     let _guard = IgnoreGuard::new();
@@ -345,8 +345,7 @@ pub async fn copy_svg_from_file(file_path: String) -> Result<(), AppError> {
 /// 统一由后端处理，自动使用 IgnoreGuard 防止重复捕获。
 #[tauri::command]
 pub async fn write_text_to_clipboard(text: String) -> Result<(), AppError> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| AppError::Clipboard(e.to_string()))?;
+    let mut clipboard = open_clipboard()?;
 
     let _guard = IgnoreGuard::new();
     clipboard.set_text(text)
@@ -355,40 +354,5 @@ pub async fn write_text_to_clipboard(text: String) -> Result<(), AppError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{encode_file_list, should_skip_image_by_text, FILES_PREFIX};
-
-    #[test]
-    fn encode_file_list_returns_none_for_empty() {
-        let files: Vec<String> = Vec::new();
-        assert!(encode_file_list(&files).is_none());
-    }
-
-    #[test]
-    fn encode_file_list_uses_files_prefix_and_newlines() {
-        let files = vec![
-            String::from("C:\\tmp\\a.txt"),
-            String::from("C:\\tmp\\b.png"),
-        ];
-        let encoded = encode_file_list(&files).expect("encoding should produce payload");
-        assert!(encoded.starts_with(FILES_PREFIX));
-        assert_eq!(encoded, "[FILES]\nC:\\tmp\\a.txt\nC:\\tmp\\b.png");
-    }
-
-    #[test]
-    fn should_skip_image_by_text_detects_code_snippet() {
-        assert!(should_skip_image_by_text("fn main() { println!(\"ok\"); }"));
-    }
-
-    #[test]
-    fn should_skip_image_by_text_detects_long_multiline_text() {
-        let long_line = "a".repeat(501);
-        let text = format!("title\n{}", long_line);
-        assert!(should_skip_image_by_text(&text));
-    }
-
-    #[test]
-    fn should_skip_image_by_text_allows_normal_text() {
-        assert!(!should_skip_image_by_text("hello world, clipboard history"));
-    }
-}
+#[path = "tests/save_tests.rs"]
+mod tests;

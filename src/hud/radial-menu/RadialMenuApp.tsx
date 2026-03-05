@@ -1,7 +1,26 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TauriService } from '../../services/tauri';
+import { subscribeTauriEvent } from '../subscribe';
 import type { RadialMenuSnapshot, RadialMenuActionType, ClipItemHudRadialMenuLayoutProfile } from '../../types';
 import RadialMenu from './RadialMenu';
+
+/** 合法的径向菜单布局档位集合 */
+const VALID_PROFILES = new Set<string>(['compact', 'standard', 'relaxed']);
+
+/** 从 AppSettings 中提取径向菜单相关配置，带类型窄化 */
+function parseRadialSettings(stored: Record<string, unknown>): {
+  fancyFx?: boolean;
+  layoutProfile?: ClipItemHudRadialMenuLayoutProfile;
+} {
+  const fx = stored.clipItemHudRadialMenuFancyFx;
+  const profile = stored.clipItemHudRadialMenuLayoutProfile;
+  return {
+    fancyFx: typeof fx === 'boolean' ? fx : undefined,
+    layoutProfile: typeof profile === 'string' && VALID_PROFILES.has(profile)
+      ? (profile as ClipItemHudRadialMenuLayoutProfile)
+      : undefined,
+  };
+}
 
 /**
  * 径向菜单独立窗口的 React 入口组件。
@@ -24,60 +43,33 @@ export default function RadialMenuApp({ initialSnapshot }: { initialSnapshot?: R
     setSnapshot(null);
   }, []);
 
+  /** 从后端同步最新设置 */
+  const syncSettings = useCallback(async () => {
+    try {
+      const stored = await TauriService.getAppSettings();
+      if (!stored || typeof stored !== 'object') return;
+      const parsed = parseRadialSettings(stored);
+      if (parsed.fancyFx != null) setFancyFx(parsed.fancyFx);
+      if (parsed.layoutProfile) setLayoutProfile(parsed.layoutProfile);
+    } catch {
+      // 忽略
+    }
+  }, []);
+
   useEffect(() => {
-    let mounted = true;
-    let unlisten: (() => void) | null = null;
-
-    const syncSettings = async () => {
-      try {
-        const stored = await TauriService.getAppSettings();
-        if (!mounted || !stored || typeof stored !== 'object') return;
-        const fx = (stored as Record<string, unknown>).clipItemHudRadialMenuFancyFx;
-        const profile = (stored as Record<string, unknown>).clipItemHudRadialMenuLayoutProfile;
-        if (typeof fx === 'boolean') setFancyFx(fx);
-        if (profile === 'compact' || profile === 'standard' || profile === 'relaxed') {
-          setLayoutProfile(profile);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
     void syncSettings();
-
-    const listenPromise = TauriService.listenRadialMenuSnapshot((payload) => {
-      if (!mounted) return;
+    return subscribeTauriEvent(TauriService.listenRadialMenuSnapshot, (payload) => {
       void syncSettings();
       setSnapshot(payload);
     });
-    listenPromise.then((dispose) => {
-      unlisten = dispose;
-    }).catch(() => {});
-
-    return () => {
-      mounted = false;
-      if (unlisten) {
-        unlisten();
-      } else {
-        void listenPromise.then((dispose) => dispose()).catch(() => {});
-      }
-    };
-  }, []);
+  }, [syncSettings]);
 
   const handleActionComplete = useCallback((action: RadialMenuActionType) => {
     const snap = snapshotRef.current;
     if (!snap) return;
     snapshotRef.current = null;
-    void (async () => {
-      try {
-        await TauriService.emitRadialMenuAction({
-          itemId: snap.itemId,
-          action,
-        });
-      } finally {
-        closeMenu();
-      }
-    })();
+    void TauriService.emitRadialMenuAction({ itemId: snap.itemId, action })
+      .finally(closeMenu);
   }, [closeMenu]);
 
   if (!snapshot) return null;

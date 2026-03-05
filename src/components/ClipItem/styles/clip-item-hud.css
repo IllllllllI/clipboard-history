@@ -1,16 +1,31 @@
+/* =========================
+   ClipItem HUD — 主窗口侧发光 + 流光边框
+   ========================= */
+
+/* ── HUD Active Base & Glow Tokens ─────────────────────────────────────
+   默认 palette (indigo)；各 data-hud-palette 只需覆盖 3 个变量。
+   Light / Dark glow box-shadow 差异通过 --hud-shadow-* token 消除重复。
+   ──────────────────────────────────────────────────────────────────────── */
+
 .clip-item-root[data-hud-active='true'] {
   --hud-glow-a: rgb(99 102 241 / 0.72);
   --hud-glow-b: rgb(56 189 248 / 0.76);
   --hud-glow-c: rgb(236 72 153 / 0.74);
+
+  /* Light glow shadow (consumed below) */
+  --hud-shadow:
+    0 0 0 1px color-mix(in srgb, var(--hud-glow-a) 36%, transparent),
+    0 0 16px  color-mix(in srgb, var(--hud-glow-a) 32%, transparent),
+    0 8px 18px color-mix(in srgb, var(--hud-glow-b) 20%, transparent);
+
   border-color: transparent;
   z-index: 0;
   isolation: isolate;
   overflow: visible;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--hud-glow-a) 36%, transparent),
-    0 0 16px color-mix(in srgb, var(--hud-glow-a) 32%, transparent),
-    0 8px 18px color-mix(in srgb, var(--hud-glow-b) 20%, transparent);
+  box-shadow: var(--hud-shadow);
 }
+
+/* ── Palette Overrides (variables only — zero layout properties) ──── */
 
 .clip-item-root[data-hud-active='true'][data-hud-palette='code'] {
   --hud-glow-a: rgb(16 185 129 / 0.78);
@@ -42,15 +57,17 @@
   --hud-glow-c: rgb(56 189 248 / 0.68);
 }
 
+/* ── Dark Theme – deeper glow, extra ambient shadow ──────────────────── */
+
 .clip-item-root[data-hud-active='true'][data-theme='dark'] {
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--hud-glow-a) 42%, transparent),
-    0 0 20px color-mix(in srgb, var(--hud-glow-a) 36%, transparent),
-    0 0 28px color-mix(in srgb, var(--hud-glow-b) 24%, transparent),
+  --hud-shadow:
+    0 0 0 1px  color-mix(in srgb, var(--hud-glow-a) 42%, transparent),
+    0 0 20px   color-mix(in srgb, var(--hud-glow-a) 36%, transparent),
+    0 0 28px   color-mix(in srgb, var(--hud-glow-b) 24%, transparent),
     0 10px 20px rgb(0 0 0 / 0.28);
 }
 
-/* ── 流光边框：conic-gradient 遮罩扫描 ── */
+/* ── Sweep Ring — conic-gradient mask animation ──────────────────────── */
 
 @property --hud-angle {
   syntax: '<angle>';
@@ -63,30 +80,37 @@
   to   { --hud-angle: 360deg; }
 }
 
+/* Shared pseudo-element base */
 .clip-item-root[data-hud-active='true']::before,
 .clip-item-root[data-hud-active='true']::after {
   content: '';
   position: absolute;
   inset: calc(var(--clip-item-hud-ring-width, 2px) * -1);
   border-radius: inherit;
-  border: var(--clip-item-hud-ring-width, 2px) solid color-mix(in srgb, var(--hud-glow-a) 76%, transparent);
+  border: var(--clip-item-hud-ring-width, 2px) solid transparent;
   pointer-events: none;
   -webkit-mask: conic-gradient(from var(--hud-angle), #000 0deg, transparent 80deg, transparent 360deg);
-  mask: conic-gradient(from var(--hud-angle), #000 0deg, transparent 80deg, transparent 360deg);
+          mask: conic-gradient(from var(--hud-angle), #000 0deg, transparent 80deg, transparent 360deg);
   animation: clip-item-hud-sweep var(--clip-item-hud-run-duration, 2.2s) infinite linear;
 }
 
+/* ::before — glow-b color, default phase */
 .clip-item-root[data-hud-active='true']::before {
   border-color: color-mix(in srgb, var(--hud-glow-b) 74%, transparent);
 }
 
+/* ::after — glow-c color, 180° phase offset */
 .clip-item-root[data-hud-active='true']::after {
   border-color: color-mix(in srgb, var(--hud-glow-c) 72%, transparent);
   animation-delay: calc(var(--clip-item-hud-run-duration, 2.2s) * -0.5);
 }
 
+/* ── Normal FX mode — disable sweep, keep glow box-shadow ───────────── */
 .clip-item-root[data-hud-active='true'][data-hud-fx='normal']::before,
 .clip-item-root[data-hud-active='true'][data-hud-fx='normal']::after {
-  display: none;
+  animation: none;
+  mask: none;
+  -webkit-mask: none;
+  border-color: transparent;
 }
 

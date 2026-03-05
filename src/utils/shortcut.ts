@@ -9,6 +9,10 @@ type ParsedShortcut = {
 
 const MODIFIER_ORDER = ['CtrlOrMeta', 'Ctrl', 'Meta', 'Alt', 'Shift'] as const;
 
+/** 有界 LRU 缓存上限——快捷键种类有限，32 绰绰有余 */
+const PARSE_CACHE_LIMIT = 32;
+const parseCache = new Map<string, ParsedShortcut | null>();
+
 function normalizeKey(raw: string): string {
   const key = raw.toLowerCase();
   if (key === 'esc' || key === 'escape') return 'Escape';
@@ -22,12 +26,21 @@ function normalizeKey(raw: string): string {
 }
 
 function parseShortcut(shortcut: string): ParsedShortcut | null {
-  const tokens = shortcut
+  const normalized = shortcut.trim();
+  if (!normalized) return null;
+
+  const cached = parseCache.get(normalized);
+  if (cached !== undefined) return cached;
+
+  const tokens = normalized
     .split('+')
     .map(t => t.trim())
     .filter(Boolean);
 
-  if (tokens.length === 0) return null;
+  if (tokens.length === 0) {
+    parseCache.set(normalized, null);
+    return null;
+  }
 
   const parsed: ParsedShortcut = {
     ctrl: false,
@@ -63,8 +76,13 @@ function parseShortcut(shortcut: string): ParsedShortcut | null {
     parsed.key = normalizeKey(tokenRaw);
   }
 
-  if (!parsed.key) return null;
-  return parsed;
+  const result = parsed.key ? parsed : null;
+
+  // 有界缓存——满了清空重来，避免无限增长
+  if (parseCache.size >= PARSE_CACHE_LIMIT) parseCache.clear();
+  parseCache.set(normalized, result);
+
+  return result;
 }
 
 export function normalizeShortcut(shortcut: string): string | null {
@@ -151,4 +169,43 @@ export function getLikelySystemShortcutWarning(shortcut: string): string | null 
   );
 
   return matched ? matched.warning : null;
+}
+
+// ── KeyboardEvent 匹配 ──────────────────────────────────────────
+
+/**
+ * 判断 KeyboardEvent 是否匹配给定快捷键描述字符串。
+ *
+ * - 支持 `CmdOrCtrl` / `CommandOrControl` 修饰符
+ * - 字母键优先使用 `e.code` 匹配，兼容非 QWERTY 布局
+ * - 自动忽略 repeat 事件
+ */
+export function matchesShortcut(e: KeyboardEvent, shortcut: string): boolean {
+  const parsed = parseShortcut(shortcut);
+  if (!parsed || e.repeat) return false;
+
+  // ── 修饰键检查 ──
+  if (parsed.ctrlOrMeta) {
+    if (!(e.ctrlKey || e.metaKey)) return false;
+  } else {
+    if (e.ctrlKey !== parsed.ctrl) return false;
+    if (e.metaKey !== parsed.meta) return false;
+  }
+  if (e.altKey !== parsed.alt) return false;
+  if (e.shiftKey !== parsed.shift) return false;
+
+  // ── 主键检查 ──
+  const key = parsed.key;
+  const eventKey = e.key.toLowerCase();
+
+  // 单字母 → 优先 e.code（布局无关）
+  if (key.length === 1 && key >= 'A' && key <= 'Z') {
+    return e.code === `Key${key}` || eventKey === key.toLowerCase();
+  }
+  // 数字
+  if (key.length === 1 && key >= '0' && key <= '9') {
+    return e.code === `Digit${key}` || eventKey === key;
+  }
+  // 功能键 / 特殊键 → 按 normalizeKey 的结果比较
+  return eventKey === key.toLowerCase();
 }

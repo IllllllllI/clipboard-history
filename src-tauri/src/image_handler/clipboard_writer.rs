@@ -18,6 +18,13 @@
 //!
 //! 非 Windows 平台仍回退到 arboard。
 //!
+//! ## 内部结构
+//!
+//! - `RetryPolicy`：聚合重试参数（次数、基础延迟、上限、预算）
+//! - `execute_with_retries`：通用重试执行器，按策略调度闭包
+//! - `ClipboardWriteFailure`：分类错误（Busy / Transient / Fatal）
+//! - `win32` / `fallback`：平台特定的预编码 + 快写实现
+//!
 //! ## 错误日志字段约定（Windows）
 //!
 //! 失败日志统一使用以下可检索字段，便于排障与告警聚合：
@@ -182,6 +189,105 @@ fn would_exceed_retry_budget(elapsed_ms: u64, wait_ms: u64, budget_ms: u64) -> b
     elapsed_ms.saturating_add(wait_ms) > budget_ms
 }
 
+// ── 重试策略 ─────────────────────────────────────────────────
+
+/// 聚合重试行为的四个维度，避免裸参数传递。
+#[derive(Debug, Clone, Copy)]
+struct RetryPolicy {
+    max_attempts: u32,
+    base_delay_ms: u64,
+    max_delay_ms: u64,
+    budget_ms: u64,
+}
+
+impl RetryPolicy {
+    fn from_config(config: &ImageConfig) -> Self {
+        Self {
+            max_attempts: config.clipboard_retries.max(1),
+            base_delay_ms: config.clipboard_retry_delay.max(1),
+            max_delay_ms: config.clipboard_retry_max_delay_ms,
+            budget_ms: config.clipboard_retry_max_total_ms,
+        }
+    }
+}
+
+// ── 重试执行器 ───────────────────────────────────────────────
+
+/// 按 `policy` 调度 `op`，遇到 Fatal 立即终止，预算耗尽时提前退出。
+fn execute_with_retries<F>(policy: &RetryPolicy, mut op: F) -> Result<(), ImageError>
+where
+    F: FnMut() -> Result<(), ClipboardWriteFailure>,
+{
+    let started = Instant::now();
+    let mut last_failure: Option<ClipboardWriteFailure> = None;
+
+    for attempt in 1..=policy.max_attempts {
+        if attempt > 1 {
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            if elapsed_ms >= policy.budget_ms {
+                log::warn!(
+                    "⏱️ 剪贴板写入重试预算耗尽（{}ms >= {}ms）",
+                    elapsed_ms,
+                    policy.budget_ms
+                );
+                break;
+            }
+
+            let wait_ms = compute_backoff_delay_with_jitter(
+                policy.base_delay_ms,
+                attempt - 1,
+                policy.max_delay_ms,
+            );
+
+            if would_exceed_retry_budget(elapsed_ms, wait_ms, policy.budget_ms) {
+                log::warn!(
+                    "⏱️ 跳过第 {} 次重试：等待 {}ms 会超过预算 {}ms",
+                    attempt,
+                    wait_ms,
+                    policy.budget_ms
+                );
+                break;
+            }
+
+            log::debug!(
+                "🔄 重试 {}/{}，等待 {}ms（指数退避+抖动）",
+                attempt,
+                policy.max_attempts,
+                wait_ms
+            );
+            std::thread::sleep(Duration::from_millis(wait_ms));
+        }
+
+        match op() {
+            Ok(()) => {
+                log::info!("✅ 复制成功 (尝试 {})", attempt);
+                return Ok(());
+            }
+            Err(failure) => {
+                log::warn!(
+                    "❌ 尝试 {} 失败: {}（kind={:?}, retryable={}）",
+                    attempt,
+                    failure.message,
+                    failure.kind,
+                    failure.is_retryable()
+                );
+                if !failure.is_retryable() {
+                    last_failure = Some(failure);
+                    break;
+                }
+                last_failure = Some(failure);
+            }
+        }
+    }
+
+    let f = last_failure.unwrap_or_else(|| ClipboardWriteFailure::fatal("未知错误"));
+    if f.kind == ClipboardFailureKind::Busy {
+        Err(ImageError::ClipboardBusy(f.message))
+    } else {
+        Err(ImageError::Clipboard(f.message))
+    }
+}
+
 impl ImageHandler {
     /// 将已准备好的 RGBA 数据写入系统剪贴板（含重试）。
     pub(crate) async fn copy_to_clipboard_with_retry(
@@ -192,121 +298,18 @@ impl ImageHandler {
         log::debug!("📋 准备复制到剪贴板 - {}x{}", image.width, image.height);
 
         let _guard = crate::clipboard::IgnoreGuard::new();
-        let retries = config.clipboard_retries;
-        let retry_delay = config.clipboard_retry_delay;
-        let retry_max_total_ms = config.clipboard_retry_max_total_ms;
-        let retry_max_delay_ms = config.clipboard_retry_max_delay_ms;
+        let policy = RetryPolicy::from_config(config);
         let width = image.width;
         let height = image.height;
         let bytes = image.bytes;
 
         tokio::task::spawn_blocking(move || {
-            Self::write_image_with_retry(
-                width,
-                height,
-                &bytes,
-                retries,
-                retry_delay,
-                retry_max_total_ms,
-                retry_max_delay_ms,
-            )
+            let prepped = Self::prepare_clipboard_buffers(width, height, &bytes)
+                .map_err(ImageError::Clipboard)?;
+            execute_with_retries(&policy, || Self::try_fast_clipboard_write(&prepped))
         })
         .await
         .map_err(|e| ImageError::Clipboard(format!("线程执行失败：{}", e)))?
-    }
-
-    /// 在阻塞线程中执行写入 + 重试。
-    fn write_image_with_retry(
-        width: usize,
-        height: usize,
-        bytes: &[u8],
-        retries: u32,
-        retry_delay: u64,
-        retry_max_total_ms: u64,
-        retry_max_delay_ms: u64,
-    ) -> Result<(), ImageError> {
-        // ── 预编码阶段（不持有剪贴板锁）──────────────
-        let prepped = Self::prepare_clipboard_buffers(width, height, bytes)
-            .map_err(ImageError::Clipboard)?;
-
-        // ── 写入阶段 + 重试 ─────────────────────────
-        let retry_count = retries.max(1);
-        let started = Instant::now();
-        let mut last_error = None;
-        let mut last_kind = ClipboardFailureKind::Transient;
-        for attempt in 1..=retry_count {
-            if attempt > 1 {
-                let elapsed_ms = started.elapsed().as_millis() as u64;
-                if elapsed_ms >= retry_max_total_ms {
-                    log::warn!(
-                        "⏱️ 剪贴板写入重试预算耗尽（{}ms >= {}ms）",
-                        elapsed_ms,
-                        retry_max_total_ms
-                    );
-                    break;
-                }
-
-                let wait_ms = compute_backoff_delay_with_jitter(
-                    retry_delay.max(1),
-                    attempt - 1,
-                    retry_max_delay_ms,
-                );
-
-                if would_exceed_retry_budget(elapsed_ms, wait_ms, retry_max_total_ms) {
-                    log::warn!(
-                        "⏱️ 跳过第 {} 次重试：等待 {}ms 会超过预算 {}ms",
-                        attempt,
-                        wait_ms,
-                        retry_max_total_ms
-                    );
-                    break;
-                }
-
-                log::debug!(
-                    "🔄 重试 {}/{}，等待 {}ms（指数退避+抖动）",
-                    attempt,
-                    retry_count,
-                    wait_ms
-                );
-                std::thread::sleep(Duration::from_millis(wait_ms));
-            }
-
-            match Self::try_fast_clipboard_write(&prepped) {
-                Ok(()) => {
-                    log::info!("✅ 复制成功 (尝试 {})", attempt);
-                    return Ok(());
-                }
-                Err(failure) => {
-                    let retryable = failure.is_retryable();
-                    let is_last_attempt = attempt >= retry_count;
-                    log::warn!(
-                        "❌ 尝试 {} 失败: {}（kind={:?}, retryable={}）",
-                        attempt,
-                        failure.message,
-                        failure.kind,
-                        retryable
-                    );
-                    last_error = Some(failure.message.clone());
-                    last_kind = failure.kind;
-
-                    if !retryable {
-                        log::warn!("🛑 非可重试错误，提前终止重试");
-                        break;
-                    }
-
-                    if is_last_attempt {
-                        break;
-                    }
-                }
-            }
-        }
-
-        let final_message = last_error.unwrap_or_else(|| "未知错误".to_string());
-        if last_kind == ClipboardFailureKind::Busy {
-            Err(ImageError::ClipboardBusy(final_message))
-        } else {
-            Err(ImageError::Clipboard(final_message))
-        }
     }
 }
 
@@ -357,28 +360,9 @@ mod win32 {
             height: usize,
             rgba_bytes: &[u8],
         ) -> Result<PreppedBuffers, String> {
-            // ── 1. PNG 编码 ──
-            let png_bytes = {
-                let mut buf = Vec::new();
-                let encoder = PngEncoder::new(&mut buf);
-                encoder
-                    .write_image(
-                        rgba_bytes,
-                        width as u32,
-                        height as u32,
-                        image::ColorType::Rgba8.into(),
-                    )
-                    .map_err(|e| format!("PNG 编码失败: {}", e))?;
-                buf
-            };
-
-            // ── 2. 构建 DIBv5（header + ARGB 像素）──
+            let png_bytes = encode_png(width, height, rgba_bytes)?;
             let dibv5_bytes = build_dibv5(width, height, rgba_bytes)?;
-
-            Ok(PreppedBuffers {
-                png_bytes,
-                dibv5_bytes,
-            })
+            Ok(PreppedBuffers { png_bytes, dibv5_bytes })
         }
 
         /// 极速写入：OpenClipboard→Empty→Set(PNG)→Set(DIBV5)→Close。
@@ -480,11 +464,27 @@ mod win32 {
         }
     }
 
+    /// PNG 编码辅助，将 RGBA 原始数据编码为 PNG 字节。
+    fn encode_png(width: usize, height: usize, rgba: &[u8]) -> Result<Vec<u8>, String> {
+        let mut buf = Vec::new();
+        let encoder = PngEncoder::new(&mut buf);
+        encoder
+            .write_image(
+                rgba,
+                width as u32,
+                height as u32,
+                image::ColorType::Rgba8.into(),
+            )
+            .map_err(|e| format!("PNG 编码失败: {}", e))?;
+        Ok(buf)
+    }
+
     /// 构建完整的 DIBv5 数据（header + 翻转后的 ARGB 像素）。
+    ///
+    /// 单次分配：直接将 ARGB 像素写入最终缓冲区，避免中间 Vec 分配。
     fn build_dibv5(width: usize, height: usize, rgba_bytes: &[u8]) -> Result<Vec<u8>, String> {
         let header_size = size_of::<BITMAPV5HEADER>();
-        let pixel_count = width * height;
-        let pixel_bytes = pixel_count * 4;
+        let pixel_bytes = width * height * 4;
 
         if rgba_bytes.len() != pixel_bytes {
             return Err(format!(
@@ -494,15 +494,11 @@ mod win32 {
             ));
         }
 
-        // ── 将 RGBA → ARGB（Windows 原生格式）并垂直翻转 ──
-        let argb_flipped = rgba_to_argb_flipped(rgba_bytes, width, height);
-
-        // ── BITMAPV5HEADER ──
         // 使用正的 height 表示 bottom-up（Windows 标准，兼容性最好）。
         let header = BITMAPV5HEADER {
             bV5Size: header_size as u32,
             bV5Width: width as i32,
-            bV5Height: height as i32, // 正值 = bottom-up
+            bV5Height: height as i32,
             bV5Planes: 1,
             bV5BitCount: 32,
             bV5Compression: BI_BITFIELDS,
@@ -526,40 +522,37 @@ mod win32 {
             bV5Reserved: 0,
         };
 
-        // ── 拼接 ──
-        let mut buf = Vec::with_capacity(header_size + pixel_bytes);
+        // 单次分配：header + 像素
+        let mut buf = vec![0u8; header_size + pixel_bytes];
         let header_bytes =
             unsafe { std::slice::from_raw_parts(&header as *const _ as *const u8, header_size) };
-        buf.extend_from_slice(header_bytes);
-        buf.extend_from_slice(&argb_flipped);
+        buf[..header_size].copy_from_slice(header_bytes);
+
+        // RGBA → ARGB + 垂直翻转，直写目标切片，零中间分配
+        write_rgba_as_argb_flipped(rgba_bytes, width, height, &mut buf[header_size..]);
 
         Ok(buf)
     }
 
-    /// RGBA → ARGB + 垂直翻转（行翻转），一次遍历完成两项转换。
-    fn rgba_to_argb_flipped(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
+    /// RGBA → ARGB 转换 + 垂直翻转，直接写入目标切片。
+    ///
+    /// 使用 `chunks_exact(4)` 替代手动索引计算，更安全且更 idiomatic。
+    fn write_rgba_as_argb_flipped(rgba: &[u8], width: usize, height: usize, out: &mut [u8]) {
         let row_bytes = width * 4;
-        let mut out = vec![0u8; rgba.len()];
-
         for y in 0..height {
-            let src_row = y * row_bytes;
-            let dst_row = (height - 1 - y) * row_bytes;
-            for x in 0..width {
-                let si = src_row + x * 4;
-                let di = dst_row + x * 4;
-                let r = rgba[si];
-                let g = rgba[si + 1];
-                let b = rgba[si + 2];
-                let a = rgba[si + 3];
+            let src_start = y * row_bytes;
+            let dst_start = (height - 1 - y) * row_bytes;
+            for (src_px, dst_px) in rgba[src_start..src_start + row_bytes]
+                .chunks_exact(4)
+                .zip(out[dst_start..dst_start + row_bytes].chunks_exact_mut(4))
+            {
                 // ARGB 在小端系统（Windows）的内存排布: B G R A
-                out[di] = b;
-                out[di + 1] = g;
-                out[di + 2] = r;
-                out[di + 3] = a;
+                dst_px[0] = src_px[2];
+                dst_px[1] = src_px[1];
+                dst_px[2] = src_px[0];
+                dst_px[3] = src_px[3];
             }
         }
-
-        out
     }
 }
 
@@ -620,59 +613,5 @@ use win32::PreppedBuffers;
 use fallback::PreppedBuffers;
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        compute_backoff_delay_with_jitter, format_win32_error_message, hresult_to_win32_code,
-        would_exceed_retry_budget,
-    };
-
-    #[test]
-    fn backoff_delay_stays_within_expected_bounds() {
-        let base = 100;
-        let max_delay = 900;
-
-        let delay = compute_backoff_delay_with_jitter(base, 4, max_delay);
-
-        assert!(delay >= 800, "delay should be at least exponential base");
-        assert!(delay <= 1200, "delay should include bounded jitter only");
-    }
-
-    #[test]
-    fn backoff_delay_respects_max_cap() {
-        let base = 300;
-        let max_delay = 500;
-
-        let delay = compute_backoff_delay_with_jitter(base, 8, max_delay);
-
-        assert!(delay >= 500, "delay should be capped at max_delay floor");
-        assert!(delay <= 666, "delay should not exceed capped value + jitter");
-    }
-
-    #[test]
-    fn retry_budget_checker_works() {
-        assert!(would_exceed_retry_budget(1700, 120, 1800));
-        assert!(!would_exceed_retry_budget(1600, 120, 1800));
-        assert!(!would_exceed_retry_budget(0, 0, 1800));
-    }
-
-    #[test]
-    fn hresult_to_win32_code_extracts_mapped_code() {
-        let hr = 0x8007_058A_u32 as i32;
-        assert_eq!(hresult_to_win32_code(hr), Some(1418));
-        assert_eq!(hresult_to_win32_code(0x8000_4005_u32 as i32), None);
-    }
-
-    #[test]
-    fn win32_error_message_contains_format_and_hint() {
-        let message = format_win32_error_message(
-            "SetClipboardData",
-            "PNG",
-            0x8007_058A_u32 as i32,
-            "mock_detail",
-        );
-
-        assert!(message.contains("format=PNG"));
-        assert!(message.contains("hint="));
-        assert!(message.contains("code=1418"));
-    }
-}
+#[path = "tests/clipboard_writer_tests.rs"]
+mod tests;

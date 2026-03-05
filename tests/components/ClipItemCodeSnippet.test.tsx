@@ -5,6 +5,7 @@ import { ClipItem } from '../../src/types';
 import { useSettingsContext } from '../../src/contexts/SettingsContext';
 import { useClipboardContext } from '../../src/contexts/ClipboardContext';
 import { useUIContext } from '../../src/contexts/UIContext';
+import { useClipItemStableContext } from '../../src/components/ClipItem/ClipItemContext';
 
 // Mock motion/react
 vi.mock('motion/react', () => ({
@@ -33,6 +34,9 @@ vi.mock('../../src/contexts/ClipboardContext', () => ({
 }));
 vi.mock('../../src/contexts/UIContext', () => ({
   useUIContext: vi.fn(),
+}));
+vi.mock('../../src/components/ClipItem/ClipItemContext', () => ({
+  useClipItemStableContext: vi.fn(),
 }));
 
 const defaultSettings = {
@@ -85,6 +89,12 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     (useSettingsContext as any).mockReturnValue({ ...defaultSettingsCtx });
     (useClipboardContext as any).mockReturnValue({ ...defaultClipboardCtx });
     (useUIContext as any).mockReturnValue({ ...defaultUICtx });
+    (useClipItemStableContext as any).mockReturnValue({
+      ...defaultSettingsCtx,
+      ...defaultClipboardCtx,
+      ...defaultUICtx,
+      addClipEntry: vi.fn(),
+    });
   });
 
   it('should display code snippet containing "image.png" as text, not as image', () => {
@@ -100,7 +110,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={codeSnippet} index={0} />
+      <ClipItemComponent item={codeSnippet} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should display as text, not try to render ImageDisplay
@@ -126,7 +136,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={codeSnippet} index={0} />
+      <ClipItemComponent item={codeSnippet} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should display as text
@@ -148,7 +158,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={imageUrl} index={0} />
+      <ClipItemComponent item={imageUrl} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should try to render as image (ImageDisplay component)
@@ -170,7 +180,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={base64Image} index={0} />
+      <ClipItemComponent item={base64Image} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should try to render as image
@@ -195,7 +205,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={codeSnippet} index={0} />
+      <ClipItemComponent item={codeSnippet} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should display as text
@@ -217,7 +227,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={localImagePath} index={0} />
+      <ClipItemComponent item={localImagePath} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should try to render as image
@@ -238,7 +248,7 @@ describe('ClipItemComponent - Code Snippet Detection', () => {
     };
 
     const { container } = render(
-      <ClipItemComponent item={windowsImagePath} index={0} />
+      <ClipItemComponent item={windowsImagePath} index={0} isSelected={false} isCopied={false} searchQuery="" />
     );
 
     // Should try to render as image

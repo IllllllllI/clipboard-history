@@ -5,6 +5,7 @@ import type { ClipItem } from '../../src/types';
 import { useSettingsContext } from '../../src/contexts/SettingsContext';
 import { useClipboardContext } from '../../src/contexts/ClipboardContext';
 import { useUIContext } from '../../src/contexts/UIContext';
+import { useClipItemStableContext } from '../../src/components/ClipItem/ClipItemContext';
 
 beforeEach(() => {
   global.IntersectionObserver = class IntersectionObserver {
@@ -23,6 +24,9 @@ vi.mock('../../src/contexts/ClipboardContext', () => ({
 }));
 vi.mock('../../src/contexts/UIContext', () => ({
   useUIContext: vi.fn(),
+}));
+vi.mock('../../src/components/ClipItem/ClipItemContext', () => ({
+  useClipItemStableContext: vi.fn(),
 }));
 
 vi.mock('../../src/components/ImageDisplay', () => ({
@@ -97,6 +101,12 @@ const setupMocks = (overrides: Record<string, any> = {}) => {
   (useSettingsContext as any).mockReturnValue({ ...defaultSettingsCtx, ...settingsOv });
   (useClipboardContext as any).mockReturnValue({ ...defaultClipboardCtx, ...clipboardOv });
   (useUIContext as any).mockReturnValue({ ...defaultUICtx, ...uiOv });
+  (useClipItemStableContext as any).mockReturnValue({
+    ...defaultSettingsCtx, ...settingsOv,
+    ...defaultClipboardCtx, ...clipboardOv,
+    ...defaultUICtx, ...uiOv,
+    addClipEntry: vi.fn(),
+  });
 };
 
 const createMultiImageItem = (): ClipItem => ({
@@ -145,7 +155,7 @@ describe('ClipItem + ImageGallery list interaction', () => {
       copyToClipboard: mockCopyToClipboard,
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     const listRows = container.querySelectorAll('.img-gallery__list-row');
     expect(listRows).toHaveLength(2);
 
@@ -170,7 +180,7 @@ describe('ClipItem + ImageGallery list interaction', () => {
       setPreviewImageUrl: mockSetPreviewImageUrl,
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     const thumbButtons = container.querySelectorAll('.img-gallery__list-row-thumb-btn');
     expect(thumbButtons).toHaveLength(2);
 
@@ -192,7 +202,7 @@ describe('ClipItem + ImageGallery list interaction', () => {
       },
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
 
     fireEvent.click(container.querySelector('button[aria-label="下一张"]')!);
     fireEvent.click(container.querySelector('button[title="复制当前图片"]')!);
@@ -214,7 +224,7 @@ describe('ClipItem + ImageGallery list interaction', () => {
       copyToClipboard: mockCopyToClipboard,
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     const fileRows = container.querySelectorAll('.file-list-item');
     expect(fileRows).toHaveLength(2);
 
@@ -241,7 +251,7 @@ describe('ClipItem + ImageGallery list interaction', () => {
       },
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     expect(container.querySelectorAll('.file-list-item')).toHaveLength(1);
 
     fireEvent.click(container.querySelector('.file-list-display__toggle-btn')!);
@@ -259,14 +269,14 @@ describe('ClipItem + ImageGallery list interaction', () => {
       handleDragStart: mockHandleDragStart,
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     const fileRows = container.querySelectorAll('.file-list-item');
     expect(fileRows).toHaveLength(2);
 
     fireEvent.dragStart(fileRows[1]);
 
     expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
-    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'C:\\B\\two.md', expect.any(Function));
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'C:\\B\\two.md');
   });
 
   it('图片列表拖拽单条目时应走单条 URL 拖拽链路', () => {
@@ -277,14 +287,14 @@ describe('ClipItem + ImageGallery list interaction', () => {
       handleDragStart: mockHandleDragStart,
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     const imageRows = container.querySelectorAll('.img-gallery__list-row');
     expect(imageRows).toHaveLength(2);
 
     fireEvent.dragStart(imageRows[1]);
 
     expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
-    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png', expect.any(Function));
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png');
   });
 
   it('图片轮播模式拖拽主图时应走当前图片 URL 拖拽链路', () => {
@@ -299,12 +309,12 @@ describe('ClipItem + ImageGallery list interaction', () => {
       },
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     fireEvent.click(container.querySelector('button[aria-label="下一张"]')!);
     fireEvent.dragStart(container.querySelector('.img-gallery__main-image')!);
 
     expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
-    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png', expect.any(Function));
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png');
   });
 
   it('图片宫格模式拖拽单格时应走对应图片 URL 拖拽链路', () => {
@@ -319,13 +329,13 @@ describe('ClipItem + ImageGallery list interaction', () => {
       },
     });
 
-    const { container } = render(<ClipItemComponent item={item} index={0} />);
+    const { container } = render(<ClipItemComponent item={item} index={0} isSelected={false} isCopied={false} searchQuery="" />);
     const gridCells = container.querySelectorAll('.img-gallery__grid-cell');
     expect(gridCells).toHaveLength(2);
 
     fireEvent.dragStart(gridCells[1]);
 
     expect(mockHandleDragStart).toHaveBeenCalledTimes(1);
-    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png', expect.any(Function));
+    expect(mockHandleDragStart).toHaveBeenCalledWith(expect.anything(), 'https://example.com/b.png');
   });
 });

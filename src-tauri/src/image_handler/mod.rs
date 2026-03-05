@@ -67,7 +67,7 @@ pub use commands::{
 };
 pub use config::{ImageConfig, ImagePerformanceProfile};
 pub use error::ImageError;
-pub use service::ImageAdvancedConfig;
+pub use config::ImageAdvancedConfig;
 pub use service::IMAGE_DOWNLOAD_PROGRESS_EVENT;
 pub use service::ImageServiceState;
 pub use source::ImageSource;

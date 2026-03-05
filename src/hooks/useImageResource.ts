@@ -4,6 +4,10 @@ import { normalizeFilePath } from '../utils';
 import { resolveImageSrc } from '../utils/imageUrl';
 import { fetchAndCacheImage } from '../utils/imageCache';
 
+// ============================================================================
+// 错误提示
+// ============================================================================
+
 const ERROR_MESSAGES: Record<ImageType, string> = {
   [ImageType.HttpUrl]: '无法加载网络图片，请检查网络连接或图片链接是否有效',
   [ImageType.LocalFile]: '无法加载本地图片，文件可能已被移动或删除',
@@ -15,78 +19,88 @@ function getErrorMessage(type: ImageType): string {
   return ERROR_MESSAGES[type] ?? ERROR_MESSAGES[ImageType.None];
 }
 
+// ============================================================================
+// 轻量级图片 src 内存 LRU 缓存
+//
+// - get 原地修改 touchedAt，不创建新对象、不 delete→re-insert
+// - 仅在 set 时节流修剪过期/超限条目（惰性清理，减少遍历）
+// ============================================================================
+
 interface ImageCacheEntry {
   src: string;
   loaded: boolean;
   touchedAt: number;
 }
 
-const IMAGE_CACHE_MAX_ENTRIES = 50;
-const IMAGE_CACHE_TTL_MS = 20 * 60 * 1000;
-const IMAGE_PRUNE_THROTTLE_MS = 5000; // 每 5 秒最多清理一次过期条目
-const imageMemoryCache = new Map<string, ImageCacheEntry>();
-let lastImagePruneTimestamp = 0;
+const CACHE_MAX = 50;
+const CACHE_TTL_MS = 20 * 60 * 1_000;
+const PRUNE_THROTTLE_MS = 5_000;
 
-function pruneExpiredEntries(now: number): void {
-  if (now - lastImagePruneTimestamp < IMAGE_PRUNE_THROTTLE_MS) return;
-  lastImagePruneTimestamp = now;
+const memCache = new Map<string, ImageCacheEntry>();
+let lastPruneTs = 0;
 
-  for (const [key, entry] of imageMemoryCache.entries()) {
-    if (now - entry.touchedAt > IMAGE_CACHE_TTL_MS) {
-      imageMemoryCache.delete(key);
-    }
+/** 节流修剪：过期 + 超限，仅在 set 路径调用 */
+function pruneIfNeeded(now: number): void {
+  if (now - lastPruneTs < PRUNE_THROTTLE_MS) return;
+  lastPruneTs = now;
+
+  // 过期淘汰
+  for (const [k, v] of memCache) {
+    if (now - v.touchedAt > CACHE_TTL_MS) memCache.delete(k);
+  }
+
+  // LRU 数量淘汰（Map 迭代序 = 插入序，最早插入 = 最少最近使用）
+  let excess = memCache.size - CACHE_MAX;
+  if (excess <= 0) return;
+  for (const k of memCache.keys()) {
+    if (excess-- <= 0) break;
+    memCache.delete(k);
   }
 }
 
-function pruneLruEntries(): void {
-  while (imageMemoryCache.size > IMAGE_CACHE_MAX_ENTRIES) {
-    const oldestKey = imageMemoryCache.keys().next().value;
-    if (!oldestKey) {
-      break;
-    }
-    imageMemoryCache.delete(oldestKey);
-  }
-}
-
-function getCacheEntry(cacheKey: string): ImageCacheEntry | undefined {
-  const now = Date.now();
-  pruneExpiredEntries(now);
-
-  const entry = imageMemoryCache.get(cacheKey);
+function cacheGet(key: string): ImageCacheEntry | undefined {
+  const entry = memCache.get(key);
   if (!entry) return undefined;
 
-  if (now - entry.touchedAt > IMAGE_CACHE_TTL_MS) {
-    imageMemoryCache.delete(cacheKey);
+  const now = Date.now();
+  if (now - entry.touchedAt > CACHE_TTL_MS) {
+    memCache.delete(key);
     return undefined;
   }
 
-  imageMemoryCache.delete(cacheKey);
-  const touchedEntry = { ...entry, touchedAt: now };
-  imageMemoryCache.set(cacheKey, touchedEntry);
-  return touchedEntry;
+  // 原地刷新时间戳——无分配
+  entry.touchedAt = now;
+  return entry;
 }
 
-function setCacheEntry(cacheKey: string, src: string, loaded: boolean): void {
+function cacheSet(key: string, src: string, loaded: boolean): void {
   const now = Date.now();
-  pruneExpiredEntries(now);
-
-  if (imageMemoryCache.has(cacheKey)) {
-    imageMemoryCache.delete(cacheKey);
+  const existing = memCache.get(key);
+  if (existing) {
+    existing.src = src;
+    existing.loaded = loaded;
+    existing.touchedAt = now;
+  } else {
+    memCache.set(key, { src, loaded, touchedAt: now });
   }
-
-  imageMemoryCache.set(cacheKey, { src, loaded, touchedAt: now });
-  pruneLruEntries();
+  pruneIfNeeded(now);
 }
 
-function markCacheEntryLoaded(cacheKey: string): void {
-  const current = getCacheEntry(cacheKey);
-  if (!current) return;
-  setCacheEntry(cacheKey, current.src, true);
+function cacheMarkLoaded(key: string): void {
+  const entry = memCache.get(key);
+  if (entry) {
+    entry.loaded = true;
+    entry.touchedAt = Date.now();
+  }
 }
 
-function deleteCacheEntry(cacheKey: string): void {
-  imageMemoryCache.delete(cacheKey);
+function cacheDelete(key: string): void {
+  memCache.delete(key);
 }
+
+// ============================================================================
+// Hook
+// ============================================================================
 
 interface UseImageResourceOptions {
   sourceText: string;
@@ -110,131 +124,121 @@ export function useImageResource({
   disableLazyLoad = false,
 }: UseImageResourceOptions): UseImageResourceResult {
   const cacheKey = sourceText;
-  const shouldLazyLoad = imageType === ImageType.HttpUrl && !disableLazyLoad;
-  const initialCacheEntry = getCacheEntry(cacheKey);
+  const lazyLoad = imageType === ImageType.HttpUrl && !disableLazyLoad;
+  const initialEntry = cacheGet(cacheKey);
 
-  const [isLoading, setIsLoading] = useState(() => !(initialCacheEntry?.loaded ?? false));
-  const [imageSrc, setImageSrc] = useState<string>(() => initialCacheEntry?.src ?? '');
+  const [isLoading, setIsLoading] = useState(() => !(initialEntry?.loaded ?? false));
+  const [imageSrc, setImageSrc] = useState<string>(() => initialEntry?.src ?? '');
   const [error, setError] = useState<string | null>(null);
   const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
-  const [shouldLoad, setShouldLoad] = useState(() => !shouldLazyLoad);
+
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // ── 核心加载 effect（合并 reset + 懒加载门控 + 异步解析） ──
+
   useEffect(() => {
-    const cacheEntry = getCacheEntry(cacheKey);
-    setImageSrc(cacheEntry?.src ?? '');
-    setIsLoading(!(cacheEntry?.loaded ?? false));
+    if (imageType === ImageType.None) return;
+
+    // 重置状态（原先独立 effect —— 合并后减少一次 re-render）
+    const cached = cacheGet(cacheKey);
     setError(null);
     setImageSize(null);
-  }, [cacheKey]);
+    setImageSrc(cached?.src ?? '');
+    setIsLoading(!(cached?.loaded ?? false));
 
-  useEffect(() => {
-    if (!shouldLazyLoad) {
-      setShouldLoad(true);
-      return;
-    }
-    setShouldLoad(false);
-  }, [sourceText, shouldLazyLoad]);
+    let cancelled = false;
 
-  useEffect(() => {
-    if (imageType === ImageType.None || !shouldLazyLoad) return;
-    const element = containerRef.current;
-    if (!element) return;
-
-    const root = element.closest('.overflow-y-auto') as Element | null;
-
-    const isVisibleNow = () => {
-      const rect = element.getBoundingClientRect();
-      if (root) {
-        const rootRect = root.getBoundingClientRect();
-        return rect.bottom >= rootRect.top - 80 && rect.top <= rootRect.bottom + 80;
-      }
-      return rect.bottom >= -80 && rect.top <= window.innerHeight + 80;
-    };
-
-    if (isVisibleNow()) {
-      setShouldLoad(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setShouldLoad(true);
-            observer.disconnect();
-          }
-        });
-      },
-      { root, rootMargin: '80px' }
-    );
-
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [imageType, shouldLazyLoad, sourceText]);
-
-  useEffect(() => {
-    if (imageType === ImageType.None || !shouldLoad) return;
-
-    const loadImage = async () => {
-      setError(null);
-
-      const cacheEntry = getCacheEntry(cacheKey);
-      if (cacheEntry?.src) {
-        setImageSrc(cacheEntry.src);
-        if (cacheEntry.loaded) {
-          setIsLoading(false);
-          return;
-        }
-      } else {
-        setIsLoading(true);
-      }
+    // ── 解析并设置 src ──
+    const resolve = async () => {
+      // 命中缓存且已确认可渲染 → 无需重新解析
+      if (cached?.loaded) return;
 
       try {
         switch (imageType) {
           case ImageType.Base64:
-            // Base64 字符串可能很大（数 MB），不存入 memoryCache 以节约内存
-            setImageSrc(sourceText);
+            // Base64 可能数 MB，不存 memCache
+            if (!cancelled) setImageSrc(sourceText);
             break;
           case ImageType.HttpUrl: {
-            const resolvedSrc = await fetchAndCacheImage(sourceText, 10000);
-            setImageSrc(resolvedSrc);
-            setCacheEntry(cacheKey, resolvedSrc, false);
+            const resolved = await fetchAndCacheImage(sourceText, 10_000);
+            if (cancelled) return;
+            setImageSrc(resolved);
+            cacheSet(cacheKey, resolved, false);
             break;
           }
           case ImageType.LocalFile: {
-            const resolvedSrc = resolveImageSrc(normalizeFilePath(sourceText));
-            setImageSrc(resolvedSrc);
-            setCacheEntry(cacheKey, resolvedSrc, false);
+            const resolved = resolveImageSrc(normalizeFilePath(sourceText));
+            if (!cancelled) {
+              setImageSrc(resolved);
+              cacheSet(cacheKey, resolved, false);
+            }
             break;
           }
           default:
-            setImageSrc('');
+            if (!cancelled) setImageSrc('');
         }
       } catch {
+        if (cancelled) return;
+        // HTTP 图片 fetch 失败 → 降级用原始 URL 让 <img> 尝试
         if (imageType === ImageType.HttpUrl) {
           setImageSrc(sourceText);
-          setCacheEntry(cacheKey, sourceText, false);
+          cacheSet(cacheKey, sourceText, false);
           return;
         }
-
         setError(getErrorMessage(imageType));
         setIsLoading(false);
       }
     };
 
-    void loadImage();
-  }, [cacheKey, shouldLoad, sourceText, imageType]);
+    // ── 懒加载门控 ──
+    if (!lazyLoad) {
+      void resolve();
+      return () => { cancelled = true; };
+    }
 
-  const onImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
-    markCacheEntryLoaded(cacheKey);
-    setIsLoading(false);
-  }, [cacheKey]);
+    // 需要懒加载：通过 IntersectionObserver 等可见再触发
+    const el = containerRef.current;
+    if (!el) {
+      void resolve(); // 无容器引用 → 降级直接加载
+      return () => { cancelled = true; };
+    }
+
+    const root = el.closest('.overflow-y-auto') as Element | null;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            observer.disconnect();
+            void resolve();
+            return;
+          }
+        }
+      },
+      { root, rootMargin: '80px' },
+    );
+
+    observer.observe(el);
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+    };
+  }, [cacheKey, sourceText, imageType, lazyLoad]);
+
+  // ── 回调 ──
+
+  const onImageLoad = useCallback(
+    (e: React.SyntheticEvent<HTMLImageElement>) => {
+      const img = e.currentTarget;
+      setImageSize({ width: img.naturalWidth, height: img.naturalHeight });
+      cacheMarkLoaded(cacheKey);
+      setIsLoading(false);
+    },
+    [cacheKey],
+  );
 
   const onImageError = useCallback(() => {
-    deleteCacheEntry(cacheKey);
+    cacheDelete(cacheKey);
     setError(getErrorMessage(imageType));
     setIsLoading(false);
   }, [cacheKey, imageType]);
@@ -247,5 +251,5 @@ export function useImageResource({
     imageSize,
     onImageLoad,
     onImageError,
-  };
+  } as const;
 }

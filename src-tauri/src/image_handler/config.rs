@@ -13,6 +13,7 @@
 //! - `infer_performance_profile` 用于从当前配置反推档位（给前端展示状态）。
 
 use image::imageops::FilterType;
+use serde::{Deserialize, Serialize};
 
 use super::ImageError;
 
@@ -181,5 +182,89 @@ impl ImageConfig {
                 self.resize_filter = FilterType::Nearest;
             }
         }
+    }
+}
+
+/// 前端可设置的高级配置子集（网络安全 / 解码内存 / 超时 / 重试策略）。
+///
+/// 作为 `ImageConfig` 的可序列化投影视图，用于 Tauri IPC 传输。
+/// 验证逻辑内聚在 `validate()` 中，避免在调用侧重复实现。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageAdvancedConfig {
+    pub allow_private_network: bool,
+    pub resolve_dns_for_url_safety: bool,
+    pub max_decoded_bytes: u64,
+    pub connect_timeout: u64,
+    pub stream_first_byte_timeout_ms: u64,
+    pub stream_chunk_timeout_ms: u64,
+    pub clipboard_retry_max_total_ms: u64,
+    pub clipboard_retry_max_delay_ms: u64,
+}
+
+impl ImageAdvancedConfig {
+    /// 从完整配置中提取高级配置子集。
+    pub(crate) fn from_full(config: &ImageConfig) -> Self {
+        Self {
+            allow_private_network: config.allow_private_network,
+            resolve_dns_for_url_safety: config.resolve_dns_for_url_safety,
+            max_decoded_bytes: config.max_decoded_bytes,
+            connect_timeout: config.connect_timeout,
+            stream_first_byte_timeout_ms: config.stream_first_byte_timeout_ms,
+            stream_chunk_timeout_ms: config.stream_chunk_timeout_ms,
+            clipboard_retry_max_total_ms: config.clipboard_retry_max_total_ms,
+            clipboard_retry_max_delay_ms: config.clipboard_retry_max_delay_ms,
+        }
+    }
+
+    /// 将高级配置应用到完整配置上（仅覆盖对应字段）。
+    pub(crate) fn apply_to(&self, config: &mut ImageConfig) {
+        config.allow_private_network = self.allow_private_network;
+        config.resolve_dns_for_url_safety = self.resolve_dns_for_url_safety;
+        config.max_decoded_bytes = self.max_decoded_bytes;
+        config.connect_timeout = self.connect_timeout;
+        config.stream_first_byte_timeout_ms = self.stream_first_byte_timeout_ms;
+        config.stream_chunk_timeout_ms = self.stream_chunk_timeout_ms;
+        config.clipboard_retry_max_total_ms = self.clipboard_retry_max_total_ms;
+        config.clipboard_retry_max_delay_ms = self.clipboard_retry_max_delay_ms;
+    }
+
+    /// 校验各字段的合法区间。
+    pub(crate) fn validate(&self) -> Result<(), ImageError> {
+        if self.max_decoded_bytes < 8 * 1024 * 1024 {
+            return Err(ImageError::InvalidFormat(
+                "max_decoded_bytes 不能小于 8MB".to_string(),
+            ));
+        }
+        if !(1..=120).contains(&self.connect_timeout) {
+            return Err(ImageError::InvalidFormat(
+                "connect_timeout 必须在 1~120 秒之间".to_string(),
+            ));
+        }
+        if !(500..=120_000).contains(&self.stream_first_byte_timeout_ms) {
+            return Err(ImageError::InvalidFormat(
+                "stream_first_byte_timeout_ms 必须在 500~120000 毫秒之间".to_string(),
+            ));
+        }
+        if !(500..=120_000).contains(&self.stream_chunk_timeout_ms) {
+            return Err(ImageError::InvalidFormat(
+                "stream_chunk_timeout_ms 必须在 500~120000 毫秒之间".to_string(),
+            ));
+        }
+        if !(200..=30_000).contains(&self.clipboard_retry_max_total_ms) {
+            return Err(ImageError::InvalidFormat(
+                "clipboard_retry_max_total_ms 必须在 200~30000 毫秒之间".to_string(),
+            ));
+        }
+        if !(10..=5_000).contains(&self.clipboard_retry_max_delay_ms) {
+            return Err(ImageError::InvalidFormat(
+                "clipboard_retry_max_delay_ms 必须在 10~5000 毫秒之间".to_string(),
+            ));
+        }
+        if self.clipboard_retry_max_delay_ms > self.clipboard_retry_max_total_ms {
+            return Err(ImageError::InvalidFormat(
+                "clipboard_retry_max_delay_ms 不能大于 clipboard_retry_max_total_ms".to_string(),
+            ));
+        }
+        Ok(())
     }
 }

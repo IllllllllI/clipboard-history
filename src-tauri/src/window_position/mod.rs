@@ -109,7 +109,10 @@ enum MainWindowNearestEdge {
     Left,
 }
 
-fn clamp_i32(value: i32, min_value: i32, max_value: i32) -> i32 {
+/// 安全钳位：当 `min > max`（窗口大于容器）时返回 `min`（贴左/上对齐），
+/// 否则等同于 `i32::clamp`。
+#[inline]
+fn saturating_clamp(value: i32, min_value: i32, max_value: i32) -> i32 {
     if min_value > max_value {
         return min_value;
     }
@@ -235,8 +238,12 @@ fn stash_hud_offscreen(app: &AppHandle) -> Result<(), AppError> {
 }
 
 
-fn compute_clipitem_hud_edge_position(
-    cursor_pos: PhysicalPosition<i32>,
+/// 根据指定边缘，计算 ClipItem HUD 在主窗口边缘外的布局（轴向 + 尺寸 + 坐标）。
+///
+/// 这是边缘定位的**唯一真相源**，
+/// `position_clipitem_hud_near_cursor` 和 `position_clipitem_hud_at_main_edge` 均委托此函数。
+fn layout_clipitem_hud_at_edge(
+    edge: MainWindowNearestEdge,
     main_pos: PhysicalPosition<i32>,
     main_size: PhysicalSize<u32>,
 ) -> (ClipItemHudAxis, PhysicalSize<u32>, PhysicalPosition<i32>) {
@@ -244,8 +251,6 @@ fn compute_clipitem_hud_edge_position(
     let top = main_pos.y;
     let right = left + main_size.width as i32;
     let bottom = top + main_size.height as i32;
-
-    let edge = detect_nearest_main_window_edge(cursor_pos.x, cursor_pos.y, left, top, right, bottom);
 
     let (axis, width, height) = match edge {
         MainWindowNearestEdge::Top | MainWindowNearestEdge::Bottom => {
@@ -263,28 +268,42 @@ fn compute_clipitem_hud_edge_position(
 
     let target = match edge {
         MainWindowNearestEdge::Top => {
-            let x = clamp_i32(center_x, left, right - width_i32);
+            let x = saturating_clamp(center_x, left, right - width_i32);
             let y = top - height_i32 - CLIPITEM_HUD_EDGE_INSET;
             PhysicalPosition::new(x, y)
         }
         MainWindowNearestEdge::Bottom => {
-            let x = clamp_i32(center_x, left, right - width_i32);
+            let x = saturating_clamp(center_x, left, right - width_i32);
             let y = bottom + CLIPITEM_HUD_EDGE_INSET;
             PhysicalPosition::new(x, y)
         }
         MainWindowNearestEdge::Left => {
             let x = left - width_i32 - CLIPITEM_HUD_EDGE_INSET;
-            let y = clamp_i32(center_y, top, bottom - height_i32);
+            let y = saturating_clamp(center_y, top, bottom - height_i32);
             PhysicalPosition::new(x, y)
         }
         MainWindowNearestEdge::Right => {
             let x = right + CLIPITEM_HUD_EDGE_INSET;
-            let y = clamp_i32(center_y, top, bottom - height_i32);
+            let y = saturating_clamp(center_y, top, bottom - height_i32);
             PhysicalPosition::new(x, y)
         }
     };
 
     (axis, PhysicalSize::new(width, height), target)
+}
+
+/// 根据光标位置自动检测最近边缘，再计算 HUD 布局
+fn compute_clipitem_hud_edge_position(
+    cursor_pos: PhysicalPosition<i32>,
+    main_pos: PhysicalPosition<i32>,
+    main_size: PhysicalSize<u32>,
+) -> (ClipItemHudAxis, PhysicalSize<u32>, PhysicalPosition<i32>) {
+    let left = main_pos.x;
+    let top = main_pos.y;
+    let right = left + main_size.width as i32;
+    let bottom = top + main_size.height as i32;
+    let edge = detect_nearest_main_window_edge(cursor_pos.x, cursor_pos.y, left, top, right, bottom);
+    layout_clipitem_hud_at_edge(edge, main_pos, main_size)
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -780,11 +799,6 @@ pub async fn position_clipitem_hud_at_main_edge(
         .outer_size()
         .map_err(|e| AppError::Window(format!("读取主窗口尺寸失败: {}", e)))?;
 
-    let left = main_pos.x;
-    let top = main_pos.y;
-    let right = left + main_size.width as i32;
-    let bottom = top + main_size.height as i32;
-
     let parsed_edge = match edge.as_str() {
         "top" => MainWindowNearestEdge::Top,
         "bottom" => MainWindowNearestEdge::Bottom,
@@ -793,45 +807,10 @@ pub async fn position_clipitem_hud_at_main_edge(
         _ => MainWindowNearestEdge::Top,
     };
 
-    let (axis, width, height) = match parsed_edge {
-        MainWindowNearestEdge::Top | MainWindowNearestEdge::Bottom => {
-            (ClipItemHudAxis::Horizontal, CLIPITEM_HUD_LINEAR_WIDTH, CLIPITEM_HUD_LINEAR_HEIGHT)
-        }
-        MainWindowNearestEdge::Left | MainWindowNearestEdge::Right => {
-            (ClipItemHudAxis::Vertical, CLIPITEM_HUD_LINEAR_HEIGHT, CLIPITEM_HUD_LINEAR_WIDTH)
-        }
-    };
-
-    let width_i32 = width as i32;
-    let height_i32 = height as i32;
-    let center_x = left + (main_size.width as i32 - width_i32).max(0) / 2;
-    let center_y = top + (main_size.height as i32 - height_i32).max(0) / 2;
-
-    let target = match parsed_edge {
-        MainWindowNearestEdge::Top => {
-            let x = clamp_i32(center_x, left, right - width_i32);
-            let y = top - height_i32 - CLIPITEM_HUD_EDGE_INSET;
-            PhysicalPosition::new(x, y)
-        }
-        MainWindowNearestEdge::Bottom => {
-            let x = clamp_i32(center_x, left, right - width_i32);
-            let y = bottom + CLIPITEM_HUD_EDGE_INSET;
-            PhysicalPosition::new(x, y)
-        }
-        MainWindowNearestEdge::Left => {
-            let x = left - width_i32 - CLIPITEM_HUD_EDGE_INSET;
-            let y = clamp_i32(center_y, top, bottom - height_i32);
-            PhysicalPosition::new(x, y)
-        }
-        MainWindowNearestEdge::Right => {
-            let x = right + CLIPITEM_HUD_EDGE_INSET;
-            let y = clamp_i32(center_y, top, bottom - height_i32);
-            PhysicalPosition::new(x, y)
-        }
-    };
+    let (axis, size, target) = layout_clipitem_hud_at_edge(parsed_edge, main_pos, main_size);
 
     window
-        .set_size(PhysicalSize::new(width, height))
+        .set_size(size)
         .map_err(|e| AppError::Window(format!("调整 ClipItem HUD 窗口尺寸失败: {}", e)))?;
 
     window

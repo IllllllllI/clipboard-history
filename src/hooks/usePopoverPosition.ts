@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useLayoutEffect, useEffect, useCallback } from 'react';
 
 export interface PopoverPosition {
   position: 'fixed';
@@ -11,6 +11,7 @@ export interface PopoverPosition {
   transition: string;
 }
 
+/** 不可见状态（关闭 / 测量中） */
 const HIDDEN: PopoverPosition = {
   position: 'fixed',
   top: 0,
@@ -22,112 +23,99 @@ const HIDDEN: PopoverPosition = {
   transition: 'none',
 };
 
-const VISIBLE_BASE: Omit<PopoverPosition, 'top' | 'left'> = {
-  position: 'fixed',
-  zIndex: 9999,
-  opacity: 1,
-  visibility: 'visible',
-  pointerEvents: 'auto',
-  transition: 'opacity 100ms ease',
-};
-
 const PADDING = 4;   // 与视口边缘的安全间距
 const GAP = 4;        // 弹出层与锚点的间距
+
+/** 纯函数：根据锚点矩形与弹出层尺寸计算最终坐标 */
+function resolveCoords(
+  anchor: DOMRect,
+  popW: number,
+  popH: number,
+): { top: number; left: number } {
+  const above = anchor.top - popH - GAP;
+  return {
+    top: above >= PADDING ? above : anchor.bottom + GAP,
+    left: Math.max(PADDING, Math.min(anchor.left, window.innerWidth - popW - PADDING)),
+  };
+}
 
 /**
  * 通用 Portal Popover 定位 Hook
  *
- * 逻辑：优先在锚点上方显示，空间不足时改为下方；左侧不超出视口。
- * 打开后监听 resize/scroll 实时更新位置。
+ * - 优先在锚点上方显示，空间不足时改为下方；横向不超出视口。
+ * - 使用 useLayoutEffect 同步定位，避免首次弹出闪烁。
+ * - 打开期间以 rAF 节流响应 resize / scroll。
  */
 export function usePopoverPosition(
   anchorRef: React.RefObject<HTMLElement | null>,
   isOpen: boolean,
 ) {
   const popoverRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef<number | null>(null);
+  const rafRef = useRef(0); // 0 = 无待执行帧
   const [style, setStyle] = useState<PopoverPosition>(HIDDEN);
 
-  const computePosition = useCallback(() => {
+  /** 同步测量并更新定位（幂等：坐标不变不触发 re-render） */
+  const recompute = useCallback(() => {
     const anchor = anchorRef.current;
     const el = popoverRef.current;
     if (!anchor || !el) return;
 
-    const anchorRect = anchor.getBoundingClientRect();
-    const popH = el.offsetHeight;
-    const popW = el.offsetWidth;
+    const { top, left } = resolveCoords(
+      anchor.getBoundingClientRect(),
+      el.offsetWidth,
+      el.offsetHeight,
+    );
 
-    // 纵向：优先向上
-    const topPos = anchorRect.top - popH - GAP;
-    const finalTop = topPos < PADDING ? anchorRect.bottom + GAP : topPos;
-
-    // 横向：不超出视口
-    const maxLeft = window.innerWidth - popW - PADDING;
-    const finalLeft = Math.max(PADDING, Math.min(anchorRect.left, maxLeft));
-
-    setStyle((prev) => {
-      if (
-        prev.top === finalTop &&
-        prev.left === finalLeft &&
-        prev.opacity === 1 &&
-        prev.visibility === 'visible' &&
-        prev.pointerEvents === 'auto'
-      ) {
-        return prev;
-      }
-
-      return {
-        ...VISIBLE_BASE,
-        top: finalTop,
-        left: finalLeft,
-      };
-    });
+    setStyle((prev) =>
+      prev.top === top && prev.left === left && prev.opacity === 1
+        ? prev
+        : {
+            position: 'fixed',
+            top,
+            left,
+            zIndex: 9999,
+            opacity: 1,
+            visibility: 'visible',
+            pointerEvents: 'auto',
+            transition: 'opacity 100ms ease',
+          },
+    );
   }, [anchorRef]);
 
-  const scheduleCompute = useCallback(() => {
-    if (frameRef.current) {
-      cancelAnimationFrame(frameRef.current);
-    }
-    frameRef.current = requestAnimationFrame(() => {
-      frameRef.current = null;
-      computePosition();
-    });
-  }, [computePosition]);
-
-  // 首次打开：先隐藏渲染以获取尺寸，再一帧后计算最终位置
-  useEffect(() => {
+  // ── 初始定位：同步于 DOM 提交后、浏览器绘制前 ──
+  useLayoutEffect(() => {
     if (!isOpen) {
       setStyle(HIDDEN);
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
       return;
     }
+    // Portal DOM 已提交，同步测量并定位——浏览器首帧即渲染正确位置
+    recompute();
+  }, [isOpen, recompute]);
 
-    // 先以隐藏状态放到视口内让浏览器布局（visibility:hidden 不影响页面交互）
-    setStyle((prev) => ({ ...prev, visibility: 'hidden', opacity: 0, pointerEvents: 'none' }));
-
-    scheduleCompute();
-    return () => {
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
-    };
-  }, [isOpen, scheduleCompute]);
-
-  // 打开期间响应窗口变化
+  // ── 打开期间响应 resize / scroll ──
   useEffect(() => {
     if (!isOpen) return;
 
-    window.addEventListener('resize', scheduleCompute);
-    window.addEventListener('scroll', scheduleCompute, true); // capture 捕获内部滚动
-    return () => {
-      window.removeEventListener('resize', scheduleCompute);
-      window.removeEventListener('scroll', scheduleCompute, true);
+    const onViewportChange = () => {
+      if (rafRef.current) return; // 已有待执行帧
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        recompute();
+      });
     };
-  }, [isOpen, scheduleCompute]);
+
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
+
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('scroll', onViewportChange, { capture: true });
+    };
+  }, [isOpen, recompute]);
 
   return { popoverRef, style } as const;
 }

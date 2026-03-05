@@ -5,6 +5,18 @@
 //! - 执行数据库文件迁移（含 WAL/SHM）与连接切换
 //! - 持久化数据库目录配置
 //!
+//! ## 设计决策
+//!
+//! ### 连接替换策略
+//! 迁移期间需要关闭旧连接释放文件锁，再打开新连接。
+//! 使用 `open_or_restore()` 封装：成功返回新连接；失败时自动回退到旧路径，
+//! 保证 `write_conn` / `read_conn` 始终指向可用数据库。
+//!
+//! ### WAL sidecar 文件
+//! SQLite WAL 模式下 `.db-wal` / `.db-shm` 可能包含未刷入主文件的数据。
+//! 复制时先执行 `PRAGMA wal_checkpoint(TRUNCATE)` 将 WAL 刷入主文件，
+//! sidecar 文件复制失败仅记录警告（checkpoint 后数据已安全）。
+//!
 //! ## 输入/输出
 //! - 输入：`AppHandle`、`State<DbState>`、目标目录
 //! - 输出：`DbInfo` 或 `Result<(), AppError>`
@@ -21,7 +33,9 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::error::AppError;
 
-use super::{config, DbState};
+use super::{config, db_err, DbState};
+
+// ── 数据结构 ─────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DbInfo {
@@ -29,11 +43,13 @@ pub struct DbInfo {
     pub size: u64,
 }
 
+// ── 内部 helper ──────────────────────────────────────────────
+
 fn get_current_db_path(conn: &Connection) -> Result<PathBuf, AppError> {
-    let current_path_str: String = conn
+    let path_str: String = conn
         .query_row("PRAGMA database_list", [], |row| row.get::<_, String>(2))
-        .map_err(|e| AppError::Database(format!("获取当前数据库路径失败: {}", e)))?;
-    Ok(PathBuf::from(current_path_str))
+        .map_err(|e| db_err("获取当前数据库路径失败", e))?;
+    Ok(PathBuf::from(path_str))
 }
 
 fn build_db_info(path: &Path) -> DbInfo {
@@ -46,73 +62,88 @@ fn build_db_info(path: &Path) -> DbInfo {
 
 fn resolve_new_dir_path(app: &AppHandle, new_dir: &str) -> Result<PathBuf, AppError> {
     if new_dir.is_empty() {
-        app.path().app_data_dir().map_err(|e| {
-            AppError::Database(format!("获取应用数据目录失败: {}", e))
-        })
+        app.path()
+            .app_data_dir()
+            .map_err(|e| db_err("获取应用数据目录失败", e))
     } else {
         Ok(PathBuf::from(new_dir))
     }
 }
 
-fn copy_database_files(current_db_path: &Path, new_db_path: &Path) -> Result<(), AppError> {
-    fs::copy(current_db_path, new_db_path).map_err(|e| {
-        AppError::Database(format!("复制数据库文件失败: {}", e))
-    })?;
+/// 复制数据库主文件及 WAL sidecar 文件
+///
+/// 主文件复制失败视为致命错误。
+/// sidecar 文件在 checkpoint 后通常为空/可重建，
+/// 复制失败仅记录警告不中断迁移。
+fn copy_database_files(src: &Path, dst: &Path) -> Result<(), AppError> {
+    fs::copy(src, dst).map_err(|e| db_err("复制数据库文件失败", e))?;
 
-    let wal_src = current_db_path.with_extension("db-wal");
-    let shm_src = current_db_path.with_extension("db-shm");
-    if wal_src.exists() {
-        let _ = fs::copy(&wal_src, new_db_path.with_extension("db-wal"));
-    }
-    if shm_src.exists() {
-        let _ = fs::copy(&shm_src, new_db_path.with_extension("db-shm"));
+    for ext in ["db-wal", "db-shm"] {
+        let sidecar_src = src.with_extension(ext);
+        if sidecar_src.exists() {
+            if let Err(e) = fs::copy(&sidecar_src, dst.with_extension(ext)) {
+                log::warn!("复制 sidecar {} 失败（checkpoint 后通常安全）: {}", ext, e);
+            }
+        }
     }
     Ok(())
 }
 
-fn restore_connection(conn: &mut Connection, current_db_path: &Path) {
-    match Connection::open(current_db_path) {
-        Ok(fallback) => {
-            fallback.execute_batch("PRAGMA journal_mode=WAL;").ok();
-            *conn = fallback;
-        }
-        Err(open_err) => {
-            log::error!("恢复旧连接也失败: {}", open_err);
-        }
-    }
+/// 打开数据库连接并验证 schema；失败时回退到旧路径
+///
+/// 返回 `Ok(conn)` 或回退后的 `Err`，保证调用方总有可用连接。
+fn open_and_verify(db_path: &Path) -> Result<Connection, AppError> {
+    let conn = Connection::open(db_path)
+        .map_err(|e| db_err("打开数据库失败", e))?;
+    conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+
+    conn.query_row("SELECT COUNT(*) FROM history", [], |row| row.get::<_, i64>(0))
+        .map_err(|e| db_err("验证数据库失败", e))?;
+    Ok(conn)
 }
 
-fn replace_connection_to_new_db(
+/// 尝试打开新路径；失败时清理新文件并回退到旧路径
+///
+/// 确保出口时 `*conn` 始终指向可用数据库，消除"指向空 in-memory DB"的窗口。
+fn open_or_restore(
     conn: &mut Connection,
-    current_db_path: &Path,
-    new_db_path: &Path,
+    old_path: &Path,
+    new_path: &Path,
 ) -> Result<(), AppError> {
-    match Connection::open(new_db_path) {
+    match open_and_verify(new_path) {
         Ok(new_conn) => {
-            new_conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
-
-            match new_conn.query_row("SELECT COUNT(*) FROM history", [], |row| row.get::<_, i64>(0)) {
-                Ok(_) => {
-                    *conn = new_conn;
-                    Ok(())
-                }
-                Err(verify_err) => {
-                    log::error!("验证新数据库失败: {}", verify_err);
-                    drop(new_conn);
-                    let _ = fs::remove_file(new_db_path);
-                    restore_connection(conn, current_db_path);
-                    Err(AppError::Database(format!("验证新数据库失败: {}", verify_err)))
-                }
-            }
+            *conn = new_conn;
+            Ok(())
         }
-        Err(open_err) => {
-            log::error!("打开新数据库失败: {}", open_err);
-            let _ = fs::remove_file(new_db_path);
-            restore_connection(conn, current_db_path);
-            Err(AppError::Database(format!("打开新数据库失败: {}", open_err)))
+        Err(e) => {
+            log::error!("打开/验证新数据库失败: {}", e);
+            cleanup_file_quietly(new_path);
+            // 回退到旧路径
+            *conn = Connection::open(old_path)
+                .map_err(|re| db_err("回退旧连接也失败（数据库可能不可用）", re))?;
+            conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+            Err(e)
         }
     }
 }
+
+/// 尝试删除文件，失败仅记录警告
+fn cleanup_file_quietly(path: &Path) {
+    if let Err(e) = fs::remove_file(path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            log::warn!("清理文件 '{}' 失败: {}", path.display(), e);
+        }
+    }
+}
+
+/// 删除旧数据库主文件及 sidecar，失败记录警告
+fn cleanup_old_db_files(db_path: &Path) {
+    cleanup_file_quietly(db_path);
+    cleanup_file_quietly(&db_path.with_extension("db-wal"));
+    cleanup_file_quietly(&db_path.with_extension("db-shm"));
+}
+
+// ── Tauri Commands ───────────────────────────────────────────
 
 #[tauri::command]
 pub fn db_get_info(state: State<'_, DbState>) -> Result<DbInfo, AppError> {
@@ -132,63 +163,66 @@ pub fn db_move_database(
         let current_db_path = get_current_db_path(write_conn)?;
         let new_dir_path = resolve_new_dir_path(&app, &new_dir)?;
 
-        fs::create_dir_all(&new_dir_path).map_err(|e| {
-            AppError::Database(format!("创建目标目录失败: {}", e))
-        })?;
+        fs::create_dir_all(&new_dir_path)
+            .map_err(|e| db_err("创建目标目录失败", e))?;
 
         let new_db_path = new_dir_path.join("clipboard.db");
 
         if current_db_path == new_db_path {
             return Ok(build_db_info(&new_db_path));
         }
-
         if new_db_path.exists() {
             return Err(AppError::Database(
-                "目标位置已存在数据库文件 clipboard.db，请选择其他目录或先手动删除".to_string()
+                "目标位置已存在数据库文件 clipboard.db，请选择其他目录或先手动删除".into(),
             ));
         }
 
-        write_conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-            .map_err(|e| AppError::Database(format!("WAL 检查点失败: {}", e)))?;
+        // ── Step 1: 将 WAL 数据刷入主文件 ──
+        write_conn
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(|e| db_err("WAL 检查点失败", e))?;
 
-        let temp_conn = Connection::open_in_memory()
-            .map_err(|e| AppError::Database(format!("创建临时连接失败: {}", e)))?;
-        let old_conn = std::mem::replace(write_conn, temp_conn);
-        drop(old_conn);
+        // ── Step 2: 关闭旧连接释放文件锁 ──
+        // 用 in-memory 占位，立即在 Step 4 替换为新/旧连接
+        let placeholder = Connection::open_in_memory()
+            .map_err(|e| db_err("创建占位连接失败", e))?;
+        let old_write = std::mem::replace(write_conn, placeholder);
+        drop(old_write);
 
-        let copy_result = copy_database_files(&current_db_path, &new_db_path);
-
-        if let Err(e) = copy_result {
-            log::error!("复制数据库失败，尝试恢复旧连接: {}", e);
-            let _ = fs::remove_file(&new_db_path);
-            restore_connection(write_conn, &current_db_path);
+        // ── Step 3: 复制文件 ──
+        if let Err(e) = copy_database_files(&current_db_path, &new_db_path) {
+            log::error!("复制数据库失败，恢复旧连接: {}", e);
+            cleanup_file_quietly(&new_db_path);
+            // 直接复用 open_or_restore 的恢复逻辑（new_path 已清理，会直接走回退分支）
+            *write_conn = Connection::open(&current_db_path)
+                .map_err(|re| db_err("恢复旧写连接失败", re))?;
+            write_conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
             return Err(e);
         }
 
-        replace_connection_to_new_db(write_conn, &current_db_path, &new_db_path)?;
+        // ── Step 4: 替换写连接 ──
+        open_or_restore(write_conn, &current_db_path, &new_db_path)?;
 
-        match Connection::open(&new_db_path) {
-            Ok(new_read_conn) => {
-                let old_read_conn = std::mem::replace(read_conn, new_read_conn);
-                drop(old_read_conn);
-            }
-            Err(open_err) => {
-                log::error!("打开新数据库读连接失败: {}", open_err);
-                let _ = fs::remove_file(&new_db_path);
-                restore_connection(write_conn, &current_db_path);
-                return Err(AppError::Database(format!("打开新数据库读连接失败: {}", open_err)));
-            }
-        }
+        // ── Step 5: 替换读连接 ──
+        let new_read = Connection::open(&new_db_path)
+            .map_err(|e| {
+                log::error!("打开新数据库读连接失败: {}", e);
+                cleanup_file_quietly(&new_db_path);
+                // 回退写连接
+                if let Ok(c) = Connection::open(&current_db_path) {
+                    c.execute_batch("PRAGMA journal_mode=WAL;").ok();
+                    *write_conn = c;
+                }
+                db_err("打开新数据库读连接失败", e)
+            })?;
+        let old_read = std::mem::replace(read_conn, new_read);
+        drop(old_read);
 
-        let _ = fs::remove_file(&current_db_path);
-        let _ = fs::remove_file(current_db_path.with_extension("db-wal"));
-        let _ = fs::remove_file(current_db_path.with_extension("db-shm"));
+        // ── Step 6: 清理旧文件 ──
+        cleanup_old_db_files(&current_db_path);
 
-        let config_dir = if new_dir.is_empty() {
-            None
-        } else {
-            Some(new_dir.clone())
-        };
+        // ── Step 7: 持久化配置 ──
+        let config_dir = if new_dir.is_empty() { None } else { Some(new_dir.clone()) };
         config::save_db_config(&app, config_dir)?;
 
         Ok(build_db_info(&new_db_path))
@@ -196,146 +230,5 @@ pub fn db_move_database(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    use rusqlite::Connection;
-
-    use super::{
-        build_db_info, copy_database_files, get_current_db_path, replace_connection_to_new_db,
-    };
-
-    fn unique_temp_dir() -> std::path::PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock error")
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("clipboard-history-test-{nanos}"));
-        std::fs::create_dir_all(&dir).expect("create temp dir");
-        dir
-    }
-
-    #[test]
-    fn get_current_db_path_returns_file_path() {
-        let dir = unique_temp_dir();
-        let db_path = dir.join("clipboard.db");
-        let conn = Connection::open(&db_path).expect("open db");
-
-        let resolved = get_current_db_path(&conn).expect("get db path");
-        assert_eq!(resolved, db_path);
-
-        drop(conn);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn build_db_info_uses_real_size_or_zero() {
-        let dir = unique_temp_dir();
-        let file = dir.join("a.db");
-        std::fs::write(&file, vec![1_u8; 17]).expect("write file");
-
-        let info = build_db_info(&file);
-        assert_eq!(info.path, file.to_string_lossy().to_string());
-        assert_eq!(info.size, 17);
-
-        let missing = dir.join("missing.db");
-        let missing_info = build_db_info(&missing);
-        assert_eq!(missing_info.size, 0);
-
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn copy_database_files_copies_main_and_sidecars() {
-        let src_dir = unique_temp_dir();
-        let dst_dir = unique_temp_dir();
-
-        let src_db = src_dir.join("clipboard.db");
-        std::fs::write(&src_db, b"main").expect("write main db");
-        std::fs::write(src_db.with_extension("db-wal"), b"wal").expect("write wal");
-        std::fs::write(src_db.with_extension("db-shm"), b"shm").expect("write shm");
-
-        let dst_db = dst_dir.join("clipboard.db");
-        copy_database_files(&src_db, &dst_db).expect("copy files");
-
-        assert!(dst_db.exists());
-        assert!(dst_db.with_extension("db-wal").exists());
-        assert!(dst_db.with_extension("db-shm").exists());
-
-        let _ = std::fs::remove_dir_all(src_dir);
-        let _ = std::fs::remove_dir_all(dst_dir);
-    }
-
-    #[test]
-    fn replace_connection_to_new_db_switches_to_valid_target() {
-        let current_dir = unique_temp_dir();
-        let target_dir = unique_temp_dir();
-
-        let current_db = current_dir.join("clipboard.db");
-        {
-            let conn = Connection::open(&current_db).expect("open current db");
-            conn.execute("CREATE TABLE history (id INTEGER PRIMARY KEY, text TEXT)", [])
-                .expect("create history in current");
-            conn.execute("INSERT INTO history (text) VALUES ('current')", [])
-                .expect("insert current");
-        }
-
-        let target_db = target_dir.join("clipboard.db");
-        {
-            let conn = Connection::open(&target_db).expect("open target db");
-            conn.execute("CREATE TABLE history (id INTEGER PRIMARY KEY, text TEXT)", [])
-                .expect("create history in target");
-            conn.execute("INSERT INTO history (text) VALUES ('target')", [])
-                .expect("insert target");
-        }
-
-        let mut conn = Connection::open_in_memory().expect("open memory db");
-        replace_connection_to_new_db(&mut conn, &current_db, &target_db).expect("replace connection");
-
-        let text: String = conn
-            .query_row("SELECT text FROM history LIMIT 1", [], |row| row.get(0))
-            .expect("query migrated connection");
-        assert_eq!(text, "target");
-
-        let _ = std::fs::remove_dir_all(current_dir);
-        let _ = std::fs::remove_dir_all(target_dir);
-    }
-
-    #[test]
-    fn replace_connection_to_new_db_rolls_back_when_target_invalid() {
-        let current_dir = unique_temp_dir();
-        let target_dir = unique_temp_dir();
-
-        let current_db = current_dir.join("clipboard.db");
-        {
-            let conn = Connection::open(&current_db).expect("open current db");
-            conn.execute("CREATE TABLE history (id INTEGER PRIMARY KEY, text TEXT)", [])
-                .expect("create history in current");
-            conn.execute("INSERT INTO history (text) VALUES ('current')", [])
-                .expect("insert current");
-        }
-
-        let target_db = target_dir.join("clipboard.db");
-        {
-            let conn = Connection::open(&target_db).expect("open invalid target db");
-            conn.execute("CREATE TABLE not_history (id INTEGER PRIMARY KEY)", [])
-                .expect("create invalid schema");
-        }
-
-        let mut conn = Connection::open_in_memory().expect("open memory db");
-        let result = replace_connection_to_new_db(&mut conn, &current_db, &target_db);
-        assert!(result.is_err(), "invalid target should fail");
-        assert!(
-            !target_db.exists(),
-            "invalid target db should be removed during rollback"
-        );
-
-        let text: String = conn
-            .query_row("SELECT text FROM history LIMIT 1", [], |row| row.get(0))
-            .expect("query rolled back connection");
-        assert_eq!(text, "current");
-
-        let _ = std::fs::remove_dir_all(current_dir);
-        let _ = std::fs::remove_dir_all(target_dir);
-    }
-}
+#[path = "tests/storage_tests.rs"]
+mod tests;

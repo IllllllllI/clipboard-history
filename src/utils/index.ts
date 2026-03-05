@@ -19,4 +19,4 @@ export { ImageLRUCache, getImageCache, fetchAndCacheImage } from './imageCache';
 // 通用工具
 export { escapeRegExp } from './stringUtils';
 export { formatDate, formatDateParts } from './formatDate';
-export { normalizeShortcut, areShortcutsEquivalent, getGlobalShortcutConflict, getImmersiveShortcutConflict, getLikelySystemShortcutWarning } from './shortcut';
+export { normalizeShortcut, areShortcutsEquivalent, getGlobalShortcutConflict, getImmersiveShortcutConflict, getLikelySystemShortcutWarning, matchesShortcut } from './shortcut';

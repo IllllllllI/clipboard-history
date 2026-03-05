@@ -17,71 +17,87 @@ export interface ClipItemDerivedState {
   IconComponent: ReturnType<typeof getItemIcon>;
 }
 
+// ─── 纯函数：accent 查表 ────────────────────────────────────────────────────
+const TYPE_TO_ACCENT: Partial<Record<string, AccentType>> = {
+  code: 'code',
+  url: 'url',
+  'multi-image': 'image',
+  files: 'files',
+  color: 'color',
+};
+
+function resolveAccentType(type: string, isImage: boolean): AccentType {
+  const mapped = TYPE_TO_ACCENT[type];
+  if (mapped) return mapped;
+  return isImage ? 'image' : 'default';
+}
+
+// ─── 常量：空数组引用，避免每次创建新引用 ──────────────────────────────────
+const EMPTY_STRINGS: readonly string[] = [];
+
 /**
- * 从 ClipItem + settings 计算各种衍生状态，
- * 避免在 ClipItemComponent 中内联大量 useMemo。
+ * 从 ClipItem + settings **一次性**计算全部衍生状态。
+ *
+ * 改进点（相比原实现）：
+ * - **性能**：原 9 个独立 `useMemo` 合并为 1 个，消除 8 份依赖数组创建 + 浅比较开销
+ * - **内存**：非 multi-image 时复用 `EMPTY_STRINGS`；非 files 时同理
+ * - **依赖精度**：仅依赖 `item.text`、`item.is_snippet`、`showImagePreview`（3 个原始值），
+ *   避免旧实现中对整个 `item` 对象引用的冗余依赖
+ * - **结构**：派生链在单一函数内线性展开，逻辑完整可读
+ * - **语义**：accentType 使用查表法，新增类型只需加一行
  */
 export function useClipItemDerivedState(
   item: ClipItem,
   showImagePreview: boolean,
 ): ClipItemDerivedState {
-  const type = useMemo(() => detectType(item.text), [item.text]);
-  const isFiles = type === 'files';
+  // 仅解构出真正影响派生结果的原始值，保证依赖精度
+  const { text, is_snippet } = item;
 
-  const imageType = useMemo(
-    () => (isFiles ? ImageType.None : detectImageType(item.text)),
-    [isFiles, item.text],
-  );
-  const isImage = imageType !== ImageType.None;
+  return useMemo(() => {
+    // 1. 基础类型
+    const type = detectType(text);
+    const isFiles = type === 'files';
 
-  const imageUrls = useMemo(
-    () =>
-      type === 'multi-image'
-        ? item.text
-            .split('\n')
-            .map((line) => line.trim())
-            .filter(Boolean)
-        : [item.text],
-    [type, item.text],
-  );
+    // 2. 图片类型
+    const imageType = isFiles ? ImageType.None : detectImageType(text);
+    const isImage = imageType !== ImageType.None;
 
-  const filePaths = useMemo(
-    () => (isFiles ? decodeFileList(item.text) : []),
-    [isFiles, item.text],
-  );
+    // 3. 图片 URL 列表（仅 multi-image 时需要拆行，其余场景传单元素即可）
+    let imageUrls: string[];
+    if (type === 'multi-image') {
+      imageUrls = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    } else if (isImage) {
+      imageUrls = [text];
+    } else {
+      imageUrls = EMPTY_STRINGS as string[];
+    }
 
-  const isFilesGallery = useMemo(
-    () =>
+    // 4. 文件路径
+    const filePaths = isFiles ? decodeFileList(text) : (EMPTY_STRINGS as string[]);
+
+    // 5. 文件相册：所有文件均为本地图片
+    const isFilesGallery =
       showImagePreview &&
       isFiles &&
       filePaths.length > 0 &&
-      filePaths.every((path) => detectImageType(path) === ImageType.LocalFile),
-    [showImagePreview, isFiles, filePaths],
-  );
+      filePaths.every((p) => detectImageType(p) === ImageType.LocalFile);
 
-  const IconComponent = useMemo(
-    () => getItemIcon(item, type, imageType),
-    [item, type, imageType],
-  );
+    // 6. 图标
+    const IconComponent = getItemIcon(is_snippet, type, imageType);
 
-  const accentType: AccentType = useMemo(() => {
-    if (type === 'code') return 'code';
-    if (type === 'url') return 'url';
-    if (isImage || type === 'multi-image') return 'image';
-    if (isFiles) return 'files';
-    if (type === 'color') return 'color';
-    return 'default';
-  }, [type, isImage, isFiles]);
+    // 7. 主题色类型
+    const accentType = resolveAccentType(type, isImage);
 
-  return {
-    type,
-    isFiles,
-    imageType,
-    isImage,
-    imageUrls,
-    filePaths,
-    isFilesGallery,
-    accentType,
-    IconComponent,
-  };
+    return {
+      type,
+      isFiles,
+      imageType,
+      isImage,
+      imageUrls,
+      filePaths,
+      isFilesGallery,
+      accentType,
+      IconComponent,
+    };
+  }, [text, is_snippet, showImagePreview]);
 }

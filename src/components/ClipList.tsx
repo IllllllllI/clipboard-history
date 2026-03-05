@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppContext } from '../contexts/AppContext';
 import { KEYBOARD_NAV_SCROLL_EVENT } from '../hooks/useKeyboardNavigation';
+import { ClipItemProvider } from './ClipItem';
 import { EmptyState, VirtualizedClipRow } from './ClipListParts';
 
 /**
@@ -9,9 +10,16 @@ import { EmptyState, VirtualizedClipRow } from './ClipListParts';
  *
  * 使用 @tanstack/react-virtual 实现虚拟化，
  * 仅渲染可视区域内的条目，支持 500 条以上列表流畅滚动。
+ *
+ * ## 性能设计
+ * - **ClipItemProvider**：在列表顶层提供稳定上下文，避免每个列表项
+ *   直接订阅三个全局 Context 导致高频全量重渲染。
+ * - **热值 props**：`isSelected` / `isCopied` / `searchQuery` 从 AppContext
+ *   提取后逐行注入，配合 React.memo 比较器实现精确更新——
+ *   键盘导航时仅 2 项重渲染，复制操作仅 1-2 项重渲染。
  */
 export function ClipList() {
-  const { filteredHistory } = useAppContext();
+  const { filteredHistory, selectedIndex, copiedId, searchQuery } = useAppContext();
   const parentRef = useRef<HTMLDivElement>(null);
   const pendingMeasureElementsRef = useRef<Set<HTMLDivElement>>(new Set());
   const measureRafRef = useRef<number | null>(null);
@@ -67,33 +75,38 @@ export function ClipList() {
   }, [filteredHistory.length, virtualizer]);
 
   return (
-    <div
-      ref={parentRef}
-      className="flex-1 overflow-y-auto custom-scrollbar relative scroll-smooth px-1 sm:px-2 bg-neutral-50/50 dark:bg-neutral-900/50"
-      style={{ overflowAnchor: 'none' }}
-    >
-      {filteredHistory.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <div
-          key="list"
-          style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
-          className="pt-2 pb-3"
-        >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const item = filteredHistory[virtualRow.index];
-            return (
-              <VirtualizedClipRow
-                key={item.id}
-                item={item}
-                index={virtualRow.index}
-                start={virtualRow.start}
-                onMeasure={scheduleMeasure}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <ClipItemProvider>
+      <div
+        ref={parentRef}
+        className="flex-1 overflow-y-auto custom-scrollbar relative scroll-smooth px-1 sm:px-2 bg-neutral-50/50 dark:bg-neutral-900/50"
+        style={{ overflowAnchor: 'none' }}
+      >
+        {filteredHistory.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div
+            key="list"
+            style={{ height: virtualizer.getTotalSize(), position: 'relative' }}
+            className="pt-2 pb-3"
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const item = filteredHistory[virtualRow.index];
+              return (
+                <VirtualizedClipRow
+                  key={item.id}
+                  item={item}
+                  index={virtualRow.index}
+                  start={virtualRow.start}
+                  isSelected={selectedIndex === virtualRow.index}
+                  isCopied={copiedId === item.id}
+                  searchQuery={searchQuery}
+                  onMeasure={scheduleMeasure}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </ClipItemProvider>
   );
 }

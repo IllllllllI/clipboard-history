@@ -1,9 +1,17 @@
+/* =========================
+   ClipItem HUD Window — 线性条状 HUD 卡片
+   ========================= */
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+
 html[data-app-mode='clipitem-hud'],
 html[data-app-mode='clipitem-hud'] body,
 html[data-app-mode='clipitem-hud'] #root {
   margin: 0;
   background: transparent !important;
 }
+
+/* ── Root ──────────────────────────────────────────────────────────────── */
 
 .clipitem-hud-root {
   width: 100vw;
@@ -14,7 +22,32 @@ html[data-app-mode='clipitem-hud'] #root {
   background: transparent;
 }
 
+/* ── Card (Design Tokens + Layout) ─────────────────────────────────────
+   Dark-first token system: light overrides in [data-theme='light'].
+   All child rules reference var(--hud-*), zero per-element theme selectors.
+   ──────────────────────────────────────────────────────────────────────── */
+
 .clipitem-hud-card {
+  /* ── Token Defaults (Dark) ── */
+  --hud-bg: rgb(24 24 27 / 0.9);
+  --hud-border: rgb(255 255 255 / 0.12);
+  --hud-shadow: 0 10px 28px rgb(0 0 0 / 0.35);
+  --hud-color: #f4f4f5;
+
+  --hud-btn-bg: rgb(255 255 255 / 0.06);
+  --hud-btn-border: rgb(255 255 255 / 0.16);
+  --hud-btn-hover-border: rgb(129 140 248 / 0.7);
+  --hud-btn-hover-bg: rgb(129 140 248 / 0.12);
+  --hud-btn-hover-shadow: 0 2px 10px rgb(129 140 248 / 0.25);
+
+  --hud-btn-delete-hover-border: rgb(248 113 113 / 0.7);
+  --hud-btn-delete-hover-bg: rgb(248 113 113 / 0.14);
+  --hud-btn-delete-hover-shadow: 0 2px 10px rgb(248 113 113 / 0.25);
+
+  --hud-btn-flash-border: rgb(129 140 248 / 0.75);
+  --hud-btn-flash-bg: rgb(129 140 248 / 0.2);
+
+  /* ── Layout ── */
   width: 320px;
   min-height: 50px;
   border-radius: 12px;
@@ -23,11 +56,37 @@ html[data-app-mode='clipitem-hud'] #root {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  background: rgba(24, 24, 27, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-  color: #f4f4f5;
+
+  /* ── Token-driven Appearance ── */
+  background: var(--hud-bg);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--hud-shadow);
+  color: var(--hud-color);
 }
+
+/* ── Light Theme Token Overrides ────────────────────────────────────── */
+
+.clipitem-hud-card[data-theme='light'] {
+  --hud-bg: rgb(255 255 255 / 0.92);
+  --hud-border: rgb(39 39 42 / 0.16);
+  --hud-shadow: 0 10px 24px rgb(39 39 42 / 0.22);
+  --hud-color: #27272a;
+
+  --hud-btn-bg: rgb(39 39 42 / 0.04);
+  --hud-btn-border: rgb(39 39 42 / 0.18);
+  --hud-btn-hover-border: rgb(99 102 241 / 0.6);
+  --hud-btn-hover-bg: rgb(99 102 241 / 0.08);
+  --hud-btn-hover-shadow: 0 2px 10px rgb(99 102 241 / 0.18);
+
+  --hud-btn-delete-hover-border: rgb(220 38 38 / 0.55);
+  --hud-btn-delete-hover-bg: rgb(220 38 38 / 0.08);
+  --hud-btn-delete-hover-shadow: 0 2px 10px rgb(220 38 38 / 0.18);
+
+  --hud-btn-flash-border: rgb(99 102 241 / 0.6);
+  --hud-btn-flash-bg: rgb(99 102 241 / 0.14);
+}
+
+/* ── Vertical Axis Layout ──────────────────────────────────────────────── */
 
 .clipitem-hud-card[data-axis='vertical'] {
   width: 50px;
@@ -38,12 +97,7 @@ html[data-app-mode='clipitem-hud'] #root {
   gap: 8px;
 }
 
-.clipitem-hud-card[data-theme='light'] {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(39, 39, 42, 0.16);
-  color: #27272a;
-  box-shadow: 0 10px 24px rgba(39, 39, 42, 0.22);
-}
+/* ── Time Wrap ─────────────────────────────────────────────────────────── */
 
 .clipitem-hud-time-wrap {
   display: inline-flex;
@@ -59,6 +113,8 @@ html[data-app-mode='clipitem-hud'] #root {
   gap: 2px;
   justify-content: center;
 }
+
+/* ── Favorite Slot ─────────────────────────────────────────────────────── */
 
 .clipitem-hud-fav-slot {
   width: 0.9rem;
@@ -76,13 +132,17 @@ html[data-app-mode='clipitem-hud'] #root {
   color: #fbbf24;
   opacity: 0;
   transform: scale(0.8);
-  transition: opacity 0.14s ease, transform 0.14s ease;
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
 }
 
 .clipitem-hud-fav-icon[data-active='true'] {
   opacity: 1;
   transform: scale(1);
 }
+
+/* ── Text Wrap ─────────────────────────────────────────────────────────── */
 
 .clipitem-hud-text-wrap {
   min-width: 0;
@@ -95,13 +155,22 @@ html[data-app-mode='clipitem-hud'] #root {
   text-align: center;
 }
 
+/* ── Date & Time ───────────────────────────────────────────────────────── */
+
+.clipitem-hud-date,
+.clipitem-hud-time {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
 .clipitem-hud-date {
   margin: 0;
   font-size: 10px;
   opacity: 0.92;
   line-height: 1.2;
-  font-family: var(--font-mono);
-  white-space: nowrap;
 }
 
 .clipitem-hud-time {
@@ -109,9 +178,16 @@ html[data-app-mode='clipitem-hud'] #root {
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
-  font-family: var(--font-mono);
-  white-space: nowrap;
 }
+
+.clipitem-hud-card[data-axis='vertical'] .clipitem-hud-date,
+.clipitem-hud-card[data-axis='vertical'] .clipitem-hud-time {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
+/* ── Actions ───────────────────────────────────────────────────────────── */
 
 .clipitem-hud-actions {
   display: inline-flex;
@@ -124,15 +200,14 @@ html[data-app-mode='clipitem-hud'] #root {
   flex-direction: column;
 }
 
-.clipitem-hud-card[data-axis='vertical'] .clipitem-hud-btn {
-}
+/* ── Action Button ─────────────────────────────────────────────────────── */
 
 .clipitem-hud-btn {
   width: 1.55rem;
   height: 1.55rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--hud-btn-border);
   border-radius: 0.45rem;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--hud-btn-bg);
   color: inherit;
   display: inline-flex;
   align-items: center;
@@ -145,22 +220,11 @@ html[data-app-mode='clipitem-hud'] #root {
     box-shadow 0.18s ease;
 }
 
-.clipitem-hud-card[data-theme='light'] .clipitem-hud-btn {
-  border-color: rgba(39, 39, 42, 0.18);
-  background: rgba(39, 39, 42, 0.04);
-}
-
 .clipitem-hud-btn:hover:not(:disabled) {
   transform: translateY(-2px) scale(1.12);
-  border-color: rgba(129, 140, 248, 0.7);
-  background: rgba(129, 140, 248, 0.12);
-  box-shadow: 0 2px 10px rgba(129, 140, 248, 0.25);
-}
-
-.clipitem-hud-card[data-theme='light'] .clipitem-hud-btn:hover:not(:disabled) {
-  border-color: rgba(99, 102, 241, 0.6);
-  background: rgba(99, 102, 241, 0.08);
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.18);
+  border-color: var(--hud-btn-hover-border);
+  background: var(--hud-btn-hover-bg);
+  box-shadow: var(--hud-btn-hover-shadow);
 }
 
 .clipitem-hud-btn:active:not(:disabled) {
@@ -173,6 +237,8 @@ html[data-app-mode='clipitem-hud'] #root {
   cursor: not-allowed;
 }
 
+/* ── Button Icon ───────────────────────────────────────────────────────── */
+
 .clipitem-hud-btn-icon {
   width: 0.78rem;
   height: 0.78rem;
@@ -183,40 +249,17 @@ html[data-app-mode='clipitem-hud'] #root {
   fill: currentColor;
 }
 
+/* ── Delete Button Override ────────────────────────────────────────────── */
+
 .clipitem-hud-btn-delete:hover:not(:disabled) {
-  border-color: rgba(248, 113, 113, 0.7);
-  background: rgba(248, 113, 113, 0.14);
-  box-shadow: 0 2px 10px rgba(248, 113, 113, 0.25);
+  border-color: var(--hud-btn-delete-hover-border);
+  background: var(--hud-btn-delete-hover-bg);
+  box-shadow: var(--hud-btn-delete-hover-shadow);
 }
 
-.clipitem-hud-card[data-theme='light'] .clipitem-hud-btn-delete:hover:not(:disabled) {
-  border-color: rgba(220, 38, 38, 0.55);
-  background: rgba(220, 38, 38, 0.08);
-  box-shadow: 0 2px 10px rgba(220, 38, 38, 0.18);
-}
-
-/* ── 按钮点击反馈 ── */
+/* ── Flash Feedback ────────────────────────────────────────────────────── */
 
 .clipitem-hud-btn[data-flash='true'] {
-  border-color: rgba(129, 140, 248, 0.75);
-  background: rgba(129, 140, 248, 0.2);
-}
-
-.clipitem-hud-card[data-theme='light'] .clipitem-hud-btn[data-flash='true'] {
-  border-color: rgba(99, 102, 241, 0.6);
-  background: rgba(99, 102, 241, 0.14);
-}
-
-.clipitem-hud-date,
-.clipitem-hud-time {
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.clipitem-hud-card[data-axis='vertical'] .clipitem-hud-date,
-.clipitem-hud-card[data-axis='vertical'] .clipitem-hud-time {
-  display: block;
-  width: 100%;
-  text-align: center;
+  border-color: var(--hud-btn-flash-border);
+  background: var(--hud-btn-flash-bg);
 }

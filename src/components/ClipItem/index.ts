@@ -7,6 +7,7 @@
 
 /* ---- 核心 ---- */
 export { ClipItemComponent } from './ClipItemComponent';
+export { ClipItemProvider, useClipItemStableContext } from './ClipItemContext';
 export { getItemIcon } from './constants';
 
 /* ---- display/ ---- */
