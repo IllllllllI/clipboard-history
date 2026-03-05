@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ClipItemHudTriggerMouseButton, ClipItemHudTriggerMouseMode, ClipItemHudPositionMode } from '../../types';
+import type { DateParts } from '../../utils/formatDate';
 import { isTauri, TauriService } from '../../services/tauri';
 import * as HudManager from './clipItemHudManager';
 
@@ -12,12 +13,10 @@ const MAIN_WINDOW_MOVE_SETTLE_MS = 160;
 const BLUR_HIDE_DEBOUNCE_MS = 120;
 
 
-interface UseClipItemHudControllerInput {
+interface UseClipItemHudControllerInput extends DateParts {
   rootRef: React.RefObject<HTMLDivElement>;
   isSelected: boolean;
   itemId: number;
-  dateLine: string;
-  timeLine: string;
   isFavorite: boolean;
   isPinned: boolean;
   canEdit: boolean;

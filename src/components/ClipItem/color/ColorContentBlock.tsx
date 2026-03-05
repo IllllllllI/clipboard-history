@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ClipItem } from '../../../types';
-import { expandHex } from '../../../utils/colorConvert';
+import { normalizeHex } from '../../../utils/colorConvert';
 import { ColorPickerPopover } from './ColorPickerPopover';
+import { scaleFeedbackVariants, DURATION_FAST } from '../../../utils/motionPresets';
 
 const COPY_FEEDBACK_DURATION_MS = 2000;
 
@@ -13,14 +14,6 @@ interface ColorContentBlockProps {
   onUpdatePickedColor: (id: number, color: string | null) => Promise<void>;
   onCopyAsNewColor: (color: string) => Promise<void>;
   copyText: (text: string) => Promise<void>;
-}
-
-function normalizeHex(hex: string): string {
-  const expanded = expandHex(hex).toLowerCase();
-  if (expanded.length === 9 && expanded.endsWith('ff')) {
-    return expanded.slice(0, 7);
-  }
-  return expanded;
 }
 
 export const ColorContentBlock = React.memo(function ColorContentBlock({
@@ -35,7 +28,6 @@ export const ColorContentBlock = React.memo(function ColorContentBlock({
   const [copiedColor, setCopiedColor] = useState<string | null>(null);
   const colorBtnRef = useRef<HTMLDivElement>(null);
   const copyFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dataTheme = darkMode ? 'dark' : 'light';
   const originalColor = item.text;
   const pickedColor = item.picked_color;
 
@@ -87,10 +79,11 @@ export const ColorContentBlock = React.memo(function ColorContentBlock({
     <AnimatePresence>
       {copiedColor === value && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.5 }}
-          transition={{ duration: 0.15 }}
+          variants={scaleFeedbackVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={DURATION_FAST}
         >
           <Check className={iconClassName} />
         </motion.div>
@@ -125,7 +118,6 @@ export const ColorContentBlock = React.memo(function ColorContentBlock({
         <>
           <div
             className="clip-item-content-color-chip"
-            data-theme={dataTheme}
             title={`原始: ${originalColor}`}
           >
             <div className="clip-item-content-color-chip-fill" style={{ backgroundColor: originalColor }} />
@@ -134,7 +126,6 @@ export const ColorContentBlock = React.memo(function ColorContentBlock({
           <div
             ref={colorBtnRef}
             className="clip-item-content-color-chip clip-item-content-color-chip-picked clip-item-content-color-chip-clickable"
-            data-theme={dataTheme}
             title="点击修改颜色"
             onClick={openPicker}
           >
@@ -145,7 +136,6 @@ export const ColorContentBlock = React.memo(function ColorContentBlock({
         <div
           ref={colorBtnRef}
           className="clip-item-content-color-chip clip-item-content-color-chip-clickable"
-          data-theme={dataTheme}
           title="点击调出颜色板"
           onClick={openPicker}
         >
@@ -168,7 +158,7 @@ export const ColorContentBlock = React.memo(function ColorContentBlock({
           onClick={handleCopyPickedColor}
           title="点击复制新颜色"
         >
-          <span className="clip-item-content-color-new" data-theme={dataTheme}>
+          <span className="clip-item-content-color-new">
             → {pickedColor}
           </span>
           {renderColorCopyFeedback(pickedColor, 'clip-item-content-copy-check-small')}

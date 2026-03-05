@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { Tag } from '../../types';
 import { TagRow } from './TagRow';
+import { listItemVariants, SPRING_LIST, SPRING_LAYOUT } from '../../utils/motionPresets';
 import './styles/list-row.css';
 
 interface TagListProps {
@@ -24,10 +25,11 @@ export const TagList = React.memo(function TagList({
         {tags.length === 0 ? (
           <motion.div
             key="empty-state"
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            variants={listItemVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={SPRING_LIST}
             className="tag-manager-empty-state"
           >
             <motion.div 
@@ -50,7 +52,7 @@ export const TagList = React.memo(function TagList({
                 key={tag.id}
                 layout="position"
                 transition={{
-                  layout: { type: "spring", bounce: 0.15, duration: 0.5 }
+                  layout: SPRING_LAYOUT
                 }}
               >
                 <TagRow

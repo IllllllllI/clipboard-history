@@ -1,8 +1,12 @@
 /**
  * 代码语言自动检测工具
  *
- * 通过特征模式匹配，根据剪贴板内容自动推断编程语言。
- * 语言高亮扩展按需动态加载，避免首包静态引入全部 @codemirror/lang-*。
+ * 改进设计：
+ * - 加权评分：每条模式携带 weight（1 = 弱线索，2 = 中等特征，3 = 决定性标志）
+ * - 高置信早退：单语言得分超过阈值时立即返回，跳过剩余语言
+ * - 输入采样：长文本只取首尾片段检测，避免对整段大文本逐一 regex
+ * - LRU 缓存：根据 (前缀 hash + 长度) 缓存检测结果，同一文本不重复检测
+ * - 语言扩展正确映射：Go / Shell 不再错误映射到 JavaScript
  */
 
 import type { Extension } from '@codemirror/state';
@@ -20,242 +24,283 @@ export type LanguageId =
   | 'go' | 'shell'
   | 'plaintext';
 
+/** 模式权重：越高说明该模式越能唯一标识语言 */
+const W = { WEAK: 1, MID: 2, STRONG: 3 } as const;
+
+interface WeightedPattern {
+  re: RegExp;
+  w: number; // 权重
+}
+
 interface LanguageDef {
   id: LanguageId;
   label: string;
-  /** 匹配模式（正则数组），按优先级顺序排列 */
-  patterns: RegExp[];
+  patterns: WeightedPattern[];
 }
 
 // ============================================================================
-// 语言特征库
+// 辅助：快捷构造函数
+// ============================================================================
+
+const p = (re: RegExp, w: number = W.MID): WeightedPattern => ({ re, w });
+
+// ============================================================================
+// 语言特征库（按检测优先级排列，高特异性语言在前）
 // ============================================================================
 
 const LANGUAGES: LanguageDef[] = [
+  // ── TSX（TS + JSX 交叉特征） ──
   {
     id: 'tsx',
     label: 'TSX',
     patterns: [
-      /:\s*(React\.FC|JSX\.Element|ReactNode)/,          // : React.FC
-      /\bconst\s+\w+\s*:\s*\w+.*=.*</,                  // const Foo: Type = <
-      /<\w+[^>]*\s(className|onClick|onChange)\s*=/,     // JSX with TS props
-      /\breturn\s*\(\s*<.*\bclassName\b/,               // return (< ... className — TS + JSX 共现
+      p(/:\s*(React\.FC|JSX\.Element|ReactNode)\b/, W.STRONG),
+      p(/\bconst\s+\w+\s*:\s*\w+.*=.*<\w/, W.STRONG),
+      p(/<\w+[^>]*\s(className|onClick|onChange)\s*=/, W.MID),
+      p(/\breturn\s*\(\s*<.*\bclassName\b/, W.MID),
+      p(/\binterface\s+\w+Props\b/, W.STRONG),
     ],
   },
+  // ── TypeScript ──
   {
     id: 'typescript',
     label: 'TypeScript',
     patterns: [
-      /\binterface\s+\w+\s*\{/,
-      /\btype\s+\w+\s*=\s*/,
-      /:\s*(string|number|boolean|void|any|never|unknown)\b/,
-      /\bas\s+(string|number|boolean|any|const)\b/,
-      /\b(enum|namespace|declare)\s+\w+/,
-      /<\w+>\s*\(/,                                      // generic <T>(
+      p(/\binterface\s+\w+\s*\{/, W.STRONG),
+      p(/\btype\s+\w+\s*=\s*/, W.STRONG),
+      p(/:\s*(string|number|boolean|void|any|never|unknown)\b/, W.MID),
+      p(/\bas\s+(string|number|boolean|any|const)\b/, W.MID),
+      p(/\b(enum|namespace|declare)\s+\w+/, W.STRONG),
+      p(/<\w+>\s*\(/, W.WEAK),
     ],
   },
+  // ── JSX ──
   {
     id: 'jsx',
     label: 'JSX',
     patterns: [
-      /\breturn\s*\(\s*</,                               // return (<
-      /<\w+[^>]*\s(className|onClick|onChange)\s*=/,
-      /\buseState|useEffect|useCallback|useMemo|useRef\b/,
+      p(/\breturn\s*\(\s*</, W.MID),
+      p(/<\w+[^>]*\s(className|onClick|onChange)\s*=/, W.MID),
+      p(/\b(useState|useEffect|useCallback|useMemo|useRef)\s*\(/, W.STRONG),
+      p(/\bReact\.(createElement|memo|forwardRef)\b/, W.STRONG),
     ],
   },
+  // ── JavaScript ──
   {
     id: 'javascript',
     label: 'JavaScript',
     patterns: [
-      /\b(const|let|var)\s+\w+\s*=\s*(function|\(|async|\[|\{|require\()/,
-      /\bfunction\s+\w+\s*\(/,
-      /\b(module\.exports|exports\.\w+|require\()/,
-      /\bconsole\.(log|warn|error)\(/,
-      /=>\s*\{/,
-      /\bnew\s+(Promise|Map|Set|Array|Error)\b/,
-      /\bimport\s+.*\s+from\s+['"]/,
-      /\bexport\s+(default|const|function|class)\b/,
+      p(/\b(const|let|var)\s+\w+\s*=\s*(function|\(|async|\[|\{|require\()/, W.MID),
+      p(/\bfunction\s+\w+\s*\(/, W.WEAK),
+      p(/\b(module\.exports|exports\.\w+|require\()/, W.STRONG),
+      p(/\bconsole\.(log|warn|error)\(/, W.MID),
+      p(/=>\s*\{/, W.WEAK),
+      p(/\bnew\s+(Promise|Map|Set|Array|Error)\b/, W.WEAK),
+      p(/\bimport\s+.*\s+from\s+['"]/, W.MID),
+      p(/\bexport\s+(default|const|function|class)\b/, W.MID),
     ],
   },
+  // ── Rust ──
   {
     id: 'rust',
     label: 'Rust',
     patterns: [
-      /\bfn\s+\w+\s*(<.*>)?\s*\(/,
-      /\b(pub\s+)?(fn|struct|enum|trait|impl|mod|use|crate)\b/,
-      /\blet\s+(mut\s+)?\w+\s*(:\s*\w+)?\s*=/,
-      /#\[(derive|test|cfg|allow|warn|macro)\b/,
-      /\b(println!|format!|vec!|eprintln!|panic!)\s*\(/,
-      /\b(Ok|Err|Some|None)\s*\(/,
-      /\bResult<.*>/,
-      /\bOption<.*>/,
-      /->\s*(Self|&|[A-Z]\w*)/,
-      /\b(unwrap|expect|map_err|and_then)\s*\(/,
+      p(/\bfn\s+\w+\s*(<.*>)?\s*\(/, W.STRONG),
+      p(/\b(pub\s+)?(struct|enum|trait|impl|mod)\s+\w+/, W.STRONG),
+      p(/\blet\s+(mut\s+)?\w+\s*(:\s*\w+)?\s*=/, W.MID),
+      p(/#\[(derive|test|cfg|allow|warn|macro)\b/, W.STRONG),
+      p(/\b(println!|format!|vec!|eprintln!|panic!)\s*\(/, W.STRONG),
+      p(/\b(Ok|Err|Some|None)\s*\(/, W.MID),
+      p(/\b(Result|Option)<.*>/, W.MID),
+      p(/->\s*(Self|&|[A-Z]\w*)/, W.MID),
+      p(/\b(unwrap|expect|map_err|and_then)\s*\(/, W.WEAK),
     ],
   },
+  // ── Python ──
   {
     id: 'python',
     label: 'Python',
     patterns: [
-      /\bdef\s+\w+\s*\(/,
-      /\bclass\s+\w+\s*(\(.*\))?:\s*$/m,
-      /\bimport\s+\w+|from\s+\w+\s+import\b/,
-      /\bif\s+__name__\s*==\s*['"]__main__['"]/,
-      /\b(self|cls)\.\w+/,
-      /\bprint\s*\(/,
-      /^\s*@\w+\s*$/m,                                  // decorators
-      /\b(elif|except|finally|yield|lambda)\b/,
+      p(/\bdef\s+\w+\s*\(/, W.STRONG),
+      p(/\bclass\s+\w+\s*(\(.*\))?:\s*$/m, W.STRONG),
+      p(/\bfrom\s+\w+\s+import\b/, W.STRONG),
+      p(/\bif\s+__name__\s*==\s*['"]__main__['"]/, W.STRONG),
+      p(/\b(self|cls)\.\w+/, W.STRONG),
+      p(/\bprint\s*\(/, W.WEAK),
+      p(/^\s*@\w+\s*$/m, W.MID),
+      p(/\b(elif|except|finally|yield|lambda)\b/, W.MID),
     ],
   },
+  // ── Java ──
   {
     id: 'java',
     label: 'Java',
     patterns: [
-      /\bpublic\s+(static\s+)?class\s+\w+/,
-      /\bpublic\s+static\s+void\s+main\s*\(/,
-      /\bSystem\.(out|err)\.(print|println)\(/,
-      /\b(private|protected|public)\s+(static\s+)?(final\s+)?\w+\s+\w+\s*[=(;]/,
-      /\bnew\s+\w+<.*>\s*\(/,
-      /\bpackage\s+[\w.]+;/,
-      /\bimport\s+[\w.*]+;/,
-      /@Override\b/,
+      p(/\bpublic\s+(static\s+)?class\s+\w+/, W.STRONG),
+      p(/\bpublic\s+static\s+void\s+main\s*\(/, W.STRONG),
+      p(/\bSystem\.(out|err)\.(print|println)\(/, W.STRONG),
+      p(/\b(private|protected|public)\s+(static\s+)?(final\s+)?\w+\s+\w+\s*[=(;]/, W.MID),
+      p(/\bpackage\s+[\w.]+;/, W.STRONG),
+      p(/\bimport\s+[\w.*]+;/, W.MID),
+      p(/@Override\b/, W.STRONG),
     ],
   },
+  // ── C++ ──
   {
     id: 'cpp',
     label: 'C++',
     patterns: [
-      /\b#include\s*<\w+>/,
-      /\bstd::\w+/,
-      /\busing\s+namespace\s+\w+/,
-      /\bcout\s*<</,
-      /\b(template|class|virtual|nullptr|constexpr)\b/,
-      /\bint\s+main\s*\(\s*(int\s+argc|void)?\s*[\),]/,
+      p(/\bstd::\w+/, W.STRONG),
+      p(/\busing\s+namespace\s+std\b/, W.STRONG),
+      p(/\bcout\s*<</, W.STRONG),
+      p(/\b(template\s*<|nullptr|constexpr)\b/, W.STRONG),
+      p(/\b#include\s*<\w+>/, W.MID),
+      p(/\bint\s+main\s*\(\s*(int\s+argc|void)?\s*[\),]/, W.MID),
+      p(/\bclass\s+\w+\s*:\s*(public|private|protected)\b/, W.STRONG),
     ],
   },
+  // ── C ──
   {
     id: 'c',
     label: 'C',
     patterns: [
-      /\b#include\s*<(stdio|stdlib|string|math)\.h>/,
-      /\bprintf\s*\(/,
-      /\bscanf\s*\(/,
-      /\bmalloc\s*\(/,
-      /\btypedef\s+(struct|enum|union)\b/,
+      p(/\b#include\s*<(stdio|stdlib|string|math)\.h>/, W.STRONG),
+      p(/\bprintf\s*\(/, W.MID),
+      p(/\bscanf\s*\(/, W.STRONG),
+      p(/\bmalloc\s*\(/, W.STRONG),
+      p(/\btypedef\s+(struct|enum|union)\b/, W.STRONG),
     ],
   },
+  // ── Go ──
   {
     id: 'go',
     label: 'Go',
     patterns: [
-      /\bfunc\s+((\(\w+\s+\*?\w+\)\s+)?\w+)?\s*\(/,
-      /\bpackage\s+\w+/,
-      /\bfmt\.(Print|Sprint|Fprint)/,
-      /\b(chan|goroutine|defer|go\s+func)\b/,
-      /:=\s*/,
+      p(/\bfunc\s+\w+\s*\(/, W.MID),
+      p(/\bpackage\s+(main|fmt|net|os|io)\b/, W.STRONG),
+      p(/\bfmt\.(Print|Sprint|Fprint)(f|ln)?\s*\(/, W.STRONG),
+      p(/\b(chan\s+\w|go\s+func|defer\s+\w)\b/, W.STRONG),
+      p(/:=\s*/, W.MID),
+      p(/\bfunc\s*\(\w+\s+\*?\w+\)\s+\w+\(/, W.STRONG),
     ],
   },
+  // ── PHP ──
   {
     id: 'php',
     label: 'PHP',
     patterns: [
-      /<\?php\b/,
-      /\$\w+\s*=/,
-      /\bfunction\s+\w+\s*\(.*\$\w+/,
-      /\b(echo|print_r|var_dump)\s*[\(;]/,
-      /->\s*\w+\s*\(/,
+      p(/<\?php\b/, W.STRONG),
+      p(/\$\w+\s*=/, W.MID),
+      p(/\bfunction\s+\w+\s*\(.*\$\w+/, W.STRONG),
+      p(/\b(echo|print_r|var_dump)\s*[\(;]/, W.STRONG),
+      p(/->\s*\w+\s*\(/, W.WEAK),
     ],
   },
+  // ── Shell ──
   {
     id: 'shell',
     label: 'Shell',
     patterns: [
-      /^#!\s*\/bin\/(bash|sh|zsh)/m,
-      /\becho\s+["'$]/,
-      /\bif\s*\[\s*["-$]/,
-      /\b(apt-get|yum|brew|pip|npm|cargo)\s+(install|update)/,
-      /\$\{\w+\}/,
-      /\bexport\s+\w+=/,
+      p(/^#!\s*\/bin\/(bash|sh|zsh)/m, W.STRONG),
+      p(/\becho\s+["'$]/, W.MID),
+      p(/\bif\s*\[\s*["-$]/, W.MID),
+      p(/\b(apt-get|yum|brew|pip|npm|cargo)\s+(install|update)/, W.STRONG),
+      p(/\$\{\w+[:#%/]/, W.STRONG),       // 参数展开语法 ${var:-default}
+      p(/\bexport\s+\w+=/, W.MID),
+      p(/\bfi\b.*$|^\s*done\s*$/m, W.MID),
     ],
   },
+  // ── HTML ──
   {
     id: 'html',
     label: 'HTML',
     patterns: [
-      /<!DOCTYPE\s+html>/i,
-      /<html[\s>]/i,
-      /<(head|body|div|span|p|a|img|script|style|link|meta|form|input|button|table|ul|ol|li|h[1-6])\b/i,
+      p(/<!DOCTYPE\s+html>/i, W.STRONG),
+      p(/<html[\s>]/i, W.STRONG),
+      p(/<(head|body)\b/i, W.STRONG),
+      p(/<(div|span|p|a|img|script|style|link|meta|form|input|button|table|ul|ol|li|h[1-6])\b/i, W.WEAK),
     ],
   },
+  // ── SVG ──
   {
     id: 'svg',
     label: 'SVG',
     patterns: [
-      /<svg[\s>]/i,
-      /\bxmlns="http:\/\/www\.w3\.org\/2000\/svg"/,
+      p(/<svg[\s>]/i, W.STRONG),
+      p(/\bxmlns="http:\/\/www\.w3\.org\/2000\/svg"/, W.STRONG),
+      p(/<(path|circle|rect|line|polygon|g)\b/i, W.MID),
     ],
   },
+  // ── XML ──
   {
     id: 'xml',
     label: 'XML',
     patterns: [
-      /<\?xml\s+version\s*=/i,
-      /xmlns[:=]/,
+      p(/<\?xml\s+version\s*=/i, W.STRONG),
+      p(/xmlns[:=]/, W.MID),
+      p(/<\/\w+:\w+>/, W.MID),
     ],
   },
+  // ── CSS ──
   {
     id: 'css',
     label: 'CSS',
     patterns: [
-      /\b[\w.#-]+\s*\{[^}]*\b(color|margin|padding|display|font|background|border|width|height)\s*:/,
-      /@(media|keyframes|import|font-face)\b/,
-      /\b(flex|grid|block|inline|none|relative|absolute|fixed)\s*;/,
+      p(/[\w.#\-[\]]+\s*\{[^}]*\b(color|margin|padding|display|font|background|border|width|height)\s*:/, W.STRONG),
+      p(/@(media|keyframes|font-face)\s/, W.STRONG),
+      p(/\b(flex|grid|block|inline|none|relative|absolute|fixed)\s*;/, W.WEAK),
     ],
   },
+  // ── SCSS ──
   {
     id: 'scss',
     label: 'SCSS',
     patterns: [
-      /\$\w+\s*:\s*/,          // $variable: value
-      /&\.\w+/,                 // &.class
-      /@mixin\s+\w+/,
-      /@include\s+\w+/,
+      p(/\$[\w-]+\s*:\s*/, W.MID),
+      p(/&\.\w+/, W.STRONG),
+      p(/@mixin\s+\w+/, W.STRONG),
+      p(/@include\s+\w+/, W.STRONG),
     ],
   },
+  // ── JSON ──
   {
     id: 'json',
     label: 'JSON',
     patterns: [
-      /^\s*\{[\s\S]*"[\w-]+":\s*/,    // starts with { ... "key":
-      /^\s*\[[\s\S]*\{[\s\S]*"[\w-]+":/,  // starts with [ ... { "key":
+      p(/^\s*\{[^]*?"[\w-]+":\s*/m, W.WEAK),
+      p(/^\s*\[[^]*?\{[^]*?"[\w-]+":/m, W.WEAK),
     ],
   },
+  // ── YAML ──
   {
     id: 'yaml',
     label: 'YAML',
     patterns: [
-      /^---\s*$/m,
-      /^\w[\w-]*:\s+\S/m,      // key: value
-      /^\s+-\s+\w/m,           // - item (list)
+      p(/^---\s*$/m, W.STRONG),
+      p(/^\w[\w-]*:\s+\S/m, W.WEAK),
+      p(/^\s+-\s+\w[\w-]*:\s+\S/m, W.MID),
     ],
   },
+  // ── SQL ──
   {
     id: 'sql',
     label: 'SQL',
     patterns: [
-      /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|FROM|WHERE|JOIN|GROUP BY|ORDER BY)\b/i,
-      /\b(TABLE|INDEX|VIEW|DATABASE|COLUMN|PRIMARY KEY|FOREIGN KEY)\b/i,
+      p(/\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE)\b/i, W.STRONG),
+      p(/\b(FROM|WHERE|JOIN|GROUP\s+BY|ORDER\s+BY|HAVING|LIMIT|OFFSET)\b/i, W.MID),
+      p(/\b(PRIMARY\s+KEY|FOREIGN\s+KEY|NOT\s+NULL|AUTO_INCREMENT|DEFAULT)\b/i, W.MID),
     ],
   },
+  // ── Markdown ──
   {
     id: 'markdown',
     label: 'Markdown',
     patterns: [
-      /^#{1,6}\s+\S/m,                          // # heading
-      /^\s*[-*+]\s+\S/m,                         // - list item
-      /\[.+?\]\(.+?\)/,                          // [link](url)
-      /```\w*\n/,                                 // code block
-      /\*\*\w+\*\*/,                             // **bold**
+      p(/^#{1,6}\s+\S/m, W.MID),
+      p(/\[.+?\]\(.+?\)/, W.MID),
+      p(/```\w*\n/, W.STRONG),
+      p(/\*\*\w+\*\*/, W.MID),
+      p(/^>\s+\S/m, W.WEAK),
     ],
   },
 ];
@@ -264,10 +309,116 @@ const LANGUAGES: LanguageDef[] = [
 // 检测引擎
 // ============================================================================
 
-interface DetectResult {
+export interface DetectResult {
   id: LanguageId;
   label: string;
 }
+
+/** 输入采样：长文本只取首尾片段 */
+const SAMPLE_THRESHOLD = 2000;
+const SAMPLE_HEAD = 1500;
+const SAMPLE_TAIL = 500;
+
+function sampleText(code: string): string {
+  if (code.length <= SAMPLE_THRESHOLD) return code;
+  return code.slice(0, SAMPLE_HEAD) + '\n' + code.slice(-SAMPLE_TAIL);
+}
+
+/** 高置信早退阈值（加权得分） */
+const EARLY_EXIT_SCORE = 6;
+
+// ── LRU 检测缓存 ──────────────────────────────────────────────────────────
+
+const CACHE_MAX = 64;
+const CACHE_KEY_LEN = 200; // 取前 N 字符作 key 前缀
+
+function cacheKey(code: string): string {
+  return `${code.length}:${code.slice(0, CACHE_KEY_LEN)}`;
+}
+
+const detectCache = new Map<string, DetectResult>();
+
+function cachePut(key: string, value: DetectResult): void {
+  if (detectCache.size >= CACHE_MAX) {
+    // 淘汰最旧条目（Map 按插入顺序迭代）
+    const oldest = detectCache.keys().next().value;
+    if (oldest !== undefined) detectCache.delete(oldest);
+  }
+  detectCache.set(key, value);
+}
+
+// ── JSON 快速路径 ──────────────────────────────────────────────────────────
+
+const JSON_PREFIX_LEN = 512;
+
+function isLikelyJson(trimmed: string): boolean {
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') return false;
+  // 对短文本完整 parse；对长文本只截取前缀做结构嗅探
+  if (trimmed.length <= JSON_PREFIX_LEN) {
+    try { JSON.parse(trimmed); return true; } catch { return false; }
+  }
+  // 长文本：检查前 N 字符是否符合 JSON 结构（高精度启发式）
+  const prefix = trimmed.slice(0, JSON_PREFIX_LEN);
+  return /^\s*[\[{]/.test(prefix)
+    && /"[\w$@\-.]+":\s*/.test(prefix)
+    && !/\b(function|const|let|var|import|export|class|def|fn|pub)\b/.test(prefix);
+}
+
+// ── 主检测函数 ─────────────────────────────────────────────────────────────
+
+/**
+ * 自动检测代码语言
+ *
+ * 加权评分 + LRU 缓存 + 输入采样 + 高置信早退。
+ */
+export function detectLanguage(code: string): DetectResult {
+  const key = cacheKey(code);
+  const cached = detectCache.get(key);
+  if (cached) return cached;
+
+  const trimmed = code.trim();
+  if (trimmed.length === 0) return result('plaintext', '纯文本', key);
+
+  // JSON 快速路径
+  if (isLikelyJson(trimmed)) {
+    return result('json', 'JSON', key);
+  }
+
+  const sample = sampleText(trimmed);
+
+  let bestScore = 0;
+  let bestLang: LanguageDef | null = null;
+
+  for (const lang of LANGUAGES) {
+    let score = 0;
+    for (const { re, w } of lang.patterns) {
+      if (re.test(sample)) score += w;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestLang = lang;
+      // 高置信早退
+      if (bestScore >= EARLY_EXIT_SCORE) break;
+    }
+  }
+
+  if (bestLang && bestScore >= 2) {
+    return result(bestLang.id, bestLang.label, key);
+  }
+
+  return result('plaintext', '纯文本', key);
+}
+
+function result(id: LanguageId, label: string, cacheKeyStr: string): DetectResult {
+  const r: DetectResult = { id, label };
+  cachePut(cacheKeyStr, r);
+  return r;
+}
+
+// ============================================================================
+// CodeMirror 扩展加载器
+// ============================================================================
 
 const extensionLoaderMap: Record<LanguageId, () => Promise<Extension>> = {
   tsx: async () => {
@@ -301,14 +452,9 @@ const extensionLoaderMap: Record<LanguageId, () => Promise<Extension>> = {
   sql: async () => (await import('@codemirror/lang-sql')).sql(),
   markdown: async () => (await import('@codemirror/lang-markdown')).markdown(),
   php: async () => (await import('@codemirror/lang-php')).php(),
-  go: async () => {
-    const mod = await import('@codemirror/lang-javascript');
-    return mod.javascript();
-  },
-  shell: async () => {
-    const mod = await import('@codemirror/lang-javascript');
-    return mod.javascript();
-  },
+  // Go / Shell 无已安装专用扩展 → 回退纯文本而非错误映射到 JavaScript
+  go: async () => [],
+  shell: async () => [],
   plaintext: async () => [],
 };
 
@@ -324,57 +470,22 @@ export async function loadLanguageExtension(id: LanguageId): Promise<Extension> 
   return loading;
 }
 
-/**
- * 自动检测代码语言
- *
- * 对每种语言的特征模式进行匹配，计算命中数，取最高分。
- * JSON 使用快速路径（尝试 JSON.parse）。
- */
-export function detectLanguage(code: string): DetectResult {
-  const trimmed = code.trim();
+// ============================================================================
+// 语言列表（单例）
+// ============================================================================
 
-  // 快速判断 JSON
-  if (/^\s*[\[{]/.test(trimmed)) {
-    try {
-      JSON.parse(trimmed);
-      const lang = LANGUAGES.find(l => l.id === 'json')!;
-      return { id: lang.id, label: lang.label };
-    } catch {
-      // not valid JSON, continue detection
-    }
-  }
-
-  let bestScore = 0;
-  let bestLang: LanguageDef | null = null;
-
-  for (const lang of LANGUAGES) {
-    let score = 0;
-    for (const pattern of lang.patterns) {
-      if (pattern.test(code)) {
-        score++;
-      }
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      bestLang = lang;
-    }
-  }
-
-  // 至少匹配 1 个特征才认为有效
-  if (bestLang && bestScore >= 1) {
-    return { id: bestLang.id, label: bestLang.label };
-  }
-
-  // 无法检测时返回纯文本
-  return { id: 'plaintext', label: '纯文本' };
-}
+let _availableLanguages: { id: LanguageId; label: string }[] | null = null;
 
 /**
  * 获取所有可用语言列表（用于语言选择器下拉框）
+ * 冻结单例，避免每次调用重建数组。
  */
 export function getAvailableLanguages(): { id: LanguageId; label: string }[] {
-  return [
-    ...LANGUAGES.map(l => ({ id: l.id, label: l.label })),
-    { id: 'plaintext' as LanguageId, label: '纯文本' },
-  ];
+  if (!_availableLanguages) {
+    _availableLanguages = Object.freeze([
+      ...LANGUAGES.map(l => ({ id: l.id, label: l.label })),
+      { id: 'plaintext' as LanguageId, label: '纯文本' },
+    ]) as { id: LanguageId; label: string }[];
+  }
+  return _availableLanguages;
 }

@@ -3,6 +3,7 @@ import { Edit2, Trash2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Tag } from '../../types';
 import { toTagStyle } from './constants';
+import { staggeredListTransition } from '../../utils/motionPresets';
 import './styles/list-row.css';
 
 interface TagRowProps {
@@ -25,10 +26,7 @@ export const TagRow = React.memo(function TagRow({
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
-      transition={{
-        opacity: { duration: 0.2 },
-        default: { type: 'spring', stiffness: 450, damping: 30, delay: index * 0.04 }
-      }}
+      transition={staggeredListTransition(index)}
       className="tag-manager-row"
       data-theme={dark ? 'dark' : 'light'}
     >

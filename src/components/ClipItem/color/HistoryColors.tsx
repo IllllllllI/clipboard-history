@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { collapseVariants } from '../../../utils/motionPresets';
 import './styles/color-picker.css';
 
 // TODO: 后续接入真实历史记录持久化
@@ -19,9 +20,10 @@ export const HistoryColors = React.memo(function HistoryColors({ visible, onSele
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
+          variants={collapseVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
           className="clip-item-color-picker-history-wrap"
         >
           <div className="clip-item-color-picker-history-grid">

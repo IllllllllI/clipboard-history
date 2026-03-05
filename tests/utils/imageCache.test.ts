@@ -141,6 +141,8 @@ describe('getImageCache', () => {
 });
 
 describe('fetchAndCacheImage', () => {
+  const SAME_ORIGIN = window.location.origin;
+
   beforeEach(() => {
     // Clear the global cache before each test
     getImageCache().clear();
@@ -162,7 +164,8 @@ describe('fetchAndCacheImage', () => {
       blob: () => Promise.resolve(mockBlob)
     });
 
-    const url = 'https://example.com/image.png';
+    // 使用同源 URL 以避免跨域检测跳过 fetch
+    const url = `${SAME_ORIGIN}/image.png`;
     const blobUrl = await fetchAndCacheImage(url);
 
     expect(blobUrl).toBe('blob:mock-url');
@@ -179,7 +182,7 @@ describe('fetchAndCacheImage', () => {
       blob: () => Promise.resolve(mockBlob)
     });
 
-    const url = 'https://example.com/image.png';
+    const url = `${SAME_ORIGIN}/image.png`;
     
     // First call - should fetch
     const blobUrl1 = await fetchAndCacheImage(url);
@@ -197,8 +200,16 @@ describe('fetchAndCacheImage', () => {
       statusText: 'Not Found'
     });
 
-    const url = 'https://example.com/nonexistent.png';
+    const url = `${SAME_ORIGIN}/nonexistent.png`;
     
     await expect(fetchAndCacheImage(url)).rejects.toThrow('Failed to fetch image: Not Found');
+  });
+
+  it('should return original URL for cross-origin images', async () => {
+    const url = 'https://external-cdn.example.com/image.png';
+    const result = await fetchAndCacheImage(url);
+
+    expect(result).toBe(url);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });

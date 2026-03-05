@@ -5,7 +5,7 @@
 ## 文件职责
 
 - `clip-item.css`：`ClipItemComponent` 条目骨架、状态、标签区、右侧元信息。**含 Design Token 层（`--ci-*`）供全组件树继承。**
-- `clip-item-content.css`：`ClipItemContent` 颜色块、图片信息、链接与正文文本。
+- `clip-item-content.css`：`ClipItemContent` 颜色块、图片信息、链接与正文文本。**引用 `--ci-*` Token 并定义 `--cic-success` / `--cic-error` 内容语义令牌；零 `[data-theme]` 选择器（暗色走祖先 `.clip-item-root` 继承）。**
 - `clip-item-hud.css`：`ClipItemComponent` HUD 流光边框与 palette 发光效果。
 - `action-buttons.css`：`ActionButtons` 操作按钮区与状态样式。
 - `image-preview.css`：`ImagePreview` 缩略图与 hover 元信息层。

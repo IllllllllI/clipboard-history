@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { HexAlphaColorPicker } from 'react-colorful';
 import { History } from 'lucide-react';
 import { usePopoverPosition } from '../../../hooks/usePopoverPosition';
+import { popoverVariants, DURATION_POPOVER } from '../../../utils/motionPresets';
 import { useColorState } from './useColorState';
 import { ColorPreview } from './ColorPreview';
 import { ColorModeSelector } from './ColorModeSelector';
@@ -58,13 +59,15 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
   return createPortal(
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: -8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: -8 }}
-        transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+        variants={popoverVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        transition={DURATION_POPOVER}
         ref={popoverRef}
         style={style}
-        className={`clip-item-color-picker-popover ${darkMode ? 'clip-item-color-picker-popover-dark' : ''}`}
+        className="clip-item-color-picker-popover"
+        data-theme={darkMode ? 'dark' : 'light'}
         onClick={(e) => e.stopPropagation()}
       >
         {/* 取色器 */}
@@ -92,7 +95,8 @@ export const ColorPickerPopover = React.memo(function ColorPickerPopover({
                 e.stopPropagation();
                 setShowHistory((v) => !v);
               }}
-              className={`clip-item-color-picker-history-toggle ${showHistory ? 'clip-item-color-picker-history-toggle-active' : ''}`}
+              className="clip-item-color-picker-history-toggle"
+              {...(showHistory ? { 'data-active': '' } : undefined)}
               title="历史颜色"
             >
               <History className="clip-item-color-picker-history-icon" />

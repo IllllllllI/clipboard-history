@@ -55,58 +55,71 @@ function setCachedIcon(cacheKey: string, value: string | null): void {
   }
 }
 
+/** 需要按完整路径获取特定图标的扩展名 */
+const SPECIAL_ICON_EXTS = new Set(['exe', 'lnk', 'url', 'ico', 'appref-ms']);
+
+/** 最大重试次数 */
+const ICON_MAX_RETRIES = 2;
+
 /**
  * 获取系统文件图标（base64 PNG）
  * - 自动判断是按扩展名获取通用图标，还是按路径获取特定文件图标
+ *
+ * 改进：
+ * - `SPECIAL_ICON_EXTS` 提升为模块级 Set（O(1) 查找，不再每次创建临时数组）
+ * - 重试逻辑提取为 `scheduleRetry` 闭包，消除 then/catch 中的重复代码
  */
 function useSystemFileIcon(filePath: string): string | null {
   const ext = getFileExtension(filePath);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryAttemptRef = useRef(0);
   const [retryToken, setRetryToken] = useState(0);
-  
-  // 对于 .exe, .lnk 等特殊文件，图标通常是文件特定的，需要按完整路径获取
-  // 其他文件类型通常共享同类型的图标，按扩展名获取即可（节省资源）
-  const isSpecial = ['exe', 'lnk', 'url', 'ico', 'appref-ms'].includes(ext.toLowerCase());
-  
-  // 决定缓存Key和请求参数
-  // 如果是特殊文件，Key就是完整路径；如果是通用文件，Key就是扩展名
-  const cacheKey = isSpecial ? filePath : (ext || 'folder'); 
-  
+
+  // 特殊文件按完整路径获取图标；通用文件按扩展名获取
+  const cacheKey = SPECIAL_ICON_EXTS.has(ext) ? filePath : (ext || 'folder');
+
   const [icon, setIcon] = useState<string | null>(() => {
     const cached = getCachedIcon(cacheKey);
     return cached.hit ? cached.value : null;
   });
 
+  // ── cacheKey 变更时重置重试状态 ──
   useEffect(() => {
     retryAttemptRef.current = 0;
     setRetryToken(0);
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-
-    return () => {
+    const clearTimer = () => {
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
     };
+    clearTimer();
+    return clearTimer;
   }, [cacheKey]);
 
+  // ── 核心加载 ──
   useEffect(() => {
-    // 检查缓存
     const cached = getCachedIcon(cacheKey);
     if (cached.hit) {
       setIcon(cached.value);
       return;
     }
 
+    /** 安排一次延迟重试 */
+    const scheduleRetry = (baseDelayMs: number) => {
+      if (retryAttemptRef.current >= ICON_MAX_RETRIES) return;
+      retryAttemptRef.current += 1;
+      const delayMs = baseDelayMs * retryAttemptRef.current;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        setRetryToken((v) => v + 1);
+      }, delayMs);
+    };
+
     // 去重：复用已有的请求
     let promise = pendingRequests.get(cacheKey);
     if (!promise) {
-      // 调用后端：如果 Key 是路径，后端会尝试获取特定文件图标；
-      // 如果 Key 是扩展名，后端会获取通用图标
       promise = TauriService.getFileIcon(cacheKey);
       pendingRequests.set(cacheKey, promise);
     }
@@ -122,37 +135,15 @@ function useSystemFileIcon(filePath: string): string | null {
           clearTimeout(retryTimerRef.current);
           retryTimerRef.current = null;
         }
-        return;
+      } else {
+        scheduleRetry(180);
       }
-
-      if (retryAttemptRef.current < 2) {
-        retryAttemptRef.current += 1;
-        const delayMs = 180 * retryAttemptRef.current;
-        if (retryTimerRef.current) {
-          clearTimeout(retryTimerRef.current);
-        }
-        retryTimerRef.current = setTimeout(() => {
-          retryTimerRef.current = null;
-          setRetryToken((v) => v + 1);
-        }, delayMs);
-      }
-    }).catch(err => {
-      console.warn("Failed to load icon:", cacheKey, err);
+    }).catch((err) => {
+      console.warn('Failed to load icon:', cacheKey, err);
       setCachedIcon(cacheKey, null);
       pendingRequests.delete(cacheKey);
       setIcon(null);
-
-      if (retryAttemptRef.current < 2) {
-        retryAttemptRef.current += 1;
-        const delayMs = 220 * retryAttemptRef.current;
-        if (retryTimerRef.current) {
-          clearTimeout(retryTimerRef.current);
-        }
-        retryTimerRef.current = setTimeout(() => {
-          retryTimerRef.current = null;
-          setRetryToken((v) => v + 1);
-        }, delayMs);
-      }
+      scheduleRetry(220);
     });
   }, [cacheKey, retryToken]);
 
@@ -389,7 +380,6 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
   const displayFiles = canExpand && !expanded
     ? files.slice(0, normalizedMaxVisibleItems)
     : files;
-  const remaining = files.length - displayFiles.length;
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -448,7 +438,7 @@ export const FileListDisplay = React.memo(function FileListDisplay({ files, isSe
       >
         {displayFiles.map((file, i) => (
           <FileItem
-            key={i}
+            key={file}
             filePath={file}
             isSelected={isSelected}
             darkMode={darkMode}

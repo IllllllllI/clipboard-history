@@ -5,6 +5,8 @@ import { Tag } from '../../types';
 import './styles/dialog.shared.css';
 import './styles/dialog.delete.css';
 
+import { dialogOverlayVariants, dialogCenteredVariants } from '../../utils/motionPresets';
+
 interface TagDeleteDialogProps {
   dark: boolean;
   tag: Tag | null;
@@ -41,16 +43,18 @@ export const TagDeleteDialog = React.memo(function TagDeleteDialog({
       {tag && (
         <>
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            variants={dialogOverlayVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             onClick={onClose}
             className="tag-manager-dialog-overlay"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10, x: '-50%' }}
-            animate={{ opacity: 1, scale: 1, y: '-50%', x: '-50%', transition: { type: 'spring', damping: 25, stiffness: 400 } }}
-            exit={{ opacity: 0, scale: 0.95, y: -10, x: '-50%', transition: { duration: 0.15 } }}
+            variants={dialogCenteredVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             className="tag-manager-dialog-delete-content"
             data-theme={dark ? 'dark' : 'light'}
           >

@@ -94,21 +94,29 @@ function AppLayout() {
 
   // 窗口隐藏时释放图片缓存，降低常驻内存
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     const handleVisibility = () => {
+      // 每次状态变化都先清除之前的定时器（快速切换不泄漏）
+      if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+
       if (document.hidden) {
-        // 延迟清理，避免快速切换时频繁重建
-        const timer = setTimeout(() => {
+        timer = setTimeout(() => {
+          timer = undefined;
           if (document.hidden) {
             import('./utils/imageCache').then(({ getImageCache }) => {
               getImageCache().clear();
             });
           }
-        }, 30_000); // 隐藏 30 秒后清理
-        return () => clearTimeout(timer);
+        }, 30_000);
       }
     };
+
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (timer !== undefined) clearTimeout(timer);
+    };
   }, []);
 
   return (

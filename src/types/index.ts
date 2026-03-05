@@ -145,12 +145,12 @@ export interface ImageDownloadProgressEvent {
   error_message?: string;
 }
 
+import type { DateParts } from '../utils/formatDate';
+
 export type ClipItemHudActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste' | 'dismiss';
 
-export interface ClipItemHudSnapshot {
+export interface ClipItemHudSnapshot extends DateParts {
   itemId: number;
-  dateLine: string;
-  timeLine: string;
   isFavorite: boolean;
   isPinned: boolean;
   canEdit: boolean;

@@ -1,5 +1,5 @@
-import chroma from 'chroma-js';
-
-/** Hex 转 RGBA 字符串 */
-export const hexToRgba = (hex: string, alpha: number): string =>
-  chroma(hex).alpha(alpha).css();
+/**
+ * @deprecated 请使用 `colorConvert.ts` 中的 `hexToRgbaString`。
+ * 此文件仅作兼容桥接，将在后续版本移除。
+ */
+export { hexToRgbaString as hexToRgba } from './colorConvert';

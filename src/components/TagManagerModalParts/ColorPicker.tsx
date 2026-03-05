@@ -2,6 +2,7 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { motion } from 'motion/react';
 import { TAG_COLORS } from './constants';
+import { checkMarkVariants, SPRING_LIST, SPRING_LAYOUT } from '../../utils/motionPresets';
 import './styles/colorpicker.css';
 
 interface ColorPickerProps {
@@ -48,9 +49,10 @@ const SwatchButton = React.memo(function SwatchButton({
         >
           {selected && (
             <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+              variants={checkMarkVariants}
+              initial="initial"
+              animate="animate"
+              transition={SPRING_LIST}
             >
               <Check
                 className={isDefault ? 'tag-manager-color-swatch-check-default' : 'tag-manager-color-swatch-check-color'}

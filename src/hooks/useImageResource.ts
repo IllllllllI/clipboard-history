@@ -39,22 +39,24 @@ const PRUNE_THROTTLE_MS = 5_000;
 const memCache = new Map<string, ImageCacheEntry>();
 let lastPruneTs = 0;
 
-/** 节流修剪：过期 + 超限，仅在 set 路径调用 */
+/**
+ * 节流修剪：过期 + 超限，仅在 set 路径调用。
+ * 单次遍历完成两种淘汰：先标记过期条目删除，再按插入序淘汰多余条目。
+ */
 function pruneIfNeeded(now: number): void {
   if (now - lastPruneTs < PRUNE_THROTTLE_MS) return;
   lastPruneTs = now;
 
-  // 过期淘汰
-  for (const [k, v] of memCache) {
-    if (now - v.touchedAt > CACHE_TTL_MS) memCache.delete(k);
-  }
-
-  // LRU 数量淘汰（Map 迭代序 = 插入序，最早插入 = 最少最近使用）
+  // 单次遍历：先删过期，之后若仍超限则按插入序淘汰
   let excess = memCache.size - CACHE_MAX;
-  if (excess <= 0) return;
-  for (const k of memCache.keys()) {
-    if (excess-- <= 0) break;
-    memCache.delete(k);
+  for (const [k, v] of memCache) {
+    if (now - v.touchedAt > CACHE_TTL_MS) {
+      memCache.delete(k);
+      excess--;
+    } else if (excess > 0) {
+      memCache.delete(k);
+      excess--;
+    }
   }
 }
 
@@ -205,11 +207,12 @@ export function useImageResource({
 
     const root = el.closest('.overflow-y-auto') as Element | null;
 
-    const observer = new IntersectionObserver(
+    let observer: IntersectionObserver | undefined;
+    observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            observer.disconnect();
+            observer?.disconnect();
             void resolve();
             return;
           }
@@ -221,7 +224,7 @@ export function useImageResource({
     observer.observe(el);
     return () => {
       cancelled = true;
-      observer.disconnect();
+      observer?.disconnect();
     };
   }, [cacheKey, sourceText, imageType, lazyLoad]);
 

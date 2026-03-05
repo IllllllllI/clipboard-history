@@ -2,16 +2,20 @@ import React, { useMemo } from 'react';
 import { Globe, HardDrive, FileCode2 } from 'lucide-react';
 import { ClipItem, ImageType, GalleryDisplayMode, GalleryScrollDirection, GalleryWheelMode } from '../../types';
 import { decodeFileList, detectImageType, findDateTimesInText } from '../../utils';
+import type { DateTimeMatch } from '../../utils';
 import { ImageDisplay } from '../ImageDisplay';
 import { FileListDisplay } from '../FileListDisplay';
 import { ImageGallery } from '../ImageGallery';
 import { ImagePreview } from './display/ImagePreview';
 import { HighlightText } from './display/HighlightText';
-import { HighlightDateTimeText } from './display/DateTimeChip';
+import { HighlightDateTimeText } from './display/HighlightDateTimeText';
 import { ColorContentBlock } from './color/ColorContentBlock';
 import { LinkOpenStatus } from './display/LinkOpenStatus';
 import { useUrlOpenState, buildOpenTargetTitle } from './useUrlOpenState';
 import './styles/clip-item-content.css';
+
+/** 空匹配数组常量，避免非文本类型每次创建新引用 */
+const EMPTY_DT_MATCHES: readonly DateTimeMatch[] = [];
 
 // ============================================================================
 // 配置对象接口 — 将相关 props 分组，减少扁平式参数穿透
@@ -80,7 +84,12 @@ export const ClipItemContent = React.memo(function ClipItemContent({
 
   // --- 衍生状态 ---
   const displayText = useMemo(() => item.text.replace(/\n/g, ' ↵ '), [item.text]);
-  const dtMatches = useMemo(() => findDateTimesInText(displayText), [displayText]);
+  // 性能: 仅对纯文本类型执行日期检测，图片/文件/URL/颜色跳过
+  const isPlainTextType = type === 'text' || type === 'code';
+  const dtMatches = useMemo(
+    () => (isPlainTextType ? findDateTimesInText(displayText) : EMPTY_DT_MATCHES),
+    [isPlainTextType, displayText],
+  );
   const hasDateTime = dtMatches.length > 0;
   const isUrl = useMemo(() => /^https?:\/\/\S+$/i.test(trimmedText), [trimmedText]);
   const files = useMemo(() => (type === 'files' ? decodeFileList(item.text) : []), [type, item.text]);
@@ -96,7 +105,6 @@ export const ClipItemContent = React.memo(function ClipItemContent({
     () => (type === 'multi-image' ? imageUrls : showFilesAsGallery ? fileImageUrls : []),
     [type, imageUrls, showFilesAsGallery, fileImageUrls],
   );
-  const theme = darkMode ? 'dark' : 'light';
 
   const renderUrlOpenStatus = () => (
     <span className="clip-item-content-link-status" data-state={openPhase} aria-hidden="true">
@@ -178,7 +186,6 @@ export const ClipItemContent = React.memo(function ClipItemContent({
         {imageType !== ImageType.Base64 && (
           <div
             className="clip-item-content-image-link"
-            data-theme={theme}
             data-open-state={openPhase}
           >
             {imageType === ImageType.HttpUrl ? (
@@ -206,7 +213,6 @@ export const ClipItemContent = React.memo(function ClipItemContent({
       <p className="clip-item-content-text">
         <span
           className="clip-item-content-image-link"
-          data-theme={theme}
           data-open-state={openPhase}
         >
           {imageType === ImageType.HttpUrl ? (
@@ -249,7 +255,6 @@ export const ClipItemContent = React.memo(function ClipItemContent({
       <p className="clip-item-content-text">
         <span
           className="clip-item-content-link"
-          data-theme={theme}
           data-open-state={openPhase}
           title={urlOpenTitle}
           onDoubleClick={handleUrlDoubleClick}

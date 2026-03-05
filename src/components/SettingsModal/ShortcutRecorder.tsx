@@ -1,61 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { X } from 'lucide-react';
+import { MODIFIER_KEYS, formatShortcutFromEvent } from '../../utils/shortcut';
 import type { ShortcutRecorderProps } from './types';
-
-const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta']);
-
-function normalizeKeyName(key: string): string | null {
-  if (!key || key === 'Dead' || key === 'Process') return null;
-  if (key === ' ') return 'Space';
-  if (key.length === 1) return key.toUpperCase();
-
-  const lower = key.toLowerCase();
-  if (lower === 'esc') return 'Escape';
-  if (lower === 'return') return 'Enter';
-  if (lower === 'spacebar') return 'Space';
-  if (lower === 'up') return 'ArrowUp';
-  if (lower === 'down') return 'ArrowDown';
-  if (lower === 'left') return 'ArrowLeft';
-  if (lower === 'right') return 'ArrowRight';
-  return key;
-}
-
-function normalizeCodeName(code: string): string | null {
-  if (!code) return null;
-  if (code.startsWith('Key') && code.length === 4) return code.slice(3);
-  if (code.startsWith('Digit') && code.length === 6) return code.slice(5);
-  if (/^F\d{1,2}$/.test(code)) return code;
-  if (code === 'Space') return 'Space';
-  if (code === 'Minus') return '-';
-  if (code === 'Equal') return '=';
-  if (code === 'BracketLeft') return '[';
-  if (code === 'BracketRight') return ']';
-  if (code === 'Backslash') return '\\';
-  if (code === 'Semicolon') return ';';
-  if (code === 'Quote') return "'";
-  if (code === 'Comma') return ',';
-  if (code === 'Period') return '.';
-  if (code === 'Slash') return '/';
-  if (code.startsWith('Numpad') && code.length > 6) return code;
-  return null;
-}
-
-function formatShortcutFromEvent(e: Pick<KeyboardEvent, 'key' | 'code' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>): string | null {
-  if (MODIFIER_KEYS.has(e.key)) return null;
-
-  const parts: string[] = [];
-  if (e.ctrlKey) parts.push('Ctrl');
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
-  if (e.metaKey) parts.push('Meta');
-
-  const keyName = normalizeCodeName(e.code) ?? normalizeKeyName(e.key);
-  if (!keyName) return null;
-  parts.push(keyName);
-
-  return parts.join('+');
-}
 
 export const ShortcutRecorder = React.memo(function ShortcutRecorder({
   dark,

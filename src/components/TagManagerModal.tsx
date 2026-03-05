@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, Tag as TagIcon } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
+import { backdropVariantsDelayed, tagModalVariants, fadeInVariants, DURATION_FAST } from '../utils/motionPresets';
 import { Tag } from '../types';
 import { TagList } from './TagManagerModalParts/TagList';
 import { TagEditorDialog } from './TagManagerModalParts/TagEditorDialog';
@@ -104,27 +105,30 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
       {show && (
         <div className="tag-manager-modal-root">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { delay: 0.08, duration: 0.16 } }}
+            variants={backdropVariantsDelayed}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             transition={{ duration: 0.2 }}
             onClick={onClose}
             className="tag-manager-modal-backdrop"
           />
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', damping: 25, stiffness: 350 } }}
-            exit={{ opacity: 0, scale: 0.98, y: 5, transition: { duration: 0.14, ease: 'easeIn' } }}
+            variants={tagModalVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             className="tag-manager-modal-shell"
             data-theme={dark ? 'dark' : 'light'}
           >
             <div className="tag-manager-modal-header" data-theme={dark ? 'dark' : 'light'}>
               <div className="tag-manager-modal-header-left">
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.16 }}
+                  variants={fadeInVariants}
+                  initial="initial"
+                  animate="animate"
+                  transition={DURATION_FAST}
                   className="tag-manager-modal-header-icon-wrap"
                   data-theme={dark ? 'dark' : 'light'}
                 >

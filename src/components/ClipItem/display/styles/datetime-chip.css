@@ -2,50 +2,59 @@
    DateTimeChip
    ========================= */
 
+/* ── Chip 本体 ── */
+
 .clip-item-datetime-chip {
+  --_chip-bg: transparent;
+  --_chip-bg-hover: transparent;
+  --_chip-color: inherit;
+
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
   padding: 0 0.25rem;
   border-radius: 0.25rem;
   cursor: default;
+  background: var(--_chip-bg);
+  color: var(--_chip-color);
   transition: background-color 0.15s ease, color 0.15s ease;
+  outline: none;
 }
 
-.clip-item-datetime-chip[data-selected='true'][data-theme='light'] {
-  background: #eef2ff;
-  color: #4338ca;
+.clip-item-datetime-chip:hover {
+  background: var(--_chip-bg-hover);
 }
 
-.clip-item-datetime-chip[data-selected='true'][data-theme='light']:hover {
-  background: #e0e7ff;
+.clip-item-datetime-chip:focus-visible {
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 0.5);
 }
 
-.clip-item-datetime-chip[data-selected='true'][data-theme='dark'] {
-  background: rgb(99 102 241 / 0.2);
-  color: #a5b4fc;
+/* 未选中 · 亮色 */
+.clip-item-datetime-chip[data-theme='light'] {
+  --_chip-bg: #f0f9ff;
+  --_chip-bg-hover: #e0f2fe;
+  --_chip-color: #0369a1;
 }
 
-.clip-item-datetime-chip[data-selected='true'][data-theme='dark']:hover {
-  background: rgb(99 102 241 / 0.3);
+/* 未选中 · 暗色 */
+.clip-item-datetime-chip[data-theme='dark'] {
+  --_chip-bg: rgb(14 165 233 / 0.1);
+  --_chip-bg-hover: rgb(14 165 233 / 0.2);
+  --_chip-color: #7dd3fc;
 }
 
-.clip-item-datetime-chip[data-selected='false'][data-theme='light'] {
-  background: #f0f9ff;
-  color: #0369a1;
+/* 选中 · 亮色 */
+.clip-item-datetime-chip[data-selected][data-theme='light'] {
+  --_chip-bg: #eef2ff;
+  --_chip-bg-hover: #e0e7ff;
+  --_chip-color: #4338ca;
 }
 
-.clip-item-datetime-chip[data-selected='false'][data-theme='light']:hover {
-  background: #e0f2fe;
-}
-
-.clip-item-datetime-chip[data-selected='false'][data-theme='dark'] {
-  background: rgb(14 165 233 / 0.1);
-  color: #7dd3fc;
-}
-
-.clip-item-datetime-chip[data-selected='false'][data-theme='dark']:hover {
-  background: rgb(14 165 233 / 0.2);
+/* 选中 · 暗色 */
+.clip-item-datetime-chip[data-selected][data-theme='dark'] {
+  --_chip-bg: rgb(99 102 241 / 0.2);
+  --_chip-bg-hover: rgb(99 102 241 / 0.3);
+  --_chip-color: #a5b4fc;
 }
 
 .clip-item-datetime-chip-icon {
@@ -55,36 +64,61 @@
   opacity: 0.6;
 }
 
+/* ── Popover 弹出层 ── */
+
+@keyframes clip-item-datetime-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .clip-item-datetime-popover {
+  --_pop-bg: #ffffff;
+  --_pop-border: #e5e7eb;
+  --_pop-title: #a3a3a3;
+  --_pop-btn-color: #404040;
+  --_pop-btn-hover-bg: #f5f5f5;
+  --_pop-btn-copied-bg: #ecfdf5;
+  --_pop-btn-copied-color: #059669;
+
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
   padding: 0.375rem;
   border-radius: 0.75rem;
   box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.15);
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
+  border: 1px solid var(--_pop-border);
+  background: var(--_pop-bg);
   min-width: 150px;
   max-width: 300px;
+  animation: clip-item-datetime-popover-in 120ms ease-out;
 }
 
 .clip-item-datetime-popover[data-theme='dark'] {
-  background: #262626;
-  border-color: #404040;
+  --_pop-bg: #262626;
+  --_pop-border: #404040;
+  --_pop-title: #737373;
+  --_pop-btn-color: #d4d4d4;
+  --_pop-btn-hover-bg: #404040;
+  --_pop-btn-copied-bg: rgb(16 185 129 / 0.1);
+  --_pop-btn-copied-color: #34d399;
 }
 
 .clip-item-datetime-popover-title {
   font-size: 9px;
-  color: #a3a3a3;
+  color: var(--_pop-title);
   padding: 0 0.25rem;
   margin-bottom: 0.125rem;
   font-weight: 500;
   user-select: none;
 }
 
-.clip-item-datetime-popover[data-theme='dark'] .clip-item-datetime-popover-title {
-  color: #737373;
-}
+/* ── Popover 按钮 ── */
 
 .clip-item-datetime-popover-btn {
   display: flex;
@@ -95,33 +129,25 @@
   border-radius: 0.5rem;
   border: 0;
   background: transparent;
-  transition: all 0.15s ease;
+  color: var(--_pop-btn-color);
+  transition: background-color 0.15s ease, color 0.15s ease;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
-  color: #404040;
-}
-
-.clip-item-datetime-popover-btn[data-theme='dark'] {
-  color: #d4d4d4;
 }
 
 .clip-item-datetime-popover-btn:hover {
-  background: #f5f5f5;
+  background: var(--_pop-btn-hover-bg);
 }
 
-.clip-item-datetime-popover-btn[data-theme='dark']:hover {
-  background: #404040;
+.clip-item-datetime-popover-btn:focus-visible {
+  outline: 2px solid rgb(99 102 241 / 0.5);
+  outline-offset: -1px;
 }
 
-.clip-item-datetime-popover-btn[data-copied='true'] {
-  background: #ecfdf5;
-  color: #059669;
-}
-
-.clip-item-datetime-popover-btn[data-copied='true'][data-theme='dark'] {
-  background: rgb(16 185 129 / 0.1);
-  color: #34d399;
+.clip-item-datetime-popover-btn[data-copied] {
+  background: var(--_pop-btn-copied-bg);
+  color: var(--_pop-btn-copied-color);
 }
 
 .clip-item-datetime-popover-icon {

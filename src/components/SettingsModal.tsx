@@ -4,6 +4,7 @@ import { X, Settings, Keyboard, Monitor, HardDrive } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
 import { TauriService } from '../services/tauri';
 import { getGlobalShortcutConflict, getImmersiveShortcutConflict } from '../utils';
+import { backdropVariants, modalVariants } from '../utils/motionPresets';
 import type { WindowPlacementMode } from '../types';
 import './SettingsModal/styles/settings-modal.css';
 import './SettingsModal/styles/settings-modal-panels.css';
@@ -278,16 +279,18 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
       {show && (
         <div className="sm-modal">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={backdropVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             onClick={onClose}
             className="sm-modal__backdrop"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            variants={modalVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             className="sm-modal__panel"
             data-theme={dark ? 'dark' : 'light'}
           >

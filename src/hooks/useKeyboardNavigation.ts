@@ -13,7 +13,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { ClipItem } from '../types';
-import { getImmersiveShortcutConflict, matchesShortcut } from '../utils';
+import { isReservedAppShortcut, matchesShortcut } from '../utils';
 
 export const KEYBOARD_NAV_SCROLL_EVENT = 'clip:keyboard-nav-scroll';
 
@@ -25,7 +25,6 @@ interface UseKeyboardNavigationOptions {
   handleDoubleClick: (item: ClipItem) => Promise<void>;
   previewImageUrl: string | null;
   setPreviewImageUrl: (url: string | null) => void;
-  globalShortcut: string;
   immersiveShortcut: string;
   toggleImmersiveMode: () => void;
   /** 当这些弹窗打开时，禁用导航（不包含图片预览，Escape 需要单独处理） */
@@ -74,7 +73,6 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
         handleDoubleClick,
         previewImageUrl,
         setPreviewImageUrl,
-        globalShortcut,
         immersiveShortcut,
         toggleImmersiveMode,
         modalOpen,
@@ -97,9 +95,9 @@ export function useKeyboardNavigation(opts: UseKeyboardNavigationOptions): void 
       // 弹窗打开时禁用导航/快捷键拦截（避免影响设置中的按键录制）
       if (modalOpen) return;
 
-      // 沉浸模式切换
+      // 沉浸模式切换（跳过被保留快捷键占用的组合）
       if (
-        !getImmersiveShortcutConflict(immersiveShortcut || 'Alt+Z', globalShortcut || 'Alt+V') &&
+        !isReservedAppShortcut(immersiveShortcut || 'Alt+Z') &&
         matchesShortcut(e, immersiveShortcut || 'Alt+Z')
       ) {
         e.preventDefault();

@@ -5,12 +5,16 @@ import { ClipItem, ImageType } from '../../src/types';
 import { detectImageType } from '../../src/utils';
 import * as imageCache from '../../src/utils/imageCache';
 
-// Mock IntersectionObserver
+// Mock IntersectionObserver — callback fires on observe(), matching real browser behaviour
 class MockIntersectionObserver {
+  private _cb: IntersectionObserverCallback;
   constructor(callback: IntersectionObserverCallback) {
-    callback([{ isIntersecting: true } as IntersectionObserverEntry], this as any);
+    this._cb = callback;
   }
-  observe() {}
+  observe() {
+    // Simulate: element is immediately visible
+    this._cb([{ isIntersecting: true } as IntersectionObserverEntry], this as any);
+  }
   disconnect() {}
   unobserve() {}
   takeRecords() { return []; }

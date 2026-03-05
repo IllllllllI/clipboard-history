@@ -14,9 +14,10 @@ export type CopyStrategyKind =
 export function resolveCopyStrategy(text: string): CopyStrategyKind {
   if (isFileList(text)) return 'file-list';
   if (text.startsWith('data:image/')) return 'base64-image';
-  if (detectImageType(text) === ImageType.HttpUrl) return 'http-image';
+  const imgType = detectImageType(text);
+  if (imgType === ImageType.HttpUrl) return 'http-image';
   if (/\.svg$/i.test(text) && (text.includes('/') || text.includes('\\'))) return 'svg-file';
-  if (detectImageType(text) === ImageType.LocalFile) return 'local-image';
+  if (imgType === ImageType.LocalFile) return 'local-image';
   if (detectContentType(text) === 'file') return 'file-path';
   return 'text';
 }

@@ -16,36 +16,74 @@ export interface HSLA {
   a: number;
 }
 
-/** 将 3 位 hex 扩展为 6 位，或 4 位扩展为 8 位 */
+// ── 内部工具 ──────────────────────────────────────────────────────────────────
+
+/** 整数 clamp 到 [0, 255] 并转 2 位 hex */
+function byteHex(n: number): string {
+  return Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+}
+
+/** 解析 2 位 hex 子串为整数 */
+function parseHex2(s: string, offset: number): number {
+  return parseInt(s.charAt(offset) + s.charAt(offset + 1), 16) || 0;
+}
+
+// ── 公开 API ──────────────────────────────────────────────────────────────────
+
+/** 将 3/4 位短 hex 扩展为 6/8 位标准 hex */
 export function expandHex(hex: string): string {
-  if (hex.length === 4) {
-    return '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+  const len = hex.length;
+  if (len === 4) {
+    const r = hex.charAt(1), g = hex.charAt(2), b = hex.charAt(3);
+    return `#${r}${r}${g}${g}${b}${b}`;
   }
-  if (hex.length === 5) {
-    return '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3] + hex[4] + hex[4];
+  if (len === 5) {
+    const r = hex.charAt(1), g = hex.charAt(2), b = hex.charAt(3), a = hex.charAt(4);
+    return `#${r}${r}${g}${g}${b}${b}${a}${a}`;
   }
   return hex;
 }
 
-/** hex → RGBA */
+/**
+ * 标准化 hex：展开短格式 → 小写 → 去除尾部全不透明 alpha（#rrggbbff → #rrggbb）
+ *
+ * 用途：比较两个颜色值是否「视觉等价」。
+ */
+export function normalizeHex(hex: string): string {
+  const expanded = expandHex(hex).toLowerCase();
+  // 9 字符 = # + 8 hex digits；尾部 ff 表示完全不透明，可省略
+  if (expanded.length === 9 && expanded.charAt(7) === 'f' && expanded.charAt(8) === 'f') {
+    return expanded.slice(0, 7);
+  }
+  return expanded;
+}
+
+/** hex → RGBA 对象 */
 export function hexToRGBA(hex: string): RGBA {
-  const full = expandHex(hex).replace('#', '');
+  const full = expandHex(hex);
+  // 跳过 '#' = offset 1
   return {
-    r: parseInt(full.substring(0, 2), 16) || 0,
-    g: parseInt(full.substring(2, 4), 16) || 0,
-    b: parseInt(full.substring(4, 6), 16) || 0,
-    a: full.length === 8 ? parseInt(full.substring(6, 8), 16) / 255 : 1,
+    r: parseHex2(full, 1),
+    g: parseHex2(full, 3),
+    b: parseHex2(full, 5),
+    a: full.length === 9 ? parseHex2(full, 7) / 255 : 1,
   };
+}
+
+/**
+ * hex → CSS rgba() 字符串。
+ *
+ * 替代 chroma-js 依赖——在标签背景、边框等场景生成带透明度的 CSS 颜色。
+ */
+export function hexToRgbaString(hex: string, alpha: number): string {
+  const { r, g, b } = hexToRGBA(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /** RGBA → hex */
 export function rgbaToHex(r: number, g: number, b: number, a: number = 1): string {
-  const toHex = (n: number) =>
-    Math.max(0, Math.min(255, Math.round(n)))
-      .toString(16)
-      .padStart(2, '0');
-  const alphaHex = a < 1 ? toHex(a * 255) : '';
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}${alphaHex}`;
+  const alphaHex = a < 1 ? byteHex(a * 255) : '';
+  return `#${byteHex(r)}${byteHex(g)}${byteHex(b)}${alphaHex}`;
 }
 
 /** hex → HSLA */

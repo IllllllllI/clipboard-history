@@ -1,9 +1,7 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Copy, Check } from 'lucide-react';
-
-/** 共享的 spring 过渡配置，避免每处重复声明 */
-const SPRING = { type: 'spring' as const, stiffness: 500, damping: 30 };
+import { SPRING_ICON, iconSwapInVariants, iconSwapOutVariants } from '../../utils/motionPresets';
 
 interface AnimatedCopyIconProps {
   copied: boolean;
@@ -19,20 +17,22 @@ export const AnimatedCopyIcon = React.memo(function AnimatedCopyIcon({ copied }:
       {copied ? (
         <motion.div
           key="copied"
-          initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-          exit={{ opacity: 0, scale: 0.5 }}
-          transition={SPRING}
+          variants={iconSwapInVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={SPRING_ICON}
         >
           <Check className="img-gallery__icon-12 img-gallery__copy-icon-ok" />
         </motion.div>
       ) : (
         <motion.div
           key="copy"
-          initial={{ opacity: 0, scale: 0.5, rotate: 45 }}
-          animate={{ opacity: 1, scale: 1, rotate: 0 }}
-          exit={{ opacity: 0, scale: 0.5 }}
-          transition={SPRING}
+          variants={iconSwapOutVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={SPRING_ICON}
         >
           <Copy className="img-gallery__icon-12" />
         </motion.div>

@@ -6,6 +6,7 @@ import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { useAppContext } from '../../contexts/AppContext';
 import { detectLanguage, loadLanguageExtension, type LanguageId } from '../../utils/languageDetect';
+import { backdropVariants, modalVariants } from '../../utils/motionPresets';
 import { EditorHeader } from './EditorHeader';
 import { EditorFooter } from './EditorFooter';
 import './styles/code-editor.css';
@@ -186,18 +187,20 @@ export function CodeEditorModal() {
         <div className="code-editor-overlay">
           {/* Backdrop */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={backdropVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             onClick={handleClose}
             className="code-editor-backdrop"
           />
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            variants={modalVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             className="code-editor-modal"
             data-theme={settings.darkMode ? 'dark' : 'light'}
           >

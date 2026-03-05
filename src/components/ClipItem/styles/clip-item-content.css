@@ -1,6 +1,25 @@
-/* =========================
-   ClipItemContent
-   ========================= */
+/* =========================================================================
+   ClipItemContent — 条目正文区域样式
+   =========================================================================
+   引用 .clip-item-root 上定义的 --ci-* Design Token，不再硬编码颜色。
+   暗色主题走 Token 继承，此文件零 [data-theme] 选择器。
+
+   内容语义令牌（仅本文件内部使用）
+   --cic-success   复制成功 / 打开成功
+   --cic-error     打开失败
+   ========================================================================= */
+
+/* ── Content Tokens ─────────────────────────────────────────────────────── */
+
+.clip-item-content-color-row,
+.clip-item-content-image-single,
+.clip-item-content-text,
+.clip-item-content-link {
+  --cic-success: #22c55e;
+  --cic-error: #ef4444;
+}
+
+/* ── [Color Block] 颜色条目行 ──────────────────────────────────────────── */
 
 .clip-item-content-color-row {
   display: flex;
@@ -21,7 +40,8 @@
   flex-shrink: 0;
 }
 
-.clip-item-content-color-chip[data-theme='dark'] {
+/* 暗色边框：直接用 clip-item-root 继承的 token，无需 [data-theme] */
+.clip-item-root[data-theme='dark'] .clip-item-content-color-chip {
   border-color: rgb(255 255 255 / 0.2);
 }
 
@@ -47,7 +67,7 @@
 }
 
 .clip-item-content-color-arrow {
-  color: #a3a3a3;
+  color: var(--ci-text-muted);
   font-size: 0.75rem;
   user-select: none;
 }
@@ -71,12 +91,12 @@
 }
 
 .clip-item-content-color-text-wrap:hover .clip-item-content-color-text {
-  color: #6366f1;
+  color: var(--ci-accent);
 }
 
 .clip-item-content-color-new {
   font-size: 10px;
-  color: #a3a3a3;
+  color: var(--ci-text-muted);
   font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -85,134 +105,25 @@
   max-width: 11rem;
 }
 
-.clip-item-content-color-new[data-theme='dark'] {
-  color: #737373;
+.clip-item-content-color-text-wrap:hover .clip-item-content-color-new {
+  color: var(--ci-accent);
 }
 
-.clip-item-content-color-text-wrap:hover .clip-item-content-color-new {
-  color: #6366f1;
-}
+/* ── [Copy Feedback] 复制成功勾 ────────────────────────────────────────── */
 
 .clip-item-content-copy-check {
   width: 0.875rem;
   height: 0.875rem;
-  color: #22c55e;
+  color: var(--cic-success);
 }
 
 .clip-item-content-copy-check-small {
   width: 0.75rem;
   height: 0.75rem;
-  color: #22c55e;
+  color: var(--cic-success);
 }
 
-.clip-item-content-image-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  width: 100%;
-}
-
-.clip-item-content-image-carousel {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  width: 100%;
-}
-
-.clip-item-content-image-nav-btn {
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 0;
-  border-radius: 0.375rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
-}
-
-.clip-item-content-image-nav-btn[data-theme='light'] {
-  background: rgb(0 0 0 / 0.05);
-  color: #525252;
-}
-
-.clip-item-content-image-nav-btn[data-theme='dark'] {
-  background: rgb(255 255 255 / 0.1);
-  color: #d4d4d4;
-}
-
-.clip-item-content-image-nav-btn:hover:not(:disabled) {
-  background: rgb(99 102 241 / 0.18);
-  color: #4f46e5;
-}
-
-.clip-item-content-image-nav-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.clip-item-content-image-list-track {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
-  max-width: 100%;
-}
-
-.clip-item-content-image-thumb {
-  width: 2.5rem;
-  height: 2.5rem;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
-  padding: 0;
-  overflow: hidden;
-  flex-shrink: 0;
-  cursor: pointer;
-  background: transparent;
-  transition: border-color 0.15s ease, transform 0.15s ease;
-}
-
-.clip-item-content-image-thumb[data-theme='light'] {
-  border-color: rgb(0 0 0 / 0.12);
-}
-
-.clip-item-content-image-thumb[data-theme='dark'] {
-  border-color: rgb(255 255 255 / 0.15);
-}
-
-.clip-item-content-image-thumb:hover {
-  transform: translateY(-1px);
-}
-
-.clip-item-content-image-thumb[data-active='true'] {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 1px rgb(99 102 241 / 0.35);
-}
-
-.clip-item-content-image-thumb-img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-}
-
-.clip-item-content-image-list-meta {
-  font-size: 10px;
-  color: #737373;
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-.clip-item-content-image-list-meta-sep {
-  opacity: 0.5;
-}
-
-.clip-item-content-image-list-meta[data-theme='dark'] {
-  color: #a3a3a3;
-}
+/* ── [Icon Utilities] 图标尺寸 ─────────────────────────────────────────── */
 
 .clip-item-content-icon-12 {
   width: 0.75rem;
@@ -230,6 +141,8 @@
   flex-shrink: 0;
 }
 
+/* ── [Single Image] 单张图片预览 ───────────────────────────────────────── */
+
 .clip-item-content-image-single {
   width: 100%;
   display: flex;
@@ -244,20 +157,18 @@
 }
 
 .clip-item-content-image-display-wrap:hover {
-  border-color: rgb(99 102 241 / 0.5);
+  border-color: var(--ci-accent-border);
 }
+
+/* ── [Image Link] 图片底部链接 ─────────────────────────────────────────── */
 
 .clip-item-content-image-link {
   font-size: 10px;
-  color: #737373;
+  color: var(--ci-text-muted);
   display: flex;
   align-items: center;
   gap: 0.375rem;
   overflow: hidden;
-}
-
-.clip-item-content-image-link[data-theme='dark'] {
-  color: #a3a3a3;
 }
 
 .clip-item-content-image-link-text {
@@ -269,9 +180,11 @@
 }
 
 .clip-item-content-image-link-text:hover {
-  color: #6366f1;
+  color: var(--ci-accent);
   text-decoration: underline;
 }
+
+/* ── [Text Block] 正文文本 ─────────────────────────────────────────────── */
 
 .clip-item-content-text {
   font-size: 0.875rem;
@@ -282,6 +195,7 @@
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   white-space: normal;
   word-break: break-word;
@@ -291,13 +205,16 @@
   overflow: visible;
   display: block;
   -webkit-line-clamp: unset;
+  line-clamp: unset;
   -webkit-box-orient: initial;
   white-space: normal;
 }
 
+/* ── [URL Link] 链接条目 ───────────────────────────────────────────────── */
+
 .clip-item-content-link {
   cursor: pointer;
-  color: #6366f1;
+  color: var(--ci-accent);
   display: flex;
   align-items: center;
   gap: 0.375rem;
@@ -314,10 +231,6 @@
   word-break: break-word;
 }
 
-.clip-item-content-link[data-theme='dark'] {
-  color: #818cf8;
-}
-
 .clip-item-content-link:hover {
   text-decoration: underline;
   transform: translateY(-1px);
@@ -326,6 +239,8 @@
 .clip-item-content-link-fade {
   opacity: 0.5;
 }
+
+/* ── [Open Status] 链接 / 图片链接打开状态（:is 合并重复选择器）───────── */
 
 .clip-item-content-link-status {
   width: 0.75rem;
@@ -336,43 +251,30 @@
   flex-shrink: 0;
 }
 
-.clip-item-content-link[data-open-state='opening'] .clip-item-content-link-status {
-  color: #6366f1;
+:is(.clip-item-content-link, .clip-item-content-image-link)[data-open-state='opening'] .clip-item-content-link-status {
+  color: var(--ci-accent);
 }
 
-.clip-item-content-image-link[data-open-state='opening'] .clip-item-content-link-status {
-  color: #6366f1;
+:is(.clip-item-content-link, .clip-item-content-image-link)[data-open-state='success'] .clip-item-content-link-status {
+  color: var(--cic-success);
 }
 
-.clip-item-content-link[data-open-state='success'] .clip-item-content-link-status {
-  color: #22c55e;
+:is(.clip-item-content-link, .clip-item-content-image-link)[data-open-state='error'] .clip-item-content-link-status {
+  color: var(--cic-error);
 }
 
-.clip-item-content-image-link[data-open-state='success'] .clip-item-content-link-status {
-  color: #22c55e;
-}
-
-.clip-item-content-link[data-open-state='error'] .clip-item-content-link-status {
-  color: #ef4444;
-}
-
-.clip-item-content-image-link[data-open-state='error'] .clip-item-content-link-status {
-  color: #ef4444;
-}
+/* ── [Spinner] 加载旋转 ────────────────────────────────────────────────── */
 
 .clip-item-content-link-status-spin {
   animation: clip-item-link-status-spin 0.9s linear infinite;
+  will-change: transform;
 }
 
 @keyframes clip-item-link-status-spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
+
+/* ── Responsive ────────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
   .clip-item-content-color-new {
@@ -381,6 +283,7 @@
 
   .clip-item-content-text {
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     font-size: 13px;
   }
 }

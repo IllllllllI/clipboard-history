@@ -2,6 +2,8 @@
    ClipItem / ColorPicker
    ========================= */
 
+/* ── Popover 主容器 ── */
+
 .clip-item-color-picker-popover {
   z-index: 50;
   width: min(296px, calc(100vw - 1rem));
@@ -18,21 +20,17 @@
 }
 
 @keyframes color-picker-in {
-  from {
-    opacity: 0;
-    transform: scale(0.95) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-.clip-item-color-picker-popover-dark {
+.clip-item-color-picker-popover[data-theme='dark'] {
   background: rgb(23 23 23 / 0.85);
   border-color: rgb(82 82 82 / 0.5);
   box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5), inset 0 0 0 1px rgb(255 255 255 / 0.05);
 }
+
+/* ── 取色器外壳 ── */
 
 .clip-item-color-picker-picker-wrap {
   padding: 1rem;
@@ -45,9 +43,11 @@
   box-shadow: 0 2px 6px -1px rgb(0 0 0 / 0.1), 0 1px 4px -1px rgb(0 0 0 / 0.06), inset 0 0 0 1px rgb(0 0 0 / 0.05);
 }
 
-.dark .clip-item-color-picker-picker-shell {
+[data-theme='dark'] .clip-item-color-picker-picker-shell {
   box-shadow: 0 2px 6px -1px rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.1);
 }
+
+/* react-colorful 覆写 */
 
 .clip-item-color-picker-popover .react-colorful {
   width: 100% !important;
@@ -76,6 +76,8 @@
   transform: translate(-50%, -50%) scale(1.1);
 }
 
+/* ── 控制面板 ── */
+
 .clip-item-color-picker-content {
   padding: 1rem;
   display: flex;
@@ -89,6 +91,8 @@
   gap: 0.5rem;
   min-height: 2.25rem;
 }
+
+/* ── 历史颜色开关 ── */
 
 .clip-item-color-picker-history-toggle {
   flex: 1;
@@ -111,7 +115,7 @@
   box-shadow: 0 0 0 3px rgb(99 102 241 / 0.2);
 }
 
-.dark .clip-item-color-picker-history-toggle {
+[data-theme='dark'] .clip-item-color-picker-history-toggle {
   background: rgb(38 38 38 / 0.4);
   border-color: rgb(82 82 82 / 0.6);
   color: #a3a3a3;
@@ -125,20 +129,20 @@
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -1px rgb(0 0 0 / 0.03);
 }
 
-.dark .clip-item-color-picker-history-toggle:hover {
+[data-theme='dark'] .clip-item-color-picker-history-toggle:hover {
   background: rgb(64 64 64 / 0.6);
   color: #f5f5f5;
   border-color: rgb(115 115 115 / 0.5);
 }
 
-.clip-item-color-picker-history-toggle-active {
+.clip-item-color-picker-history-toggle[data-active] {
   background: #f3f4f6;
   color: #111827;
   border-color: rgb(209 213 219);
   box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
 }
 
-.dark .clip-item-color-picker-history-toggle-active {
+[data-theme='dark'] .clip-item-color-picker-history-toggle[data-active] {
   background: #262626;
   color: #f9fafb;
   border-color: rgb(82 82 82 / 0.8);
@@ -150,6 +154,8 @@
   height: 1rem;
 }
 
+/* ── ActionBar ── */
+
 .clip-item-color-picker-actionbar {
   padding: 0.75rem 1rem;
   display: flex;
@@ -159,7 +165,7 @@
   background: rgb(249 250 251 / 0.95);
 }
 
-.dark .clip-item-color-picker-actionbar {
+[data-theme='dark'] .clip-item-color-picker-actionbar {
   border-top-color: rgb(64 64 64 / 0.6);
   background: rgb(38 38 38 / 0.4);
 }
@@ -190,7 +196,7 @@
   border: 1px solid transparent;
 }
 
-.dark .clip-item-color-picker-action-copy {
+[data-theme='dark'] .clip-item-color-picker-action-copy {
   color: #d1d5db;
 }
 
@@ -199,7 +205,7 @@
   color: #111827;
 }
 
-.dark .clip-item-color-picker-action-copy:hover {
+[data-theme='dark'] .clip-item-color-picker-action-copy:hover {
   background: rgb(82 82 82 / 0.5);
   color: #f9fafb;
 }
@@ -209,7 +215,7 @@
   background: rgb(209 250 229 / 0.5);
 }
 
-.dark .clip-item-color-picker-action-copy-ok {
+[data-theme='dark'] .clip-item-color-picker-action-copy-ok {
   color: #34d399;
   background: rgb(6 78 59 / 0.3);
 }
@@ -237,6 +243,8 @@
   height: 1rem;
 }
 
+/* ── 通道输入 ── */
+
 .clip-item-color-picker-channel-wrap {
   display: flex;
   flex-direction: column;
@@ -256,7 +264,7 @@
   border-color: rgb(209 213 219);
 }
 
-.dark .clip-item-color-picker-channel-wrap {
+[data-theme='dark'] .clip-item-color-picker-channel-wrap {
   background: rgb(38 38 38 / 0.5);
   border-color: rgb(82 82 82);
 }
@@ -267,7 +275,7 @@
   box-shadow: 0 0 0 2px rgb(99 102 241 / 0.2);
 }
 
-.dark .clip-item-color-picker-channel-wrap:focus-within {
+[data-theme='dark'] .clip-item-color-picker-channel-wrap:focus-within {
   background: #171717;
   border-color: rgb(129 140 248);
   box-shadow: 0 0 0 2px rgb(99 102 241 / 0.3);
@@ -306,9 +314,11 @@
   -moz-appearance: textfield;
 }
 
-.dark .clip-item-color-picker-channel-input {
+[data-theme='dark'] .clip-item-color-picker-channel-input {
   color: #f3f4f6;
 }
+
+/* ── HEX 输入 ── */
 
 .clip-item-color-picker-input-hex {
   display: flex;
@@ -324,7 +334,7 @@
   border-color: rgb(209 213 219);
 }
 
-.dark .clip-item-color-picker-input-hex {
+[data-theme='dark'] .clip-item-color-picker-input-hex {
   background: rgb(38 38 38 / 0.5);
   border-color: rgb(82 82 82);
 }
@@ -335,7 +345,7 @@
   box-shadow: 0 0 0 2px rgb(99 102 241 / 0.2);
 }
 
-.dark .clip-item-color-picker-input-hex:focus-within {
+[data-theme='dark'] .clip-item-color-picker-input-hex:focus-within {
   background: #171717;
   border-color: rgb(129 140 248);
   box-shadow: 0 0 0 2px rgb(99 102 241 / 0.3);
@@ -365,9 +375,11 @@
   color: #9ca3af;
 }
 
-.dark .clip-item-color-picker-input-hex-field {
+[data-theme='dark'] .clip-item-color-picker-input-hex-field {
   color: #f9fafb;
 }
+
+/* ── RGBA / HSL 网格 ── */
 
 .clip-item-color-picker-rgba-grid,
 .clip-item-color-picker-hsl-grid {
@@ -375,6 +387,8 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.375rem;
 }
+
+/* ── 模式选择器 ── */
 
 .clip-item-color-picker-mode {
   position: relative;
@@ -399,7 +413,7 @@
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
-.dark .clip-item-color-picker-mode-btn {
+[data-theme='dark'] .clip-item-color-picker-mode-btn {
   background: rgb(38 38 38 / 0.5);
   border-color: rgb(82 82 82);
   color: #d1d5db;
@@ -412,7 +426,7 @@
   color: #111827;
 }
 
-.dark .clip-item-color-picker-mode-btn:hover {
+[data-theme='dark'] .clip-item-color-picker-mode-btn:hover {
   background: rgb(64 64 64 / 0.8);
   border-color: rgb(115 115 115);
   color: #f9fafb;
@@ -426,7 +440,7 @@
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.clip-item-color-picker-mode-open .clip-item-color-picker-mode-btn-icon {
+.clip-item-color-picker-mode[data-open] .clip-item-color-picker-mode-btn-icon {
   transform: rotate(180deg);
 }
 
@@ -448,13 +462,13 @@
   background: #ffffff;
 }
 
-.dark .clip-item-color-picker-mode-menu {
+[data-theme='dark'] .clip-item-color-picker-mode-menu {
   background: #262626;
   border-color: rgb(82 82 82);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
 }
 
-.clip-item-color-picker-mode-open .clip-item-color-picker-mode-menu {
+.clip-item-color-picker-mode[data-open] .clip-item-color-picker-mode-menu {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
@@ -480,7 +494,7 @@
   cursor: pointer;
 }
 
-.dark .clip-item-color-picker-mode-item {
+[data-theme='dark'] .clip-item-color-picker-mode-item {
   color: #d1d5db;
 }
 
@@ -489,20 +503,22 @@
   color: #111827;
 }
 
-.dark .clip-item-color-picker-mode-item:hover {
+[data-theme='dark'] .clip-item-color-picker-mode-item:hover {
   background: rgb(64 64 64);
   color: #f9fafb;
 }
 
-.clip-item-color-picker-mode-item-active {
+.clip-item-color-picker-mode-item[data-active] {
   background: rgb(238 242 255);
   color: rgb(79 70 229);
 }
 
-.dark .clip-item-color-picker-mode-item-active {
+[data-theme='dark'] .clip-item-color-picker-mode-item[data-active] {
   background: rgb(99 102 241 / 0.15);
   color: rgb(129 140 248);
 }
+
+/* ── 预览圆圈 ── */
 
 .clip-item-color-picker-preview {
   position: relative;
@@ -521,7 +537,7 @@
   transform: scale(1.05);
 }
 
-.dark .clip-item-color-picker-preview {
+[data-theme='dark'] .clip-item-color-picker-preview {
   border-color: rgb(38 38 38);
 }
 
@@ -573,6 +589,8 @@
   transform: rotate(-90deg);
 }
 
+/* ── 历史颜色面板 ── */
+
 .clip-item-color-picker-history-wrap {
   overflow: hidden;
 }
@@ -599,7 +617,7 @@
   box-shadow: 0 0 0 3px rgb(99 102 241 / 0.2);
 }
 
-.dark .clip-item-color-picker-history-swatch {
+[data-theme='dark'] .clip-item-color-picker-history-swatch {
   border-color: rgb(255 255 255 / 0.1);
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
 }
@@ -609,6 +627,8 @@
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -1px rgb(0 0 0 / 0.06);
   z-index: 10;
 }
+
+/* ── 响应式 ── */
 
 @media (max-width: 420px) {
   .clip-item-color-picker-popover {

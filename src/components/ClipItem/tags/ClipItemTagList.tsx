@@ -2,6 +2,7 @@ import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag as TagIcon } from 'lucide-react';
 import { hexToRgba } from '../../../utils/color';
+import { tagPillVariants } from '../../../utils/motionPresets';
 import {
   TAG_LIST_ANIMATION_DURATION_MS,
   TAG_LIST_ANIMATION_EASING,
@@ -49,9 +50,10 @@ export const ClipItemTagList = React.memo(function ClipItemTagList({
     (tag: NonNullable<ClipItem['tags']>[number]) => (
       <motion.span
         layout
-        initial={{ opacity: 0, scale: 0.8, filter: 'blur(2px)' }}
-        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, scale: 0.8 }}
+        variants={tagPillVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
         transition={{
           type: 'spring',
           stiffness: TAG_PILL_SPRING_STIFFNESS,

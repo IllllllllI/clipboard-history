@@ -5,6 +5,7 @@ import { TauriService } from '../services/tauri';
 import { detectImageType } from '../utils';
 import { formatBytes, extractFormatLabel } from '../utils/imageUrl';
 import { useImageResource } from '../hooks/useImageResource';
+import { backdropVariants, SPRING_UI } from '../utils/motionPresets';
 import './styles/large-image-preview.css';
 
 // ============================================================================
@@ -176,9 +177,10 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        variants={backdropVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
         className="large-image-preview"
         data-dragging={isDragging ? 'true' : 'false'}
         onClick={onClose}
@@ -225,7 +227,7 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale, opacity: 1, x: position.x, y: position.y }}
             exit={{ scale: 0.8, opacity: 0 }}
-            transition={isDragging ? { duration: 0 } : { type: 'spring', stiffness: 300, damping: 30 }}
+            transition={isDragging ? { duration: 0 } : SPRING_UI}
             className="large-image-preview__image-wrap"
             onClick={stopPropagation}
           >

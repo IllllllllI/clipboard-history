@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Pin, Star } from 'lucide-react';
+import type { DateParts } from '../../../utils/formatDate';
 import { FavoriteBurstEffect } from './FavoriteBurstEffect';
 
 const ICON_ACTIVE_ANIMATION = { opacity: 1, scale: 1, y: 0 };
@@ -9,13 +10,11 @@ const ICON_TRANSITION = { duration: 0.18, ease: 'easeOut' as const };
 const TIME_HINT_TITLE = '点击收藏，Alt+点击置顶（星标=已收藏，图钉=已置顶）';
 const TIME_HINT_ARIA_LABEL = '点击收藏，Alt+点击置顶（星标表示已收藏，图钉表示已置顶）';
 
-interface ClipItemTimeMetaProps {
+interface ClipItemTimeMetaProps extends DateParts {
   isPinned: boolean;
   isSelected: boolean;
   showFavoriteIcon: boolean;
   showFavoriteBurst: boolean;
-  dateLine: string;
-  timeLine: string;
   onTimeClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onTimeKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   favoriteBurstDurationSec: string;

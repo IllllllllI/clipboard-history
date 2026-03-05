@@ -55,11 +55,13 @@ function fromTimestampSec(ts: number): Date | null {
     return (ts >= TS_MIN_SEC && ts <= TS_MAX_SEC) ? new Date(ts * 1000) : null;
 }
 
+/** 时间戳有效范围（毫秒） */
+const TS_MIN_MS = TS_MIN_SEC * 1000;
+const TS_MAX_MS = TS_MAX_SEC * 1000;
+
 /** 校验毫秒级时间戳范围，返回 Date 或 null */
 function fromTimestampMs(ts: number): Date | null {
-    const min = TS_MIN_SEC * 1000;
-    const max = TS_MAX_SEC * 1000;
-    return (ts >= min && ts <= max) ? new Date(ts) : null;
+    return (ts >= TS_MIN_MS && ts <= TS_MAX_MS) ? new Date(ts) : null;
 }
 
 // ============================================================================
@@ -161,7 +163,7 @@ const PATTERNS: DateTimePattern[] = [
     {
         pattern: /^(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2}),?\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?$/i,
         inlineSource: null,
-        hasDate: true, hasTime: false,
+        hasDate: true, hasTime: true,   // 可能含时间部分（由可选组决定）
         parse: (m) => {
             const d = new Date(`${m[1]} ${m[2]}, ${m[3]}`);
             if (isNaN(d.getTime())) return null;
@@ -219,8 +221,15 @@ const INLINE_RE_SOURCE = [
     ...INLINE_ONLY_SOURCES,
 ].join('|');
 
-function createInlineSearchRegex(): RegExp {
-    return new RegExp(INLINE_RE_SOURCE, 'g');
+/**
+ * 缓存的内联搜索正则 —— 避免每次调用都重新编译。
+ * 由于 exec() 依赖有状态的 lastIndex，使用前必须重置。
+ */
+const INLINE_SEARCH_RE = new RegExp(INLINE_RE_SOURCE, 'g');
+
+function getInlineSearchRegex(): RegExp {
+    INLINE_SEARCH_RE.lastIndex = 0;
+    return INLINE_SEARCH_RE;
 }
 
 // ============================================================================
@@ -254,6 +263,9 @@ interface InlineCandidate {
 
 /**
  * 检测文本是否为纯日期时间格式
+ *
+ * 注意：仅做正则匹配，不执行完整解析。对于极端无效日期（如 2024-02-30）
+ * 可能返回 true。如需严格校验请使用 parseDateTimeText。
  */
 export function isDateTimeText(text: string): boolean {
     const trimmed = text.trim();
@@ -285,20 +297,31 @@ export function parseDateTimeText(text: string): DateTimeInfo | null {
 // 嵌入式日期时间搜索（在任意文本中查找日期时间片段）
 // ============================================================================
 
+// ── 边界检查用预编译正则（避免热路径反复创建） ──
+const RE_CJK_DATE_MARKER = /[年月日]/;
+const RE_BARE_TIME = /^\d{1,2}:\d{2}$/;
+
+/** 判断字符码是否在 '0'~'9' 范围 */
+function isDigitChar(ch: string): boolean {
+    const c = ch.charCodeAt(0);
+    return c >= 48 && c <= 57; // 0x30..0x39
+}
+
 /** 判断内联匹配是否应跳过（边界检查：防止匹配版本号、IP 地址等误报） */
 function shouldSkipInlineMatch(text: string, matchText: string, start: number, end: number): boolean {
     // 中文标记（年月日）旁的数字不视为边界问题
-    const hasChinese = /[年月日]/.test(matchText);
+    const hasChinese = RE_CJK_DATE_MARKER.test(matchText);
     if (!hasChinese) {
-        if (start > 0 && /\d/.test(text[start - 1])) return true;
-        if (end < text.length && /\d/.test(text[end])) return true;
+        if (start > 0 && isDigitChar(text[start - 1])) return true;
+        if (end < text.length && isDigitChar(text[end])) return true;
     }
 
     // 纯时间 HH:MM 的额外边界检查
-    if (/^\d{1,2}:\d{2}$/.test(matchText)) {
-        if (start > 0 && text[start - 1] === ':') return true;   // 如 IP 地址残留
-        if (end < text.length && text[end] === ':') return true;
-        if (start > 0 && text[start - 1] === '.') return true;   // 如版本号 1.2:30
+    if (RE_BARE_TIME.test(matchText)) {
+        const before = start > 0 ? text[start - 1] : '';
+        const after = end < text.length ? text[end] : '';
+        if (before === ':' || after === ':') return true;   // 如 IP 地址残留
+        if (before === '.') return true;                    // 如版本号 1.2:30
     }
 
     return false;
@@ -308,7 +331,7 @@ function scanInlineCandidates(
     text: string,
     onCandidate: (candidate: InlineCandidate) => boolean | void,
 ): void {
-    const re = createInlineSearchRegex();
+    const re = getInlineSearchRegex();
     let m: RegExpExecArray | null;
 
     while ((m = re.exec(text)) !== null) {
@@ -395,9 +418,15 @@ function getRelativeTime(d: Date): string {
 /**
  * 获取日期时间的快捷复制格式列表
  */
-export function getDateTimeFormats(info: DateTimeInfo): { label: string; value: string }[] {
+/** 格式化输出条目 */
+export interface DateTimeFormatEntry {
+    label: string;
+    value: string;
+}
+
+export function getDateTimeFormats(info: DateTimeInfo): DateTimeFormatEntry[] {
     const { date, hasDate, hasTime, isTimestamp } = info;
-    const formats: { label: string; value: string }[] = [];
+    const formats: DateTimeFormatEntry[] = [];
 
     const y = date.getFullYear();
     const mo = pad2(date.getMonth() + 1);

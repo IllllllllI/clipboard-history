@@ -26,7 +26,8 @@ export const ColorModeSelector = React.memo(function ColorModeSelector({ mode, o
   return (
     <div
       ref={rootRef}
-      className={`clip-item-color-picker-mode ${isOpen ? 'clip-item-color-picker-mode-open' : ''}`}
+      className="clip-item-color-picker-mode"
+      {...(isOpen ? { 'data-open': '' } : undefined)}
     >
       <button
         onClick={(e) => {
@@ -56,11 +57,8 @@ export const ColorModeSelector = React.memo(function ColorModeSelector({ mode, o
             role="menuitemradio"
             aria-checked={mode === m}
             title={MODE_HELP_TEXT[m]}
-            className={`clip-item-color-picker-mode-item ${
-              mode === m
-                ? 'clip-item-color-picker-mode-item-active'
-                : ''
-            }`}
+            className="clip-item-color-picker-mode-item"
+            {...(mode === m ? { 'data-active': '' } : undefined)}
           >
             {m}
           </button>

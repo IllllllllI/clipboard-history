@@ -226,7 +226,6 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     handleDoubleClick,
     previewImageUrl,
     setPreviewImageUrl,
-    globalShortcut: settings.globalShortcut,
     immersiveShortcut: settings.immersiveShortcut,
     toggleImmersiveMode,
     modalOpen: showSettings || showAddModal,

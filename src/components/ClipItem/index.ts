@@ -12,7 +12,8 @@ export { getItemIcon } from './constants';
 
 /* ---- display/ ---- */
 export { HighlightText } from './display/HighlightText';
-export { HighlightDateTimeText, DateTimeChip } from './display/DateTimeChip';
+export { HighlightDateTimeText } from './display/HighlightDateTimeText';
+export { DateTimeChip } from './display/DateTimeChip';
 export { LinkOpenStatus } from './display/LinkOpenStatus';
 export { ImagePreview } from './display/ImagePreview';
 

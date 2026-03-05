@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
+import { backdropVariants, modalVariants } from '../utils/motionPresets';
 
 interface AddSnippetModalProps {
   show: boolean;
@@ -25,16 +26,18 @@ export function AddSnippetModal({ show, onClose }: AddSnippetModalProps) {
       {show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            variants={backdropVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             onClick={onClose}
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            variants={modalVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
             className={`relative w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border ${settings.darkMode ? 'bg-neutral-900 border-neutral-800 text-neutral-200' : 'bg-white border-neutral-200 text-neutral-800'}`}
           >
             <div className={`px-6 py-4 border-b flex items-center justify-between ${settings.darkMode ? 'border-neutral-800' : 'border-neutral-100'}`}>
