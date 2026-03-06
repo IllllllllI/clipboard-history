@@ -67,8 +67,15 @@ const GridCell = React.memo(function GridCell({
       onDragStart={handleDrag}
       onKeyDown={handleKeyDown}
       title={`第 ${index + 1} 张`}
+      aria-label={`预览第 ${index + 1} 张图片${isOverflowCell ? `，并展开剩余 ${overflowCount} 张` : ''}`}
     >
-      <img src={src} alt={`第 ${index + 1} 张`} className="img-gallery__grid-cell-img" loading="lazy" draggable={false} />
+      <img 
+        src={src} 
+        alt="" /* 装饰性或由容器提供语意 */
+        className="img-gallery__grid-cell-img" 
+        loading="lazy" 
+        draggable={false} 
+      />
 
       {hasCopy && (
         <button
@@ -78,13 +85,14 @@ const GridCell = React.memo(function GridCell({
           data-copied={copied ? 'true' : 'false'}
           title="复制此图"
           onClick={handleCopy}
+          aria-label={`复制第 ${index + 1} 张图片`}
         >
-          <AnimatedCopyIcon copied={copied} />
+          <AnimatedCopyIcon copied={copied} ariaLabel="已复制图片" />
         </button>
       )}
 
       {isOverflowCell && (
-        <div className="img-gallery__grid-overflow" aria-label={`还有 ${overflowCount} 张`}>
+        <div className="img-gallery__grid-overflow" aria-hidden="true">
           <span>+{overflowCount}</span>
         </div>
       )}

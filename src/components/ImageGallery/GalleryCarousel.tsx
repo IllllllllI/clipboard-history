@@ -159,8 +159,14 @@ export const GalleryCarousel = React.memo(function GalleryCarousel({
       </div>
 
       {/* ── 主舞台 ── */}
-      <div className="img-gallery__carousel-stage" data-theme={theme}>
-        <div className="img-gallery__main-image" draggable onDragStart={handleDragStart}>
+      <div 
+        className="img-gallery__carousel-stage" 
+        data-theme={theme}
+        role="group"
+        aria-roledescription="slide"
+        aria-labelledby={`gallery-thumb-${safeIndex}`}
+      >
+        <div id="gallery-main-image" className="img-gallery__main-image" draggable onDragStart={handleDragStart}>
           <ImageDisplay
             item={activeImageItem}
             darkMode={darkMode}
@@ -180,6 +186,7 @@ export const GalleryCarousel = React.memo(function GalleryCarousel({
               data-theme={theme}
               onClick={(e) => { e.stopPropagation(); onNavigate(-1); }}
               aria-label="上一张"
+              aria-controls="gallery-main-image"
             >
               <PrevIcon className="img-gallery__icon-14" />
             </button>
@@ -191,6 +198,7 @@ export const GalleryCarousel = React.memo(function GalleryCarousel({
               data-theme={theme}
               onClick={(e) => { e.stopPropagation(); onNavigate(1); }}
               aria-label="下一张"
+              aria-controls="gallery-main-image"
             >
               <NextIcon className="img-gallery__icon-14" />
             </button>
@@ -203,6 +211,7 @@ export const GalleryCarousel = React.memo(function GalleryCarousel({
               onClick={(e) => { e.stopPropagation(); setThumbExpanded((v) => !v); }}
               title={thumbExpanded ? '收起缩略图' : '展开缩略图'}
               aria-expanded={thumbExpanded}
+              aria-controls="gallery-thumbnails"
             >
               <Images className="img-gallery__icon-12" />
               <span>{safeIndex + 1}/{imageUrls.length}</span>
@@ -213,10 +222,11 @@ export const GalleryCarousel = React.memo(function GalleryCarousel({
 
       {/* ── 缩略图条 ── */}
       {thumbExpanded && imageUrls.length > 1 && (
-        <div ref={thumbTrackRef} className="img-gallery__thumb-track custom-scrollbar" role="tablist" aria-label="缩略图">
+        <div id="gallery-thumbnails" ref={thumbTrackRef} className="img-gallery__thumb-track custom-scrollbar" role="tablist" aria-label="缩略图">
           {imageUrls.map((url, i) => (
             <button
               key={`${url}-${i}`}
+              id={`gallery-thumb-${i}`}
               type="button"
               role="tab"
               ref={(el) => {

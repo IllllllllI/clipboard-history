@@ -5,8 +5,7 @@ import type { GalleryDisplayMode } from '../../types';
 import type { GalleryTheme } from './types';
 import { resolveImageSrc } from '../../utils/imageUrl';
 import { ModeSegment } from './ModeSegment';
-
-const SPRING = { type: 'spring' as const, stiffness: 500, damping: 30 };
+import { SPRING_ICON } from '../../utils/motionPresets';
 
 // ============================================================================
 // List Row（单行）
@@ -60,35 +59,38 @@ const ListRow = React.memo(function ListRow({
       data-even={isEven ? 'true' : 'false'}
       data-active={isActive ? 'true' : 'false'}
       data-copied={isCopied ? 'true' : 'false'}
-      role="button"
+      role="listitem"
       tabIndex={0}
       draggable
       onClick={handleClick}
       onDragStart={handleDrag}
       onKeyDown={handleKeyDown}
       title={url}
+      aria-label={`选择并复制第 ${index + 1} 项：${fileName}`}
+      aria-current={isActive ? 'true' : 'false'}
     >
-      <span className="img-gallery__list-row-index">{index + 1}</span>
+      <span className="img-gallery__list-row-index" aria-hidden="true">{index + 1}</span>
       <button
         type="button"
         className="img-gallery__list-row-thumb-btn"
         title="预览大图"
+        aria-label={`预览第 ${index + 1} 张大图`}
         onClick={handlePreview}
       >
-        <img src={src} alt={`${index + 1}`} className="img-gallery__list-row-thumb" loading="lazy" draggable={false} />
+        <img src={src} alt="" className="img-gallery__list-row-thumb" loading="lazy" draggable={false} />
       </button>
-      <span className="img-gallery__list-row-name">{fileName}</span>
-      <span className="img-gallery__list-row-copy-mark" data-visible={isCopied ? 'true' : 'false'}>
-        <AnimatePresence mode="wait" initial={false}>
+      <span className="img-gallery__list-row-name" aria-hidden="true">{fileName}</span>
+      <span className="img-gallery__list-row-copy-mark" data-visible={isCopied ? 'true' : 'false'} role="status" aria-live="polite">
+        <AnimatePresence mode="popLayout" initial={false}>
           {isCopied && (
             <motion.div
               key="copied"
               initial={{ opacity: 0, scale: 0.5, rotate: -45 }}
               animate={{ opacity: 1, scale: 1, rotate: 0 }}
               exit={{ opacity: 0, scale: 0.5 }}
-              transition={SPRING}
+              transition={SPRING_ICON}
             >
-              <Check className="img-gallery__icon-12 img-gallery__copy-icon-ok" />
+              <Check className="img-gallery__icon-12 img-gallery__copy-icon-ok" aria-label="已复制" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -166,7 +168,7 @@ export const GalleryList = React.memo(function GalleryList({
       </div>
 
       {/* 列表 */}
-      <div className="img-gallery__list-wrap custom-scrollbar">
+      <div id="gallery-list-container" className="img-gallery__list-wrap custom-scrollbar" role="list">
         {visibleUrls.map((url, i) => (
           <ListRow
             key={`${url}-${i}`}
@@ -192,6 +194,7 @@ export const GalleryList = React.memo(function GalleryList({
             className="img-gallery__list-toggle-btn"
             data-theme={theme}
             aria-expanded={listExpanded ? 'true' : 'false'}
+            aria-controls="gallery-list-container"
             onClick={handleToggle}
           >
             {listExpanded
