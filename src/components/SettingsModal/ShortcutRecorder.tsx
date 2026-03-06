@@ -128,10 +128,23 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
   const keys = value ? value.split('+') : [];
   const recorderState = isRecording ? 'recording' : error ? 'error' : 'idle';
 
+  const statusText = React.useMemo(() => {
+    if (error) return error;
+    if (isRecording) {
+      if (isRegistering) return '正在验证按键可用性，请稍候...';
+      if (recordingHint) return recordingHint;
+      return '正在录制：请直接按下目标组合键 (按 Esc 取消)';
+    }
+    return '点击上方区域后按组合键，或点击右侧 × 清空';
+  }, [error, isRecording, isRegistering, recordingHint]);
+
   return (
     <div className="sm-shortcut-recorder">
       <div
         ref={containerRef}
+        role="button"
+        aria-pressed={isRecording}
+        aria-label={value ? `当前快捷键：${value}，点击重新录制` : '点击设置快捷键'}
         data-sm-shortcut-recorder="true"
         tabIndex={0}
         onPointerDown={(e) => {
@@ -195,6 +208,7 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
           )}
           {!isRecording && value && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 clearValueWithFade();
@@ -202,6 +216,7 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
               className="sm-shortcut-recorder__clear-btn"
               data-theme={dark ? 'dark' : 'light'}
               title="清除快捷键"
+              aria-label="清除快捷键"
             >
               <X className="sm-shortcut-recorder__clear-icon" />
             </button>
@@ -217,16 +232,9 @@ export const ShortcutRecorder = React.memo(function ShortcutRecorder({
           ease: 'easeOut',
           delay: isClearing ? 0 : 0.1,
         }}
+        aria-live="polite"
       >
-        {error
-          ? error
-          : isRecording && isRegistering
-            ? '正在验证按键可用性，请稍候...'
-            : isRecording && recordingHint
-              ? recordingHint
-              : isRecording
-                ? '正在录制：请直接按下目标组合键 (按 Esc 取消)'
-                : '点击上方区域后按组合键，或点击右侧 × 清空'}
+        {statusText}
       </motion.p>
     </div>
   );

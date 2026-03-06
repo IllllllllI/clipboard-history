@@ -1,6 +1,59 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { StorageSettingsPanelProps } from './types';
+
+// ── 微型组件：受控数字输入框（隔离每次按键导致的全局重绘，失焦/回车时才提交） ──
+function LocalNumberInput({
+  dark,
+  value,
+  min,
+  max,
+  step,
+  onChangeComplete,
+}: {
+  dark: boolean;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  onChangeComplete: (val: number) => void;
+}) {
+  const [localStr, setLocalStr] = useState(String(value));
+
+  // 外部状态变动时同步更新
+  useEffect(() => {
+    setLocalStr(String(value));
+  }, [value]);
+
+  const commitValue = () => {
+    let parsed = Number.parseFloat(localStr);
+    if (!Number.isFinite(parsed)) parsed = value;
+    if (min !== undefined) parsed = Math.max(min, parsed);
+    if (max !== undefined) parsed = Math.min(max, parsed);
+    
+    setLocalStr(String(parsed));
+    if (parsed !== value) {
+      onChangeComplete(parsed);
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={localStr}
+      onChange={(e) => setLocalStr(e.target.value)}
+      onBlur={commitValue}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commitValue();
+      }}
+      className="sm-field__number"
+      data-theme={dark ? 'dark' : 'light'}
+    />
+  );
+}
 
 export function StorageSettingsPanel({
   dark,
@@ -84,37 +137,25 @@ export function StorageSettingsPanel({
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">剪贴板刷新灵敏度（毫秒）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={20}
               max={5000}
               step={10}
               value={settings.clipboardEventMinIntervalMs}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || '80', 10);
-                const nextVal = Number.isFinite(parsed) ? Math.min(5000, Math.max(20, parsed)) : 80;
-                updateSettings({ clipboardEventMinIntervalMs: nextVal });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({ clipboardEventMinIntervalMs: val })}
             />
             <p className="sm-panel__muted">控制外部剪贴板变化触发列表刷新的最小间隔；越小越及时，越大越稳定（默认 80ms，建议 60~120ms）</p>
           </div>
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">解码内存上限（MB）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={minDecodedMb}
               step={8}
               value={decodedMb}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || `${minDecodedMb}`, 10);
-                const nextMb = Number.isFinite(parsed) ? Math.max(minDecodedMb, parsed) : minDecodedMb;
-                updateSettings({ maxDecodedBytes: nextMb * 1024 * 1024 });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({ maxDecodedBytes: val * 1024 * 1024 })}
             />
             <p className="sm-panel__muted">最小 {minDecodedMb}MB；值越大可处理更大图片，但峰值内存也会增加</p>
           </div>
@@ -145,98 +186,68 @@ export function StorageSettingsPanel({
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">连接超时（秒）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={1}
               max={120}
               step={1}
               value={settings.imageConnectTimeout}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || '8', 10);
-                const nextVal = Number.isFinite(parsed) ? Math.min(120, Math.max(1, parsed)) : 8;
-                updateSettings({ imageConnectTimeout: nextVal });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({ imageConnectTimeout: val })}
             />
             <p className="sm-panel__muted">建立网络连接（TCP/TLS）允许等待的最长时间</p>
           </div>
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">首包超时（毫秒）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={500}
               max={120000}
               step={100}
               value={settings.imageFirstByteTimeoutMs}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || '10000', 10);
-                const nextVal = Number.isFinite(parsed) ? Math.min(120000, Math.max(500, parsed)) : 10000;
-                updateSettings({ imageFirstByteTimeoutMs: nextVal });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({ imageFirstByteTimeoutMs: val })}
             />
             <p className="sm-panel__muted">发起请求后，等待服务器返回第一段数据的最长时间</p>
           </div>
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">分块读取超时（毫秒）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={500}
               max={120000}
               step={100}
               value={settings.imageChunkTimeoutMs}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || '15000', 10);
-                const nextVal = Number.isFinite(parsed) ? Math.min(120000, Math.max(500, parsed)) : 15000;
-                updateSettings({ imageChunkTimeoutMs: nextVal });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({ imageChunkTimeoutMs: val })}
             />
             <p className="sm-panel__muted">下载过程中每一段数据允许的最长间隔，超时会判定下载失败</p>
           </div>
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">剪贴板重试总预算（毫秒）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={200}
               max={30000}
               step={50}
               value={settings.imageClipboardRetryMaxTotalMs}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || '1800', 10);
-                const nextVal = Number.isFinite(parsed) ? Math.min(30000, Math.max(200, parsed)) : 1800;
-                updateSettings({
-                  imageClipboardRetryMaxTotalMs: nextVal,
-                  imageClipboardRetryMaxDelayMs: Math.min(settings.imageClipboardRetryMaxDelayMs, nextVal),
-                });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({
+                imageClipboardRetryMaxTotalMs: val,
+                imageClipboardRetryMaxDelayMs: Math.min(settings.imageClipboardRetryMaxDelayMs, val),
+              })}
             />
             <p className="sm-panel__muted">限制一次图片复制在“写入剪贴板阶段”最多可花费的重试时间</p>
           </div>
 
           <div className="sm-panel__block--tight">
             <p className="sm-panel__label">单次重试延迟上限（毫秒）</p>
-            <input
-              type="number"
+            <LocalNumberInput
+              dark={dark}
               min={10}
               max={5000}
               step={10}
               value={settings.imageClipboardRetryMaxDelayMs}
-              onChange={(e) => {
-                const parsed = Number.parseInt(e.target.value || '900', 10);
-                const nextVal = Number.isFinite(parsed) ? Math.min(5000, Math.max(10, parsed)) : 900;
-                updateSettings({ imageClipboardRetryMaxDelayMs: Math.min(nextVal, settings.imageClipboardRetryMaxTotalMs) });
-              }}
-              className="sm-field__number"
-              data-theme={dark ? 'dark' : 'light'}
+              onChangeComplete={(val) => updateSettings({ imageClipboardRetryMaxDelayMs: Math.min(val, settings.imageClipboardRetryMaxTotalMs) })}
             />
             <p className="sm-panel__muted">重试间隔会逐步增大，该值限制“单次最多等待多久”</p>
           </div>
@@ -276,6 +287,7 @@ export function StorageSettingsPanel({
         <h3 className="sm-panel__section-title">数据管理</h3>
         <div className="sm-data__actions">
           <button
+            type="button"
             onClick={onExportData}
             className="sm-data__export-btn"
             data-theme={dark ? 'dark' : 'light'}

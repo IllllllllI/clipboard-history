@@ -21,7 +21,15 @@ export const PathSelector = React.memo(function PathSelector({
       <p className="sm-path-selector__title">{title}</p>
       <div className="sm-path-selector__row">
         <div
-          onClick={onOpen}
+          role="button"
+          tabIndex={clickable ? 0 : -1}
+          onClick={clickable ? onOpen : undefined}
+          onKeyDown={(e) => {
+            if (clickable && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              onOpen?.();
+            }
+          }}
           title={displayPath}
           className="sm-path-selector__box"
           data-clickable={clickable ? 'true' : 'false'}

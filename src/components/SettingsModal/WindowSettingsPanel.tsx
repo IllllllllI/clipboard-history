@@ -101,6 +101,32 @@ const HUD_POSITION_MODE_OPTIONS: OptionCardItem<ClipItemHudPositionMode>[] = [
   { value: 'right',   label: '右侧',     desc: '始终固定在主窗口右侧居中，垂直方向' },
 ];
 
+// ── 微型组件：窗口尺寸指示器（隔离 Resize 导致的重渲染） ──
+function WindowSizeDisplay() {
+  const [windowSize, setWindowSize] = React.useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 0,
+    height: typeof window !== 'undefined' ? window.innerHeight : 0,
+  }));
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let timeoutId: number;
+    const syncWindowSize = () => {
+      clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => {
+        setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+      }, 150) as unknown as number;
+    };
+    window.addEventListener('resize', syncWindowSize);
+    return () => {
+      window.removeEventListener('resize', syncWindowSize);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  return <>{windowSize.width} × {windowSize.height}</>;
+}
+
 // ── 主组件 ──
 
 export function WindowSettingsPanel({
@@ -115,30 +141,17 @@ export function WindowSettingsPanel({
   ToggleSwitch,
   SettingRow,
 }: WindowSettingsPanelProps) {
-  const [windowSize, setWindowSize] = React.useState(() => ({
-    width: typeof window !== 'undefined' ? window.innerWidth : 0,
-    height: typeof window !== 'undefined' ? window.innerHeight : 0,
-  }));
-
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const syncWindowSize = () => {
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    };
-    syncWindowSize();
-    window.addEventListener('resize', syncWindowSize);
-    return () => { window.removeEventListener('resize', syncWindowSize); };
-  }, []);
-
-  const commonBehaviorItems = toggleSettingsAfterShortcut.filter(
+  const commonBehaviorItems = React.useMemo(() => toggleSettingsAfterShortcut.filter(
     (item) => item.key === 'hideOnAction' || item.key === 'hideOnDrag' || item.key === 'hideAfterDrag'
-  );
-  const advancedBehaviorItems = toggleSettingsAfterShortcut.filter(
+  ), [toggleSettingsAfterShortcut]);
+  
+  const advancedBehaviorItems = React.useMemo(() => toggleSettingsAfterShortcut.filter(
     (item) => item.key === 'showDragDownloadHud' || item.key === 'prefetchImageOnDragStart'
-  );
-  const imagePreviewItem = toggleSettingsAfterShortcut.find(
+  ), [toggleSettingsAfterShortcut]);
+  
+  const imagePreviewItem = React.useMemo(() => toggleSettingsAfterShortcut.find(
     (item) => item.key === 'showImagePreview',
-  );
+  ), [toggleSettingsAfterShortcut]);
 
   const isAnyHudEnabled = !!settings.clipItemHudEnabled || !!settings.clipItemHudRadialMenuEnabled;
   const isRadialHudEnabled = !!settings.clipItemHudRadialMenuEnabled;
@@ -223,7 +236,7 @@ export function WindowSettingsPanel({
             {settings.clipItemTimeMetaAutoHideWidthPx <= 0 && (
               <p className="sm-panel__note--tiny">当前自动隐藏：已禁用</p>
             )}
-            <p className="sm-panel__note--tiny">当前窗口：{windowSize.width} × {windowSize.height}px</p>
+            <p className="sm-panel__note--tiny">当前窗口：<WindowSizeDisplay />px</p>
           </div>
         </SettingRow>
 

@@ -194,12 +194,16 @@
   border: 1px solid;
   padding: 0.75rem;
   text-align: left;
-  transition: background-color 150ms, border-color 150ms;
+  transition: background-color 150ms, border-color 150ms, box-shadow 150ms, opacity 100ms;
 }
 
 .sm-panel__option-card:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px rgb(99 102 241 / 0.6);
+}
+
+.sm-panel__option-card:active {
+  opacity: 0.85;
 }
 
 .sm-panel__option-card[data-active='true'][data-theme='dark'] {
@@ -261,6 +265,7 @@
   border-radius: 9999px;
   border: 1px solid;
   flex-shrink: 0;
+  transition: background-color 150ms, border-color 150ms;
 }
 
 .sm-panel__option-indicator[data-active='true'] {
