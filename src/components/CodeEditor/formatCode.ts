@@ -92,26 +92,26 @@ const PRETTIER_PARSER_MAP: Partial<Record<LanguageId, PrettierParser>> = {
 /** 需要 XML 插件的 parser */
 const XML_PARSERS = new Set<string>(['xml']);
 
-/** 按 parser 加载对应插件 */
+/** 按 parser 加载对应插件，利用 Promise.all 保证并发加载 */
 async function loadPluginsForParser(parser: PrettierParser): Promise<unknown[]> {
   switch (parser) {
     case 'html':
-      return [await loadHtmlPlugin()];
+      return Promise.all([loadHtmlPlugin()]);
     case 'babel':
-      return [await loadBabelPlugin(), await loadEstreePlugin()];
+      return Promise.all([loadBabelPlugin(), loadEstreePlugin()]);
     case 'babel-ts':
-      return [await loadTsPlugin(), await loadEstreePlugin()];
+      return Promise.all([loadTsPlugin(), loadEstreePlugin()]);
     case 'css':
     case 'scss':
-      return [await loadCssPlugin()];
+      return Promise.all([loadCssPlugin()]);
     case 'json':
-      return [await loadBabelPlugin(), await loadEstreePlugin()];
+      return Promise.all([loadBabelPlugin(), loadEstreePlugin()]);
     case 'yaml':
-      return [await loadYamlPlugin()];
+      return Promise.all([loadYamlPlugin()]);
     case 'markdown':
-      return [await loadMarkdownPlugin()];
+      return Promise.all([loadMarkdownPlugin()]);
     case 'xml':
-      return [await loadXmlPlugin()];
+      return Promise.all([loadXmlPlugin()]);
     default:
       return [];
   }

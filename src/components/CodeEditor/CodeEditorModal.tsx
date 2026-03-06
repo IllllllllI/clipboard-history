@@ -5,11 +5,13 @@ import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
 import { EditorView } from '@codemirror/view';
 import { indentUnit } from '@codemirror/language';
 import { EditorState, type Extension } from '@codemirror/state';
+
 import { useAppContext } from '../../contexts/AppContext';
 import { ClipboardDB } from '../../services/db';
 import type { ClipFormat } from '../../types';
 import { detectLanguage, loadLanguageExtension, type LanguageId } from '../../utils/languageDetect';
 import { backdropVariants, modalVariants } from '../../utils/motionPresets';
+
 import { EditorHeader } from './EditorHeader';
 import { EditorFooter } from './EditorFooter';
 import { FormatSelector, type ContentFormatId } from './FormatSelector';
@@ -34,14 +36,51 @@ const BASIC_SETUP = {
 
 const FONT_SIZE_MIN = 10;
 const FONT_SIZE_MAX = 24;
-
 const EDITOR_STYLE = { height: '100%', overflow: 'auto' } as const;
+
+/** =============== 自定义钩子 (Custom Hooks 隔离层) =============== */
+
+/** 对编辑器视觉和缩进选项进行解耦管理 */
+function useEditorConfig() {
+  const [fontSize, setFontSize] = useState(14);
+  const [lineWrapping, setLineWrapping] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [indentStyle, setIndentStyle] = useState<IndentStyle>('spaces');
+  const [indentSize, setIndentSize] = useState<IndentSize>(4);
+
+  const handleFontSizeChange = useCallback((delta: number) => {
+    setFontSize((s) => Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, s + delta)));
+  }, []);
+
+  const handleToggleLineWrapping = useCallback(() => setLineWrapping((w) => !w), []);
+  const handleToggleFocusMode = useCallback(() => setFocusMode((v) => !v), []);
+  const handleToggleIndentStyle = useCallback(() => {
+    setIndentStyle((s) => (s === 'spaces' ? 'tabs' : 'spaces'));
+  }, []);
+  const handleCycleIndentSize = useCallback(() => {
+    setIndentSize((s) => {
+      const idx = INDENT_SIZES.indexOf(s);
+      return INDENT_SIZES[(idx + 1) % INDENT_SIZES.length];
+    });
+  }, []);
+
+  return {
+    fontSize, setFontSize,
+    lineWrapping, setLineWrapping,
+    focusMode, setFocusMode,
+    indentStyle, setIndentStyle,
+    indentSize, setIndentSize,
+    handleFontSizeChange, handleToggleLineWrapping, handleToggleFocusMode,
+    handleToggleIndentStyle, handleCycleIndentSize
+  };
+}
+
 
 /**
  * 代码编辑器 Modal
  *
  * 职责：管理编辑状态（内容、语言、字号等）+ 布局骨架。
- * UI 细节委托给 EditorHeader / EditorFooter。
+ * 基于性能考量，大量 O(n) 操作已转入 CodeMirror 拓展并提取了状态管理的层级。
  */
 export function CodeEditorModal() {
   const {
@@ -52,48 +91,36 @@ export function CodeEditorModal() {
     settings,
   } = useAppContext();
 
+  // 1. 内容与语言核心状态
   const [content, setContent] = useState('');
-  const [isCopied, setIsCopied] = useState(false);
+  const [textContent, setTextContent] = useState('');
   const [langId, setLangId] = useState<LanguageId>('plaintext');
   const [languageExtension, setLanguageExtension] = useState<Extension | null>(null);
-  const [fontSize, setFontSize] = useState(14);
-  const [lineWrapping, setLineWrapping] = useState(false);
-  const [focusMode, setFocusMode] = useState(false);
 
-  // ── 光标 / 选区追踪 ──
-  const [cursorInfo, setCursorInfo] = useState<EditorCursorInfo>(INITIAL_CURSOR);
-  const cursorInfoRef = useRef<EditorCursorInfo>(INITIAL_CURSOR);
-
-  // ── 缩进设置 ──
-  const [indentStyle, setIndentStyle] = useState<IndentStyle>('spaces');
-  const [indentSize, setIndentSize] = useState<IndentSize>(4);
-
-  // ── 未保存退出确认 ──
+  // 2. 交互状态
+  const [isCopied, setIsCopied] = useState(false);
+  const [isFormatting, setIsFormatting] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // ── 格式化中状态 ──
-  const [isFormatting, setIsFormatting] = useState(false);
-
-  // ── 格式切换状态（仅 rich 条目） ──
+  // 3. 提取的外围视觉和缩进配置
+  const config = useEditorConfig();
+  
+  // 4. 富文本多格式状态
   const [contentFormat, setContentFormat] = useState<ContentFormatId>('text');
   const [clipFormats, setClipFormats] = useState<ClipFormat[]>([]);
-  const formatsLoadedRef = useRef(false);
-  /** 原始文本内容（编辑针对 text 格式） */
-  const [textContent, setTextContent] = useState('');
-  /** 原始格式内容快照（用于变更检测） */
   const originalFormatsRef = useRef<ClipFormat[]>([]);
+  const formatsLoadedRef = useRef(false);
+
+  // 5. O(1) 文档与光标性能监控
+  const [cursorInfo, setCursorInfo] = useState<EditorCursorInfo>(INITIAL_CURSOR);
+  const cursorInfoRef = useRef<EditorCursorInfo>(INITIAL_CURSOR);
+  const [docStats, setDocStats] = useState({ lines: 1, chars: 0 });
+  const docStatsRef = useRef({ lines: 1, chars: 0 });
 
   const isRichItem = editingClip?.content_type === 'rich';
   const isViewingFormat = isRichItem && contentFormat !== 'text';
 
-  // ── 衍生状态 ──
-  const lineCount = useMemo(() => {
-    let n = 1;
-    for (let i = 0; i < content.length; i++) {
-      if (content.charCodeAt(i) === 10) n++;
-    }
-    return n;
-  }, [content]);
+  // ── 衍生状态计算 (变更检测防抖比对) ──
   const hasTextChanges = editingClip ? textContent !== editingClip.text : false;
   const hasFormatChanges = useMemo(() => {
     if (!isRichItem) return false;
@@ -114,50 +141,40 @@ export function CodeEditorModal() {
       setClipFormats([]);
       formatsLoadedRef.current = false;
       setCursorInfo(INITIAL_CURSOR);
+      setDocStats({ lines: 1, chars: editingClip.text.length });
+      docStatsRef.current = { lines: 1, chars: editingClip.text.length };
       setShowExitConfirm(false);
     }
   }, [editingClip]);
 
-  // ── 加载富文本格式（rich 条目打开时自动加载） ──
+  // ── 异步加载扩展 ──
+  useEffect(() => {
+    let cancelled = false;
+    const loadExtension = async () => {
+      const extension = await loadLanguageExtension(langId);
+      if (!cancelled) setLanguageExtension(extension);
+    };
+    loadExtension();
+    return () => { cancelled = true; };
+  }, [langId]);
+
+  // ── 加载富文本格式（rich 条目启动钩子） ──
   useEffect(() => {
     if (!editingClip || editingClip.content_type !== 'rich') return;
     if (formatsLoadedRef.current) return;
-
     let cancelled = false;
     formatsLoadedRef.current = true;
-
     void ClipboardDB.getClipFormats(editingClip.id).then((formats) => {
       if (!cancelled) {
         setClipFormats(formats);
         originalFormatsRef.current = formats.map((f) => ({ ...f }));
       }
-    }).catch((err) => {
-      console.error('[CodeEditor] Failed to load formats:', err);
-    });
-
+    }).catch((err) => console.error('[CodeEditor] Failed to load formats:', err));
     return () => { cancelled = true; };
   }, [editingClip]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadExtension = async () => {
-      const extension = await loadLanguageExtension(langId);
-      if (!cancelled) {
-        setLanguageExtension(extension);
-      }
-    };
-
-    loadExtension();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [langId]);
-
   // ── 操作回调 ──
 
-  /** 实际关闭（无条件） */
   const doClose = useCallback(() => {
     setEditingClip(null);
     setContent('');
@@ -169,7 +186,6 @@ export function CodeEditorModal() {
     setShowExitConfirm(false);
   }, [setEditingClip]);
 
-  /** 请求关闭：有未保存修改时弹出确认 */
   const handleClose = useCallback(() => {
     if (hasChanges) {
       setShowExitConfirm(true);
@@ -180,11 +196,9 @@ export function CodeEditorModal() {
 
   const handleSave = useCallback(async () => {
     if (!editingClip) { doClose(); return; }
-    // 保存纯文本
     if (textContent !== editingClip.text) {
       await handleUpdateClip(editingClip.id, textContent);
     }
-    // 保存被修改的格式内容（html / rtf）
     for (const fmt of clipFormats) {
       const orig = originalFormatsRef.current.find((o) => o.format === fmt.format);
       if (orig && orig.content !== fmt.content) {
@@ -196,24 +210,17 @@ export function CodeEditorModal() {
 
   const handleCopy = useCallback(async () => {
     if (!editingClip) return;
-    // 复制当前显示的内容（可能是格式内容）
     await copyToClipboard({ ...editingClip, text: content });
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }, [editingClip, content, copyToClipboard]);
 
-  /** 切换内容格式 */
   const handleFormatChange = useCallback((fmt: ContentFormatId) => {
-    // 先把当前编辑的内容写回对应的存储
     if (contentFormat === 'text') {
       setTextContent(content);
     } else {
-      // 写回格式内容
-      setClipFormats((prev) =>
-        prev.map((f) => f.format === contentFormat ? { ...f, content } : f),
-      );
+      setClipFormats((prev) => prev.map((f) => f.format === contentFormat ? { ...f, content } : f));
     }
-
     setContentFormat(fmt);
 
     if (fmt === 'text') {
@@ -227,46 +234,17 @@ export function CodeEditorModal() {
     }
   }, [contentFormat, content, textContent, clipFormats]);
 
-  const handleFontSizeChange = useCallback((delta: number) => {
-    setFontSize((s) => Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, s + delta)));
-  }, []);
-
-  const handleToggleLineWrapping = useCallback(() => {
-    setLineWrapping((w) => !w);
-  }, []);
-
-  const handleToggleFocusMode = useCallback(() => {
-    setFocusMode((v) => !v);
-  }, []);
-
-  /** 切换缩进风格 */
-  const handleToggleIndentStyle = useCallback(() => {
-    setIndentStyle((s) => (s === 'spaces' ? 'tabs' : 'spaces'));
-  }, []);
-
-  /** 循环切换缩进宽度 */
-  const handleCycleIndentSize = useCallback(() => {
-    setIndentSize((s) => {
-      const idx = INDENT_SIZES.indexOf(s);
-      return INDENT_SIZES[(idx + 1) % INDENT_SIZES.length];
-    });
-  }, []);
-
-  /** 格式化代码（async — Prettier / sql-formatter） */
   const handleFormat = useCallback(async () => {
     if (isFormatting) return;
     setIsFormatting(true);
     try {
-      const { formatted, changed } = await formatCode(content, { langId, indentStyle, indentSize });
+      const { formatted, changed } = await formatCode(content, { langId, indentStyle: config.indentStyle, indentSize: config.indentSize });
       if (changed) {
         setContent(formatted);
-        // 同步到对应存储
         if (!isViewingFormat) {
           setTextContent(formatted);
         } else {
-          setClipFormats((prev) =>
-            prev.map((f) => f.format === contentFormat ? { ...f, content: formatted } : f),
-          );
+          setClipFormats((prev) => prev.map((f) => f.format === contentFormat ? { ...f, content: formatted } : f));
         }
       }
     } catch (e) {
@@ -274,32 +252,29 @@ export function CodeEditorModal() {
     } finally {
       setIsFormatting(false);
     }
-  }, [content, isViewingFormat, contentFormat, isFormatting, langId, indentStyle, indentSize]);
+  }, [content, isViewingFormat, contentFormat, isFormatting, langId, config.indentStyle, config.indentSize]);
 
-  /** 编辑器内容变更 */
   const handleContentChange = useCallback((value: string) => {
     setContent(value);
     if (!isViewingFormat) {
       setTextContent(value);
     } else {
-      // 实时同步到 clipFormats
-      setClipFormats((prev) =>
-        prev.map((f) => f.format === contentFormat ? { ...f, content: value } : f),
-      );
+      setClipFormats((prev) => prev.map((f) => f.format === contentFormat ? { ...f, content: value } : f));
     }
   }, [isViewingFormat, contentFormat]);
 
-  // ── CodeMirror 扩展 ──
+  // ── CodeMirror O(1) 监测扩展与视觉 ──
   const extensions = useMemo(() => {
     const exts: Extension[] = [];
-    const lineHeight = fontSize <= 12 ? 1.62 : 1.68;
+    const lineHeight = config.fontSize <= 12 ? 1.62 : 1.68;
 
     if (languageExtension) exts.push(languageExtension);
-    if (lineWrapping) exts.push(EditorView.lineWrapping);
+    if (config.lineWrapping) exts.push(EditorView.lineWrapping);
+    
     exts.push(
       EditorView.theme({
         '&': {
-          fontSize: `${fontSize}px`,
+          fontSize: `${config.fontSize}px`,
           lineHeight,
           letterSpacing: '0.01em',
         },
@@ -322,8 +297,8 @@ export function CodeEditorModal() {
           backgroundColor: settings.darkMode ? 'rgb(99 102 241 / 0.35) !important' : 'rgb(99 102 241 / 0.22) !important',
         },
         '.cm-gutters': {
-          display: focusMode ? 'none' : 'block',
-          fontSize: `${Math.max(fontSize - 2, 10)}px`,
+          display: config.focusMode ? 'none' : 'block',
+          fontSize: `${Math.max(config.fontSize - 2, 10)}px`,
           background: settings.darkMode ? '#1e1e1e' : '#ffffff',
           color: settings.darkMode ? '#737373' : '#9ca3af',
           borderRight: settings.darkMode ? '1px solid rgb(64 64 64 / 0.7)' : '1px solid rgb(229 231 235)',
@@ -333,10 +308,24 @@ export function CodeEditorModal() {
         },
       }),
     );
-    // 光标 / 选区追踪
+
+    // 光标 / 选区追踪及 O(1) 行数提取
     exts.push(
       EditorView.updateListener.of((update) => {
         if (!update.selectionSet && !update.docChanged) return;
+        
+        // --- 文档总量统计 (O(1)) ---
+        if (update.docChanged) {
+          const lines = update.state.doc.lines;
+          const chars = update.state.doc.length;
+          const p = docStatsRef.current;
+          if (p.lines !== lines || p.chars !== chars) {
+            docStatsRef.current = { lines, chars };
+            setDocStats({ lines, chars });
+          }
+        }
+
+        // --- 追踪选取信息 ---
         const state = update.state;
         const sel = state.selection.main;
         const line = state.doc.lineAt(sel.head);
@@ -348,6 +337,7 @@ export function CodeEditorModal() {
           const toLine = state.doc.lineAt(sel.to).number;
           selectedLines = toLine - fromLine + 1;
         }
+
         const next: EditorCursorInfo = { line: line.number, col, selectedChars, selectedLines };
         const prev = cursorInfoRef.current;
         if (prev.line !== next.line || prev.col !== next.col ||
@@ -360,24 +350,22 @@ export function CodeEditorModal() {
 
     // tab 缩进控制
     exts.push(
-      EditorState.tabSize.of(indentSize),
-      indentUnit.of(indentStyle === 'tabs' ? '\t' : ' '.repeat(indentSize)),
+      EditorState.tabSize.of(config.indentSize),
+      indentUnit.of(config.indentStyle === 'tabs' ? '\t' : ' '.repeat(config.indentSize)),
     );
 
     return exts;
-  }, [languageExtension, lineWrapping, fontSize, settings.darkMode, focusMode, indentSize, indentStyle]);
+  }, [languageExtension, config, settings.darkMode]);
 
-  // ── 快捷键 ──
+  // ── 快捷键绑定 ──
   useEffect(() => {
     if (!editingClip) return;
     const handler = (e: KeyboardEvent) => {
+      // 避免干扰 dialog 焦点捕获，我们主要拦截编辑区冒泡
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (showExitConfirm) {
-          setShowExitConfirm(false);
-        } else {
-          handleClose();
-        }
+        if (showExitConfirm) setShowExitConfirm(false);
+        else handleClose();
       }
       if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -388,7 +376,19 @@ export function CodeEditorModal() {
     return () => window.removeEventListener('keydown', handler);
   }, [editingClip, handleClose, handleSave, showExitConfirm]);
 
-  // ── 渲染 ──
+  // ── 缓存 FormatSelector ，避免每次按键使得 Header 重新打散重绘 ──
+  const formatSelectorNode = useMemo(() => {
+    if (!isRichItem) return undefined;
+    return (
+      <FormatSelector
+        currentFormat={contentFormat}
+        formats={clipFormats}
+        onChange={handleFormatChange}
+        darkMode={settings.darkMode}
+      />
+    );
+  }, [isRichItem, contentFormat, clipFormats, handleFormatChange, settings.darkMode]);
+
   return (
     <AnimatePresence>
       {editingClip && (
@@ -396,9 +396,7 @@ export function CodeEditorModal() {
           {/* Backdrop */}
           <motion.div
             variants={backdropVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            initial="initial" animate="animate" exit="exit"
             onClick={handleClose}
             className="code-editor-backdrop"
           />
@@ -406,9 +404,7 @@ export function CodeEditorModal() {
           {/* Modal */}
           <motion.div
             variants={modalVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
+            initial="initial" animate="animate" exit="exit"
             className="code-editor-modal"
             data-theme={settings.darkMode ? 'dark' : 'light'}
           >
@@ -417,61 +413,54 @@ export function CodeEditorModal() {
               isSnippet={!!editingClip.is_snippet}
               hasChanges={hasChanges}
               langId={langId}
-              fontSize={fontSize}
-              lineWrapping={lineWrapping}
-              focusMode={focusMode}
+              fontSize={config.fontSize}
+              lineWrapping={config.lineWrapping}
+              focusMode={config.focusMode}
               isCopied={isCopied}
               isReadOnly={false}
               isFormatting={isFormatting}
               onLangChange={setLangId}
-              onFontSizeChange={handleFontSizeChange}
-              onToggleLineWrapping={handleToggleLineWrapping}
-              onToggleFocusMode={handleToggleFocusMode}
+              onFontSizeChange={config.handleFontSizeChange}
+              onToggleLineWrapping={config.handleToggleLineWrapping}
+              onToggleFocusMode={config.handleToggleFocusMode}
               onFormat={handleFormat}
               onCopy={handleCopy}
               onClose={handleClose}
-              formatSelector={isRichItem ? (
-                <FormatSelector
-                  currentFormat={contentFormat}
-                  formats={clipFormats}
-                  onChange={handleFormatChange}
-                  darkMode={settings.darkMode}
-                />
-              ) : undefined}
+              formatSelector={formatSelectorNode}
             />
 
             <div className="code-editor-body" data-theme={settings.darkMode ? 'dark' : 'light'}>
               <div className="code-editor-shell" data-theme={settings.darkMode ? 'dark' : 'light'}>
-              <CodeMirror
-                value={content}
-                onChange={handleContentChange}
-                theme={settings.darkMode ? vscodeDark : vscodeLight}
-                extensions={extensions}
-                basicSetup={BASIC_SETUP}
-                height="100%"
-                style={EDITOR_STYLE}
-                readOnly={false}
-                editable={true}
-              />
+                <CodeMirror
+                  value={content}
+                  onChange={handleContentChange}
+                  theme={settings.darkMode ? vscodeDark : vscodeLight}
+                  extensions={extensions}
+                  basicSetup={BASIC_SETUP}
+                  height="100%"
+                  style={EDITOR_STYLE}
+                  readOnly={false}
+                  editable={true}
+                />
               </div>
             </div>
 
             <EditorFooter
               darkMode={settings.darkMode}
-              lineCount={lineCount}
-              charCount={content.length}
+              lineCount={docStats.lines}
+              charCount={docStats.chars}
               hasChanges={hasChanges}
               isReadOnly={false}
               cursorInfo={cursorInfo}
-              indentStyle={indentStyle}
-              indentSize={indentSize}
-              onToggleIndentStyle={handleToggleIndentStyle}
-              onCycleIndentSize={handleCycleIndentSize}
+              indentStyle={config.indentStyle}
+              indentSize={config.indentSize}
+              onToggleIndentStyle={config.handleToggleIndentStyle}
+              onCycleIndentSize={config.handleCycleIndentSize}
               onClose={handleClose}
               onSave={handleSave}
             />
 
-            {/* 未保存关闭确认 */}
+            {/* 未保存关闭的高可用确认弹窗 */}
             <AnimatePresence>
               {showExitConfirm && (
                 <motion.div
@@ -480,35 +469,36 @@ export function CodeEditorModal() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.12 }}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="confirm-dialog-title"
                 >
                   <motion.div
                     className="code-editor-confirm-dialog"
+                    role="alertdialog"
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ duration: 0.12 }}
                   >
-                    <p className="code-editor-confirm-text">
+                    <p id="confirm-dialog-title" className="code-editor-confirm-text">
                       有未保存的修改，确定要关闭吗？
                     </p>
                     <div className="code-editor-confirm-actions">
                       <button
+                        type="button"
                         className="code-editor-btn-ghost"
                         onClick={() => setShowExitConfirm(false)}
+                        autoFocus
                       >
                         取消
                       </button>
                       <button
-                        className="code-editor-confirm-discard"
+                        type="button"
+                        className="code-editor-btn-danger"
                         onClick={doClose}
                       >
-                        放弃修改
-                      </button>
-                      <button
-                        className="code-editor-btn-save"
-                        onClick={() => void handleSave()}
-                      >
-                        保存并关闭
+                        不保存并关闭
                       </button>
                     </div>
                   </motion.div>
@@ -521,3 +511,5 @@ export function CodeEditorModal() {
     </AnimatePresence>
   );
 }
+
+

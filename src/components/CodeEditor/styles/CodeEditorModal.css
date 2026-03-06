@@ -155,20 +155,27 @@
   color: #e5e5e5;
 }
 
-.code-editor-confirm-discard {
+.code-editor-btn-danger {
   background: #ef4444;
   color: #ffffff;
   box-shadow: 0 4px 12px rgb(239 68 68 / 0.25);
 }
 
-.code-editor-confirm-discard:hover {
+.code-editor-btn-danger:hover {
   background: #dc2626;
 }
 
-.code-editor-modal[data-theme='dark'] .code-editor-confirm-discard {
+.code-editor-modal[data-theme='dark'] .code-editor-btn-danger {
   background: #dc2626;
 }
 
-.code-editor-modal[data-theme='dark'] .code-editor-confirm-discard:hover {
+.code-editor-modal[data-theme='dark'] .code-editor-btn-danger:hover {
   background: #b91c1c;
+}
+
+
+/* Fix dialog focus accessibility */
+.code-editor-confirm-actions button:focus-visible {
+  outline: 2px solid rgb(99, 102, 241);
+  outline-offset: 2px;
 }
