@@ -1,6 +1,6 @@
 use super::{
     compute_backoff_delay_with_jitter, execute_with_retries, format_win32_error_message,
-    hresult_to_win32_code, would_exceed_retry_budget, ClipboardFailureKind,
+    hresult_to_win32_code, would_exceed_retry_budget,
     ClipboardWriteFailure, RetryPolicy,
 };
 
