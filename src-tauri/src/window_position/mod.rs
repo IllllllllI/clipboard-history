@@ -79,6 +79,8 @@ fn force_hud_topmost(window: &tauri::WebviewWindow) {
 
 const DOWNLOAD_HUD_OFFSET_X: i32 = 14;
 const DOWNLOAD_HUD_OFFSET_Y: i32 = 18;
+const DOWNLOAD_HUD_WIDTH: u32 = 320;
+const DOWNLOAD_HUD_HEIGHT: u32 = 160;
 const CLIPITEM_HUD_OFFSET_X: i32 = 18;
 const CLIPITEM_HUD_OFFSET_Y: i32 = 18;
 const CLIPITEM_HUD_LINEAR_WIDTH: u32 = 324;
@@ -157,6 +159,8 @@ fn detect_nearest_main_window_edge(
 // - 透明背景（radial-menu / clipitem-hud 需要，download-hud 组件自行绘制背景）
 // - 不可调整大小、无装饰、始终置顶、跳过任务栏
 // - 初始尺寸取最大 HUD（radial-menu 344x344）
+// - Windows 上避免在 builder 阶段设置 non-focusable，否则 WebView2 可能以
+//   0x80070057（参数错误）失败；焦点/穿透由 show/hide 阶段按模式动态控制。
 
 /// 获取或按需创建统一 HUD 宿主窗口
 fn get_or_create_hud_host(app: &AppHandle) -> Result<tauri::WebviewWindow, AppError> {
@@ -179,7 +183,6 @@ fn get_or_create_hud_host(app: &AppHandle) -> Result<tauri::WebviewWindow, AppEr
     .always_on_top(true)
     .skip_taskbar(true)
     .focused(false)
-    .focusable(false)
     .devtools(false)
     .visible(false)
     .build()
@@ -208,18 +211,15 @@ pub async fn set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), AppE
 
 /// 在后台预创建 HUD 窗口（非阻塞），供主窗口 show 后调用
 pub fn warmup_hud_in_background(app: &AppHandle) {
-    let handle = app.clone();
-    std::thread::spawn(move || {
-        match get_or_create_hud_host(&handle) {
-            Ok(w) => {
-                let _ = w.set_position(tauri::PhysicalPosition::new(-9999_i32, -9999_i32));
-                log::debug!("后台预热 HUD 窗口完成");
-            }
-            Err(e) => {
-                log::warn!("后台预热 HUD 窗口失败: {e}");
-            }
+    match get_or_create_hud_host(app) {
+        Ok(w) => {
+            let _ = w.set_position(tauri::PhysicalPosition::new(-9999_i32, -9999_i32));
+            log::debug!("后台预热 HUD 窗口完成");
         }
-    });
+        Err(e) => {
+            log::warn!("后台预热 HUD 窗口失败: {e}");
+        }
+    }
 }
 
 /// 将 HUD 宿主窗口隐藏并移到屏外（不销毁 WebView2 进程）。
@@ -666,6 +666,14 @@ pub async fn show_download_hud(app: AppHandle) -> Result<(), AppError> {
     let window = get_or_create_hud_host(&app)?;
 
     window
+        .set_size(tauri::PhysicalSize::new(DOWNLOAD_HUD_WIDTH, DOWNLOAD_HUD_HEIGHT))
+        .map_err(|e| AppError::Window(format!("重置下载 HUD 窗口尺寸失败: {}", e)))?;
+
+    window
+        .set_ignore_cursor_events(true)
+        .map_err(|e| AppError::Window(format!("设置下载 HUD 鼠标穿透失败: {}", e)))?;
+
+    window
         .show()
         .map_err(|e| AppError::Window(format!("显示 HUD 窗口失败: {}", e)))?;
 
@@ -691,10 +699,28 @@ pub async fn position_download_hud_near_cursor(app: AppHandle) -> Result<(), App
 
     let cursor_pos = cursor::get_cursor_position_with_retry(current_monitor.as_ref()).await;
 
-    let target = PhysicalPosition::new(
+    let window_size = tauri::PhysicalSize::new(DOWNLOAD_HUD_WIDTH, DOWNLOAD_HUD_HEIGHT);
+
+    window
+        .set_size(window_size)
+        .map_err(|e| AppError::Window(format!("重置 HUD 窗口尺寸失败: {}", e)))?;
+
+    let monitors = window
+        .available_monitors()
+        .map_err(|e| AppError::Window(format!("读取可用显示器失败: {}", e)))?;
+
+    let fallback_monitor = current_monitor.as_ref().or_else(|| monitors.first());
+
+    let target_monitor = detect_monitor_from_point(cursor_pos, &monitors)
+        .or(fallback_monitor)
+        .ok_or_else(|| AppError::Window("没有可用的显示器用于定位下载 HUD".to_string()))?;
+
+    let ideal = PhysicalPosition::new(
         cursor_pos.x.saturating_add(DOWNLOAD_HUD_OFFSET_X),
         cursor_pos.y.saturating_add(DOWNLOAD_HUD_OFFSET_Y),
     );
+
+    let target = clamp_position_to_monitor(ideal, window_size, target_monitor);
 
     window
         .set_position(target)
@@ -846,6 +872,11 @@ pub async fn open_radial_menu_at_cursor(
 ) -> Result<(), AppError> {
     let window = get_or_create_hud_host(&app)?;
 
+    // 0. 重置为正确的正方形尺寸
+    window
+        .set_size(tauri::PhysicalSize::new(RADIAL_MENU_SIZE, RADIAL_MENU_SIZE))
+        .map_err(|e| AppError::Window(format!("重置径向菜单尺寸失败: {}", e)))?;
+
     // 1. 定位：光标居中
     let current_monitor = window
         .current_monitor()
@@ -903,6 +934,10 @@ pub async fn hide_radial_menu(app: AppHandle) -> Result<(), AppError> {
 #[tauri::command]
 pub async fn position_radial_menu_at_cursor(app: AppHandle) -> Result<(), AppError> {
     let window = get_or_create_hud_host(&app)?;
+
+    window
+        .set_size(tauri::PhysicalSize::new(RADIAL_MENU_SIZE, RADIAL_MENU_SIZE))
+        .map_err(|e| AppError::Window(format!("重置径向菜单尺寸失败: {}", e)))?;
 
     let current_monitor = window
         .current_monitor()

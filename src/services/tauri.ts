@@ -150,13 +150,7 @@ const radialPtrUp    = eventChannel<PointerUpPayload>(WINDOW_LABELS.radialMenu, 
 
 // ── HUD 宿主 & 全局 ──
 const hudHostReady = signalChannel(WINDOW_LABELS.main, HUD_HOST_EVENTS.ready);
-
-const imageDownloadProgress = {
-  listen(handler: EventHandler<ImageDownloadProgressEvent>): Promise<UnlistenFn> {
-    if (!isTauri) return Promise.resolve(NOOP_UNLISTEN);
-    return listen<ImageDownloadProgressEvent>(IMAGE_DOWNLOAD_EVENTS.progress, (e) => handler(e.payload));
-  },
-};
+const imageDownloadProgress = eventChannel<ImageDownloadProgressEvent>(WINDOW_LABELS.hudHost, IMAGE_DOWNLOAD_EVENTS.progress);
 
 // ============================================================================
 // TauriService — 统一 Tauri API 门面

@@ -23,7 +23,11 @@ pub mod formats;
 pub mod save;
 mod listener;
 
+use std::collections::VecDeque;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 use once_cell::sync::Lazy;
 
 pub use listener::start_monitoring;
@@ -37,6 +41,19 @@ pub use listener::start_monitoring;
 /// 当应用主动写入剪贴板（如用户点击"复制"按钮）时设置此标志，
 /// 防止该次变化被保存到历史记录中。
 static IGNORE_CLIPBOARD_CHANGE_BUDGET: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+const INTERNAL_IMAGE_FINGERPRINT_TTL: Duration = Duration::from_secs(5);
+const INTERNAL_IMAGE_FINGERPRINT_MAX_ENTRIES: usize = 16;
+const INTERNAL_IMAGE_FINGERPRINT_MATCH_BUDGET: usize = 4;
+
+#[derive(Debug, Clone)]
+struct RecentInternalImageFingerprint {
+    fingerprint: u64,
+    expires_at: Instant,
+    remaining_matches: usize,
+}
+
+static RECENT_INTERNAL_IMAGE_FINGERPRINTS: Lazy<Mutex<VecDeque<RecentInternalImageFingerprint>>> =
+    Lazy::new(|| Mutex::new(VecDeque::new()));
 
 /// 设置忽略下一次剪贴板变化事件的标志
 ///
@@ -48,6 +65,66 @@ pub fn set_ignore_flag() {
         "🚫 已设置剪贴板忽略预算 - 当前预算: {}",
         previous.saturating_add(1)
     );
+}
+
+fn compute_image_fingerprint(width: usize, height: usize, bytes: &[u8]) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    width.hash(&mut hasher);
+    height.hash(&mut hasher);
+    bytes.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn cleanup_expired_image_fingerprints(entries: &mut VecDeque<RecentInternalImageFingerprint>) {
+    let now = Instant::now();
+    entries.retain(|entry| entry.expires_at > now && entry.remaining_matches > 0);
+}
+
+pub(crate) fn remember_internal_image_fingerprint(width: usize, height: usize, bytes: &[u8]) {
+    let fingerprint = compute_image_fingerprint(width, height, bytes);
+    let mut entries = RECENT_INTERNAL_IMAGE_FINGERPRINTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    cleanup_expired_image_fingerprints(&mut entries);
+
+    if let Some(entry) = entries.iter_mut().find(|entry| entry.fingerprint == fingerprint) {
+        entry.expires_at = Instant::now() + INTERNAL_IMAGE_FINGERPRINT_TTL;
+        entry.remaining_matches = entry
+            .remaining_matches
+            .max(INTERNAL_IMAGE_FINGERPRINT_MATCH_BUDGET);
+        return;
+    }
+
+    if entries.len() >= INTERNAL_IMAGE_FINGERPRINT_MAX_ENTRIES {
+        entries.pop_front();
+    }
+
+    entries.push_back(RecentInternalImageFingerprint {
+        fingerprint,
+        expires_at: Instant::now() + INTERNAL_IMAGE_FINGERPRINT_TTL,
+        remaining_matches: INTERNAL_IMAGE_FINGERPRINT_MATCH_BUDGET,
+    });
+}
+
+pub(crate) fn should_ignore_internal_image_by_fingerprint(
+    width: usize,
+    height: usize,
+    bytes: &[u8],
+) -> bool {
+    let fingerprint = compute_image_fingerprint(width, height, bytes);
+    let mut entries = RECENT_INTERNAL_IMAGE_FINGERPRINTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    cleanup_expired_image_fingerprints(&mut entries);
+
+    if let Some(entry) = entries.iter_mut().find(|entry| entry.fingerprint == fingerprint) {
+        entry.remaining_matches = entry.remaining_matches.saturating_sub(1);
+        return true;
+    }
+
+    false
 }
 
 // ============================================================================

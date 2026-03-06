@@ -387,7 +387,7 @@ export function UIProvider({
     if (!isTauri) return;
 
     let mounted = true;
-    let unlisten: (() => void) | null = null;
+    let unlistenProgress: (() => void) | null = null;
 
     void TauriService.listenImageDownloadProgress((payload) => {
       if (!mounted) return;
@@ -440,14 +440,14 @@ export function UIProvider({
         error: null,
       });
     }).then((dispose) => {
-      unlisten = dispose;
+      unlistenProgress = dispose;
     }).catch(() => {
       // 忽略监听初始化失败，由调用链错误处理兜底
     });
 
     return () => {
       mounted = false;
-      if (unlisten) unlisten();
+      if (unlistenProgress) unlistenProgress();
 
       const requestId = activeDownloadRequestIdRef.current;
       if (requestId) {

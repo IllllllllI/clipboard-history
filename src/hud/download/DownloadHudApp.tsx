@@ -53,33 +53,43 @@ export default function DownloadHudApp({ initialProgress }: { initialProgress?: 
   const [state, setState] = useState<HudState>(() =>
     initialProgress ? progressToState(initialProgress) : IDLE_STATE,
   );
+  const [visible, setVisible] = useState(initialProgress ? true : false);
 
   useEffect(() => {
     let autoResetTimer: number | null = null;
+    let hideTimer: number | null = null;
 
     const cleanup = subscribeTauriEvent(TauriService.listenImageDownloadProgress, (payload: ImageDownloadProgressEvent) => {
-      setState(progressToState(payload));
+      const newState = progressToState(payload);
+      setState(newState);
+      setVisible(true);
+
+      if (hideTimer) clearTimeout(hideTimer);
+      if (autoResetTimer) clearTimeout(autoResetTimer);
 
       if (isTerminalStatus(payload.status)) {
-        if (autoResetTimer) clearTimeout(autoResetTimer);
-        autoResetTimer = window.setTimeout(() => setState(IDLE_STATE), AUTO_RESET_DELAY_MS);
+        // 先触发隐藏动画
+        hideTimer = window.setTimeout(() => setVisible(false), AUTO_RESET_DELAY_MS);
+        // 等待动画结束后完全回归 IDLE 状态 (动画耗时约 400ms)
+        autoResetTimer = window.setTimeout(() => setState(IDLE_STATE), AUTO_RESET_DELAY_MS + 400);
       }
     });
 
     return () => {
       cleanup();
+      if (hideTimer) clearTimeout(hideTimer);
       if (autoResetTimer) clearTimeout(autoResetTimer);
     };
   }, []);
 
   if (state.status === 'idle') {
-    return <div className="hud-root" />;
+    return <div className="hud-root" aria-hidden="true" />;
   }
 
   return (
-    <div className="hud-root">
-      <div className="hud-card" data-status={state.status}>
-        <div className="hud-icon-wrap">
+    <div className="hud-root" role="alert" aria-live="polite">
+      <div className="hud-card" data-status={state.status} data-state={visible ? 'visible' : 'hidden'}>
+        <div className="hud-icon-wrap" aria-hidden="true">
           {state.status === 'downloading' && <Loader2 className="hud-icon hud-spin" />}
           {state.status === 'completed' && <CheckCircle2 className="hud-icon" />}
           {(state.status === 'failed' || state.status === 'cancelled') && <XCircle className="hud-icon" />}
@@ -88,7 +98,7 @@ export default function DownloadHudApp({ initialProgress }: { initialProgress?: 
         <div className="hud-body">
           <p className="hud-title">{STATUS_TITLE[state.status as Exclude<HudStatus, 'idle'>]}</p>
 
-          <div className="hud-meter-bg">
+          <div className="hud-meter-bg" aria-hidden="true">
             <div className="hud-meter-fill" style={{ width: `${state.progress}%` }} />
           </div>
 

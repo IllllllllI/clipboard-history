@@ -34,7 +34,7 @@ use crate::error::AppError;
 use crate::storage::get_images_dir;
 use super::code_detection::is_likely_code;
 use super::formats::collect_clipboard_formats;
-use super::IgnoreGuard;
+use super::{IgnoreGuard, remember_internal_image_fingerprint, should_ignore_internal_image_by_fingerprint};
 
 const FILES_PREFIX: &str = "[FILES]\n";
 
@@ -366,6 +366,15 @@ pub async fn capture_clipboard_snapshot(
 
     // ── 3) 图片处理 ──
     if let Ok(image_data) = clipboard.get_image() {
+        if should_ignore_internal_image_by_fingerprint(
+            image_data.width,
+            image_data.height,
+            image_data.bytes.as_ref(),
+        ) {
+            log::debug!("⏭️ 检测到应用自身写入的图片指纹，跳过本次剪贴板捕获");
+            return Ok(None);
+        }
+
         let skip_image = maybe_text
             .as_deref()
             .is_some_and(|t| should_skip_image_by_text(t));
@@ -421,11 +430,14 @@ pub async fn copy_image_from_file(file_path: String) -> Result<(), AppError> {
         .map_err(|e| AppError::Clipboard(format!("打开图片失败: {}", e)))?;
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
+    let raw = rgba.into_raw();
+
+    remember_internal_image_fingerprint(width as usize, height as usize, &raw);
 
     let image_data = arboard::ImageData {
         width: width as usize,
         height: height as usize,
-        bytes: std::borrow::Cow::Owned(rgba.into_raw()),
+        bytes: std::borrow::Cow::Owned(raw),
     };
 
     let _guard = IgnoreGuard::new();

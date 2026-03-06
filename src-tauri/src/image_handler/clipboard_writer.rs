@@ -297,6 +297,11 @@ impl ImageHandler {
     ) -> Result<(), ImageError> {
         log::debug!("📋 准备复制到剪贴板 - {}x{}", image.width, image.height);
 
+        crate::clipboard::remember_internal_image_fingerprint(
+            image.width,
+            image.height,
+            &image.bytes,
+        );
         let _guard = crate::clipboard::IgnoreGuard::new();
         let policy = RetryPolicy::from_config(config);
         let width = image.width;
