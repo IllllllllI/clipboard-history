@@ -8,6 +8,10 @@
   max-height: 14rem;
   overflow-y: auto;
   padding: 0.1875rem 0.125rem 0.25rem 0;
+  /* 平滑的惯性滚动，增强触控板长列表滑动体验 */
+  -webkit-overflow-scrolling: touch;
+  /* 设置层层级，优化列表的渲染合并 */
+  transform: translateZ(0);
 }
 
 .img-gallery__list-row {
@@ -19,9 +23,19 @@
   border-radius: var(--img-gallery-radius-sm);
   background: transparent;
   cursor: pointer;
-  transition: background-color 0.12s ease, border-color 0.12s ease;
+  /* 增加 transform 在 active 时的过渡计算 */
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.1s ease;
   text-align: left;
   min-width: 0;
+  /* 允许列表项按需跳过渲染 */
+  content-visibility: auto;
+  contain-intrinsic-size: 2.25rem; /* 约略预估列表单独一行的高度 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.img-gallery__list-row:active {
+  transform: scale(0.98); /* 柔和的点击收缩效果 */
 }
 
 /* 交替底色 */
@@ -88,6 +102,8 @@
   display: block;
   transition: transform 0.15s ease;
   transform-origin: left center;
+  /* 阻止列表左侧头像被误拖动 */
+  pointer-events: none;
 }
 
 /* Hover 放大缩略图浮层 */
@@ -139,7 +155,12 @@
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  user-select: none;
+}
+
+.img-gallery__list-toggle-btn:active {
+  transform: scale(0.95);
 }
 
 .img-gallery__list-toggle-btn[data-theme='light'] {

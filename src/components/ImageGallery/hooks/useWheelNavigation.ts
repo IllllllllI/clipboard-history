@@ -30,13 +30,24 @@ export function useWheelNavigation({
 }: UseWheelNavigationOptions): void {
   const timestampRef = useRef(0);
 
+  // 缓存最新的参数配置，以防消费方没有用 useCallback 包裹 onSwitch 导致疯狂卸载和重绑 DOM 事件
+  const optionsRef = useRef({ wheelMode, itemCount, onSwitch });
+
+  // 同步闭包数据
   useEffect(() => {
-    if (!enabled || itemCount <= 1) return;
+    optionsRef.current = { wheelMode, itemCount, onSwitch };
+  }, [wheelMode, itemCount, onSwitch]);
+
+  useEffect(() => {
     const el = elementRef.current;
-    if (!el) return;
+    if (!enabled || !el) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (wheelMode === 'ctrl' && !e.ctrlKey) return;
+      const { wheelMode: currentMode, itemCount: currentCount, onSwitch: currentOnSwitch } = optionsRef.current;
+
+      if (currentCount <= 1) return;
+      if (currentMode === 'ctrl' && !e.ctrlKey) return;
+      
       if (e.cancelable) e.preventDefault();
       e.stopPropagation();
 
@@ -47,10 +58,10 @@ export function useWheelNavigation({
       if (now - timestampRef.current < WHEEL_THROTTLE_MS) return;
       timestampRef.current = now;
 
-      onSwitch(delta > 0 ? 1 : -1);
+      currentOnSwitch(delta > 0 ? 1 : -1);
     };
 
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, [enabled, elementRef, wheelMode, itemCount, onSwitch]);
+  }, [enabled, elementRef]);
 }

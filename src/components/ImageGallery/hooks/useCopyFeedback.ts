@@ -13,18 +13,23 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 export function useCopyFeedback<K = string>(durationMs: number) {
   const [copiedKey, setCopiedKey] = useState<K | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationRef = useRef(durationMs);
 
-  const trigger = useCallback(
-    (key: K) => {
-      setCopiedKey(key);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => {
-        setCopiedKey(null);
-        timerRef.current = null;
-      }, durationMs);
-    },
-    [durationMs],
-  );
+  // 监听时长更新，避免在 useCallback 中建立依赖导致闭包函数重建
+  useEffect(() => {
+    durationRef.current = durationMs;
+  }, [durationMs]);
+
+  const trigger = useCallback((key: K) => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+    setCopiedKey(key);
+    timerRef.current = setTimeout(() => {
+      setCopiedKey(null);
+      timerRef.current = null;
+    }, durationRef.current);
+  }, []);
 
   const reset = useCallback(() => {
     if (timerRef.current) {
@@ -37,7 +42,10 @@ export function useCopyFeedback<K = string>(durationMs: number) {
   // 卸载时清理
   useEffect(
     () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     },
     [],
   );

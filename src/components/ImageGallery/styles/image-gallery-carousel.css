@@ -24,6 +24,8 @@
   min-height: 0;
   border-radius: var(--img-gallery-radius);
   overflow: hidden;
+  /* 添加 content-visibility 允许浏览器在元素离屏时跳过渲染工作 */
+  content-visibility: auto;
 }
 
 /* ── Overlay 导航箭头 ── */
@@ -40,8 +42,16 @@
   justify-content: center;
   cursor: pointer;
   opacity: 0.64;
-  transition: opacity 0.2s ease, background-color 0.15s ease;
+  /* 添加 transform 渐变实现点击反馈，支持 GPU 加速 */
+  transition: opacity 0.2s ease, background-color 0.15s ease, transform 0.1s ease;
   z-index: 5;
+  /* 禁止用户文字框选，防止频繁点击箭头时意外选中图片 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.img-gallery__overlay-nav:active {
+  transform: translateY(-50%) scale(0.9);
 }
 
 .img-gallery__overlay-nav--prev {
@@ -59,12 +69,20 @@
   transform: translateX(-50%);
 }
 
+.img-gallery__overlay-nav--vertical.img-gallery__overlay-nav--prev:active {
+  transform: translateX(-50%) scale(0.9);
+}
+
 .img-gallery__overlay-nav--vertical.img-gallery__overlay-nav--next {
   top: auto;
   bottom: 0.375rem;
   left: 50%;
   right: auto;
   transform: translateX(-50%);
+}
+
+.img-gallery__overlay-nav--vertical.img-gallery__overlay-nav--next:active {
+  transform: translateX(-50%) scale(0.9);
 }
 
 .img-gallery__overlay-nav[data-theme='light'] {
@@ -158,6 +176,10 @@
   background: transparent;
   transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   scroll-snap-align: center;
+  /* 优化移动端/可触摸设备的体验：禁用高亮遮罩，并阻止长按出菜单 */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .img-gallery__thumb[data-theme='light'] {
@@ -169,12 +191,16 @@
 }
 
 .img-gallery__thumb:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px); /* 放大悬浮感知度 */
   border-color: rgb(99 102 241 / 0.35);
 }
 
+.img-gallery__thumb:active {
+  transform: scale(0.95); /* 被按压反馈 */
+}
+
 .img-gallery__thumb[data-active='true'] {
-  border-color: #6366f1;
+  border-color: var(--img-gallery-focus-ring, #6366f1);
   box-shadow: 0 0 0 2px rgb(99 102 241 / 0.2);
 }
 
@@ -183,6 +209,8 @@
   height: 100%;
   display: block;
   object-fit: cover;
+  /* 禁止图片拖动重影，提升桌面端使用体验 */
+  pointer-events: none;
 }
 
 @media (hover: none) {

@@ -10,11 +10,16 @@
   --img-gallery-surface-light: rgb(0 0 0 / 0.02);
   --img-gallery-surface-dark: rgb(255 255 255 / 0.03);
   --img-gallery-hover-accent: rgb(99 102 241 / 0.12);
+  /* 新增：聚焦外发光与主色统一 */
+  --img-gallery-focus-ring: rgb(99 102 241 / 0.5);
+  
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   width: 100%;
   min-width: 0;
+  /* GPU 硬件加速层提升，优化 Framer Motion 动画期间的绘制性能 */
+  transform: translateZ(0); 
   overscroll-behavior: contain;
 }
 
@@ -120,8 +125,14 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  /* 添加 transform 支持点击下沉反馈 */
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
   padding: 0;
+}
+
+.img-gallery__toolbar-btn:active,
+.img-gallery__segment-btn:active {
+  transform: scale(0.92);
 }
 
 .img-gallery__toolbar-btn[data-theme='light'] {
@@ -172,7 +183,7 @@
 }
 
 /* ============================================================
-   键盘焦点态
+   键盘焦点态 (A11y ARIA 键盘控制)
    ============================================================ */
 .img-gallery__overlay-nav:focus-visible,
 .img-gallery__counter-pill:focus-visible,
@@ -183,8 +194,15 @@
 .img-gallery__list-toggle-btn:focus-visible,
 .img-gallery__list-row-thumb-btn:focus-visible,
 .img-gallery__grid-cell:focus-visible {
-  outline: 2px solid rgb(99 102 241 / 0.5);
+  outline: 2px solid var(--img-gallery-focus-ring);
   outline-offset: 1px;
+}
+
+/* 针对部分高连贯性元素去除鼠标点击下可能残留的蓝框 */
+.img-gallery__overlay-nav:focus:not(:focus-visible),
+.img-gallery__segment-btn:focus:not(:focus-visible),
+.img-gallery__toolbar-btn:focus:not(:focus-visible) {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
