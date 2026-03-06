@@ -44,6 +44,22 @@ export interface ImageAdvancedConfig {
   clipboard_retry_max_delay_ms: number;
 }
 
+/** 剪贴板附加格式（HTML / RTF / 图片路径等） */
+export interface ClipFormat {
+  format: string;
+  content: string;
+}
+
+/** 后端 capture_clipboard_snapshot 返回的完整快照 */
+export interface ClipboardSnapshot {
+  content_type: 'text' | 'image' | 'files' | 'rich';
+  text: string | null;
+  html: string | null;
+  rtf: string | null;
+  image_path: string | null;
+  files: string[] | null;
+}
+
 export interface ClipItem {
   id: number;
   text: string;
@@ -54,6 +70,10 @@ export interface ClipItem {
   tags: Tag[]; // defaults to [] from backend
   /** 用户在调色板中选择的颜色（不覆盖原始 text） */
   picked_color: string | null;
+  /** 内容类型：text | image | files | rich */
+  content_type: string;
+  /** 附加格式（按需加载，默认为空） */
+  formats: ClipFormat[];
 }
 
 export interface AppSettings {

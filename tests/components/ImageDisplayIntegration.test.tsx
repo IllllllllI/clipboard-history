@@ -117,6 +117,8 @@ describe('Image Display Integration Tests', () => {
     is_favorite: 0,
     tags: [],
     picked_color: null,
+    content_type: 'text',
+    formats: [],
     ...overrides,
   });
 

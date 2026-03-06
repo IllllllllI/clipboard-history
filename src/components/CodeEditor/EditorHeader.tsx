@@ -1,8 +1,8 @@
 import React from 'react';
-import { motion } from 'motion/react';
-import { X, Copy, Check, Terminal, WrapText, Minus, Plus, Focus } from 'lucide-react';
+import { X, Copy, Check, Terminal, WrapText, Minus, Plus, Focus, AlignLeft, Loader2 } from 'lucide-react';
 import type { LanguageId } from '../../utils/languageDetect';
 import { LanguageSelector } from './LanguageSelector';
+import { FORMATTABLE_LANGUAGES } from './formatCode';
 
 interface EditorHeaderProps {
   darkMode: boolean;
@@ -17,8 +17,13 @@ interface EditorHeaderProps {
   onFontSizeChange: (delta: number) => void;
   onToggleLineWrapping: () => void;
   onToggleFocusMode: () => void;
+  onFormat: () => void;
   onCopy: () => void;
   onClose: () => void;
+  isReadOnly?: boolean;
+  isFormatting?: boolean;
+  /** 富文本格式选择器（仅 rich 条目传入） */
+  formatSelector?: React.ReactNode;
 }
 
 /** 编辑器顶部工具栏 */
@@ -35,11 +40,15 @@ export const EditorHeader = React.memo(function EditorHeader({
   onFontSizeChange,
   onToggleLineWrapping,
   onToggleFocusMode,
+  onFormat,
   onCopy,
   onClose,
+  isReadOnly = false,
+  isFormatting = false,
+  formatSelector,
 }: EditorHeaderProps) {
   return (
-    <div className="code-editor-header" data-theme={darkMode ? 'dark' : 'light'}>
+    <header className="code-editor-header" data-theme={darkMode ? 'dark' : 'light'}>
       {/* Left: Title + Meta */}
       <div className="code-editor-header-left">
         <div className="code-editor-title-icon">
@@ -61,7 +70,10 @@ export const EditorHeader = React.memo(function EditorHeader({
       </div>
 
       {/* Right: Tools */}
-      <div className="code-editor-header-tools">
+      <div className="code-editor-header-tools" role="toolbar" aria-label="编辑器工具">
+        {/* 富文本格式选择 */}
+        {formatSelector}
+
         {/* 语言选择 */}
         <LanguageSelector currentLang={langId} onChange={onLangChange} darkMode={darkMode} />
 
@@ -71,14 +83,16 @@ export const EditorHeader = React.memo(function EditorHeader({
             onClick={() => onFontSizeChange(-1)}
             className="code-editor-font-btn"
             title="减小字号"
+            aria-label="减小字号"
           >
             <Minus className="w-3 h-3" />
           </button>
-          <span className="code-editor-font-value">{fontSize}</span>
+          <span className="code-editor-font-value" aria-label={`字号 ${fontSize}`}>{fontSize}</span>
           <button
             onClick={() => onFontSizeChange(+1)}
             className="code-editor-font-btn"
             title="增大字号"
+            aria-label="增大字号"
           >
             <Plus className="w-3 h-3" />
           </button>
@@ -90,6 +104,8 @@ export const EditorHeader = React.memo(function EditorHeader({
           className="code-editor-btn code-editor-btn-square"
           data-active={lineWrapping ? 'true' : 'false'}
           title={lineWrapping ? '禁用自动换行' : '启用自动换行'}
+          aria-label={lineWrapping ? '禁用自动换行' : '启用自动换行'}
+          aria-pressed={lineWrapping}
         >
           <WrapText className="w-4 h-4" />
         </button>
@@ -100,33 +116,58 @@ export const EditorHeader = React.memo(function EditorHeader({
           className="code-editor-btn code-editor-btn-square"
           data-active={focusMode ? 'true' : 'false'}
           title={focusMode ? '退出专注阅读' : '专注阅读（隐藏行号）'}
+          aria-label={focusMode ? '退出专注阅读' : '专注阅读'}
+          aria-pressed={focusMode}
         >
           <Focus className="w-4 h-4" />
         </button>
 
-        <div className="code-editor-divider" />
+        {/* 格式化 */}
+        <button
+          onClick={onFormat}
+          className="code-editor-btn code-editor-btn-square"
+          disabled={isReadOnly || isFormatting || !FORMATTABLE_LANGUAGES.has(langId)}
+          data-active={isFormatting ? 'true' : 'false'}
+          title={
+            isReadOnly
+              ? '只读模式下不可格式化'
+              : isFormatting
+                ? '格式化中…'
+                : FORMATTABLE_LANGUAGES.has(langId)
+                  ? `格式化 ${langId.toUpperCase()}`
+                  : `${langId} 不支持格式化`
+          }
+          aria-label="格式化"
+        >
+          {isFormatting
+            ? <Loader2 className="w-4 h-4 code-editor-spin" />
+            : <AlignLeft className="w-4 h-4" />
+          }
+        </button>
+
+        <div className="code-editor-divider" aria-hidden="true" />
 
         {/* 复制 */}
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
+        <button
           onClick={onCopy}
           className="code-editor-btn code-editor-btn-copy"
           data-copied={isCopied ? 'true' : 'false'}
+          aria-label={isCopied ? '已复制' : '复制'}
         >
           {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           <span className="code-editor-copy-text">{isCopied ? '已复制' : '复制'}</span>
-        </motion.button>
+        </button>
 
         {/* 关闭 */}
         <button
           onClick={onClose}
           className="code-editor-btn code-editor-btn-square"
           title="关闭 (Esc)"
+          aria-label="关闭"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
-    </div>
+    </header>
   );
 });

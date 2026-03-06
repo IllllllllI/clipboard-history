@@ -6,6 +6,18 @@
 //! 图片保存前会经过三层防护（尺寸检查、代码检测、长文本过滤），
 //! 避免浏览器复制代码时附带的预览图被误存。
 //!
+//! ## 多格式快照
+//!
+//! `capture_clipboard_snapshot` 读取剪贴板中所有有价值的格式（文本/HTML/RTF/图片/文件），
+//! 返回 `ClipboardSnapshot` 结构体。通过 `formats.rs` 枚举格式列表，
+//! 智能判定 `content_type`：
+//!
+//! - **rich**：同时有文本 + HTML/RTF（Office/WPS/浏览器表格），优先保存文本，
+//!   附带 HTML 和 RTF 作为附加格式，跳过冗余的渲染截图
+//! - **image**：纯图片（截图工具），保存图片文件
+//! - **files**：文件列表（资源管理器复制）
+//! - **text**：纯文本
+//!
 //! # 实现思路
 //!
 //! - 所有函数均为 `#[tauri::command]`，由前端通过 IPC 调用。
@@ -17,12 +29,38 @@
 use std::fs;
 use chrono::Local;
 use image::ImageFormat;
+use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::storage::get_images_dir;
 use super::code_detection::is_likely_code;
+use super::formats::collect_clipboard_formats;
 use super::IgnoreGuard;
 
 const FILES_PREFIX: &str = "[FILES]\n";
+
+// ============================================================================
+// 剪贴板快照数据结构
+// ============================================================================
+
+/// 剪贴板快照：一次剪贴板变化中所有有价值的格式数据
+///
+/// 由 `capture_clipboard_snapshot` 生成，前端通过 IPC 接收后
+/// 传给 `db_add_clip_snapshot` 入库。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClipboardSnapshot {
+    /// 内容类型：`"text"` | `"image"` | `"files"` | `"rich"`
+    pub content_type: String,
+    /// 纯文本内容（几乎所有场景都有）
+    pub text: Option<String>,
+    /// HTML 格式内容（Office/WPS/浏览器富文本复制时存在）
+    pub html: Option<String>,
+    /// RTF 格式内容（Office/WPS 复制时存在）
+    pub rtf: Option<String>,
+    /// 保存到磁盘的图片文件路径（截图 / 独立图片）
+    pub image_path: Option<String>,
+    /// 文件列表（资源管理器复制文件时存在）
+    pub files: Option<Vec<String>>,
+}
 
 /// 打开系统剪贴板，统一错误转换
 fn open_clipboard() -> Result<arboard::Clipboard, AppError> {
@@ -250,44 +288,120 @@ pub async fn save_clipboard_svg(
 }
 
 // ============================================================================
-// 单次快照（文件 / 图片 / SVG / 文本）
+// 多格式快照（文件 / 图片 / SVG / HTML / RTF / 文本）
 // ============================================================================
 
-/// 单次抓取当前剪贴板内容，按优先级返回首个可保存内容
+/// 单次抓取当前剪贴板所有有价值的格式数据
 ///
-/// 优先级：文件列表 > 图片 > SVG > 纯文本。
-/// 该命令用于监听链路，避免前端在一次事件里多次 IPC 读取剪贴板。
+/// ## 判定逻辑
+///
+/// 1. **文件列表** (CF_HDROP) → `content_type = "files"`
+/// 2. **富文本** (文本 + HTML/RTF) → `content_type = "rich"`
+///    - 主 text = 纯文本，附加 html/rtf 存入 clip_formats
+///    - 附带的图片为渲染截图，默认跳过
+/// 3. **纯截图** (图片，无文本，无 HTML) → `content_type = "image"`
+/// 4. **纯文本** → `content_type = "text"`
 #[tauri::command]
 pub async fn capture_clipboard_snapshot(
     app: tauri::AppHandle,
     custom_dir: Option<String>,
-) -> Result<Option<String>, AppError> {
-    if let Some(files) = read_clipboard_files_sync()? {
-        if let Some(encoded) = encode_file_list(&files) {
-            return Ok(Some(encoded));
+) -> Result<Option<ClipboardSnapshot>, AppError> {
+    // 第一步：枚举格式并读取 HTML/RTF（Win32 API，一次 Open/Close）
+    let formats_info = collect_clipboard_formats();
+
+    // ── 1) 文件列表优先 ──
+    if formats_info.has_files {
+        if let Some(files) = read_clipboard_files_sync()? {
+            if !files.is_empty() {
+                let encoded = encode_file_list(&files);
+                return Ok(Some(ClipboardSnapshot {
+                    content_type: "files".to_string(),
+                    text: encoded,
+                    files: Some(files),
+                    ..Default::default()
+                }));
+            }
         }
     }
 
+    // 第二步：用 arboard 读取文本和图片
     let mut clipboard = open_clipboard()?;
-
     let maybe_text = clipboard.get_text().ok();
 
-    if let Ok(image_data) = clipboard.get_image() {
-        let skip_image = maybe_text.as_deref().is_some_and(|t| should_skip_image_by_text(t));
-        if !skip_image {
-            return save_image_data(&app, custom_dir, image_data);
+    // ── 2) 富文本上下文（Office/WPS/浏览器表格等）──
+    if formats_info.is_rich_text_context() {
+        if let Some(ref text) = maybe_text {
+            if !text.trim().is_empty() {
+                // 富文本场景：文本是主体，HTML/RTF 是附加格式
+                // 图片是渲染截图，信息冗余，不保存
+                log::info!(
+                    "📋 富文本复制：text={}字符, html={}, rtf={}",
+                    text.len(),
+                    formats_info.has_html,
+                    formats_info.has_rtf,
+                );
+
+                // 检查文本是否为 SVG
+                if let Some(svg_path) = save_svg_text(&app, custom_dir.clone(), text)? {
+                    return Ok(Some(ClipboardSnapshot {
+                        content_type: "image".to_string(),
+                        text: Some(svg_path.clone()),
+                        image_path: Some(svg_path),
+                        html: formats_info.html_content,
+                        rtf: formats_info.rtf_content,
+                        ..Default::default()
+                    }));
+                }
+
+                return Ok(Some(ClipboardSnapshot {
+                    content_type: "rich".to_string(),
+                    text: Some(text.clone()),
+                    html: formats_info.html_content,
+                    rtf: formats_info.rtf_content,
+                    ..Default::default()
+                }));
+            }
         }
-        // 跳过图片后，继续处理文本（浏览器/IDE 复制时常同时携带图片和文本）
+    }
+
+    // ── 3) 图片处理 ──
+    if let Ok(image_data) = clipboard.get_image() {
+        let skip_image = maybe_text
+            .as_deref()
+            .is_some_and(|t| should_skip_image_by_text(t));
+
+        if !skip_image {
+            if let Some(image_path) = save_image_data(&app, custom_dir.clone(), image_data)? {
+                // 纯图片（截图工具等）
+                return Ok(Some(ClipboardSnapshot {
+                    content_type: "image".to_string(),
+                    text: Some(image_path.clone()),
+                    image_path: Some(image_path),
+                    ..Default::default()
+                }));
+            }
+        }
         log::debug!("⏭️ 跳过图片，回退到文本处理");
     }
 
+    // ── 4) 纯文本 ──
     if let Some(text) = maybe_text {
-        if let Some(svg_path) = save_svg_text(&app, custom_dir.clone(), &text)? {
-            return Ok(Some(svg_path));
+        // 检查 SVG
+        if let Some(svg_path) = save_svg_text(&app, custom_dir, &text)? {
+            return Ok(Some(ClipboardSnapshot {
+                content_type: "image".to_string(),
+                text: Some(svg_path.clone()),
+                image_path: Some(svg_path),
+                ..Default::default()
+            }));
         }
 
         if !text.trim().is_empty() {
-            return Ok(Some(text));
+            return Ok(Some(ClipboardSnapshot {
+                content_type: "text".to_string(),
+                text: Some(text),
+                ..Default::default()
+            }));
         }
     }
 

@@ -19,6 +19,7 @@
 //! - 子模块按职责拆分：检测归 `code_detection`，持久化归 `save`。
 
 pub mod code_detection;
+pub mod formats;
 pub mod save;
 mod listener;
 

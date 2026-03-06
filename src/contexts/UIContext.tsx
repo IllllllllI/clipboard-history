@@ -117,7 +117,7 @@ const mapHttpImageFailedEventError = (errorCode?: string, stage?: string, errorM
 
 /** 构造纯文本回退用的 ClipItem */
 const textFallbackItem = (text: string): ClipItem => ({
-  id: 0, text, timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null,
+  id: 0, text, timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'text', formats: [],
 });
 
 /**

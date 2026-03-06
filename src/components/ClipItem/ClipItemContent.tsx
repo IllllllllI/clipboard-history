@@ -92,6 +92,7 @@ export const ClipItemContent = React.memo(function ClipItemContent({
   );
   const hasDateTime = dtMatches.length > 0;
   const isUrl = useMemo(() => /^https?:\/\/\S+$/i.test(trimmedText), [trimmedText]);
+  const isRich = item.content_type === 'rich';
   const files = useMemo(() => (type === 'files' ? decodeFileList(item.text) : []), [type, item.text]);
   const fileImageUrls = useMemo(
     () => files.filter((path) => detectImageType(path) === ImageType.LocalFile),

@@ -65,6 +65,8 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
     repositionRaf: null as number | null,
     mainWindowFocused: typeof document !== 'undefined' ? document.hasFocus() : true,
     radialMenuVisible: false,
+    /** 下一次 contextmenu 事件是否应被阻止（右键触发径向菜单后置位） */
+    contextMenuSuppressed: false,
     mainWindowMoving: false,
     moveSettleTimer: null as ReturnType<typeof setTimeout> | null,
     blurHideTimer: null as ReturnType<typeof setTimeout> | null,
@@ -315,6 +317,7 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       triggerMouseMode,
     });
     r.current.radialMenuVisible = true;
+    r.current.contextMenuSuppressed = true;
     setRadialMenuActive(true);
     setIsHudActive(true);
   }, [itemId, isFavorite, isPinned, canEdit, theme, triggerMouseButton, triggerMouseMode, shouldEnableRadialMenuHud]);
@@ -357,6 +360,27 @@ export function useClipItemHudController(input: UseClipItemHudControllerInput) {
       window.removeEventListener('pointerup', forwardPointerUp, true);
     };
   }, [radialMenuActive, shouldEnableRadialMenuHud, syncClipItemHudVisibility]);
+
+  // 阻止全局 contextmenu：径向菜单打开时设置 ref 标记，
+  // 右键释放后 contextmenu 事件触发时检查标记并消费。
+  // 不依赖 radialMenuActive state，避免 React 18 微任务刷新
+  // 导致 effect cleanup 在 contextmenu 之前移除监听器的时序问题。
+  useEffect(() => {
+    if (!isTauri || !shouldEnableRadialMenuHud) return;
+
+    const handleContextMenu = (e: Event) => {
+      if (r.current.contextMenuSuppressed) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        r.current.contextMenuSuppressed = false;
+      }
+    };
+
+    window.addEventListener('contextmenu', handleContextMenu, true);
+    return () => {
+      window.removeEventListener('contextmenu', handleContextMenu, true);
+    };
+  }, [shouldEnableRadialMenuHud]);
 
   useEffect(() => {
     if (!isTauri || !shouldEnableClipItemHud || !isSelected) return;

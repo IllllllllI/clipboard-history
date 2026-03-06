@@ -30,7 +30,7 @@ use crate::error::AppError;
 
 use super::db_err;
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 // ── 版本管理 ─────────────────────────────────────────────────
 
@@ -156,6 +156,7 @@ fn ensure_history_columns(conn: &Connection) {
         "ALTER TABLE history ADD COLUMN is_snippet INTEGER DEFAULT 0",
         "ALTER TABLE history ADD COLUMN is_favorite INTEGER DEFAULT 0",
         "ALTER TABLE history ADD COLUMN picked_color TEXT",
+        "ALTER TABLE history ADD COLUMN content_type TEXT NOT NULL DEFAULT 'text'",
     ];
     for ddl in ALTER_STMTS {
         let _ = conn.execute(ddl, []);
@@ -192,6 +193,13 @@ fn create_base_tables(conn: &Connection) -> Result<(), AppError> {
             PRIMARY KEY (item_id, tag_id),
             FOREIGN KEY (item_id) REFERENCES history(id) ON DELETE CASCADE,
             FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+        );
+        CREATE TABLE IF NOT EXISTS clip_formats (
+            item_id INTEGER NOT NULL,
+            format  TEXT NOT NULL,
+            content TEXT NOT NULL,
+            PRIMARY KEY (item_id, format),
+            FOREIGN KEY (item_id) REFERENCES history(id) ON DELETE CASCADE
         );"
     ).map_err(|e| db_err("创建基础表失败", e))?;
 
@@ -200,7 +208,8 @@ fn create_base_tables(conn: &Connection) -> Result<(), AppError> {
 
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_item_tags_item_id ON item_tags(item_id);
-         CREATE INDEX IF NOT EXISTS idx_item_tags_tag_id ON item_tags(tag_id);"
+         CREATE INDEX IF NOT EXISTS idx_item_tags_tag_id ON item_tags(tag_id);
+         CREATE INDEX IF NOT EXISTS idx_clip_formats_item_id ON clip_formats(item_id);"
     ).map_err(|e| db_err("创建基础索引失败", e))?;
 
     Ok(())
@@ -281,6 +290,29 @@ fn migrate_to_v6(conn: &Connection) -> Result<(), AppError> {
     rebuild_table(conn, &ITEM_TAGS_SPEC)
 }
 
+/// v6 → v7: 引入多格式剪贴板支持
+///
+/// - `history` 新增 `content_type` 列，标识条目的内容类型
+/// - 新建 `clip_formats` 表，存储每条记录的附加格式（HTML/RTF/图片）
+fn migrate_to_v7(conn: &Connection) -> Result<(), AppError> {
+    // 新增列（旧记录统一为 'text'）
+    let _ = conn.execute("ALTER TABLE history ADD COLUMN content_type TEXT NOT NULL DEFAULT 'text'", []);
+
+    // 创建附加格式表
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clip_formats (
+            item_id INTEGER NOT NULL,
+            format  TEXT NOT NULL,
+            content TEXT NOT NULL,
+            PRIMARY KEY (item_id, format),
+            FOREIGN KEY (item_id) REFERENCES history(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_clip_formats_item_id ON clip_formats(item_id);"
+    ).map_err(|e| db_err("创建 clip_formats 表失败", e))?;
+
+    Ok(())
+}
+
 // ── 迁移注册表 ───────────────────────────────────────────────
 
 type MigrationFn = fn(&Connection) -> Result<(), AppError>;
@@ -297,6 +329,7 @@ const MIGRATIONS: &[(i64, MigrationFn)] = &[
     (4, migrate_to_v4),
     (5, migrate_to_v5),
     (6, migrate_to_v6),
+    (7, migrate_to_v7),
 ];
 
 // ── 入口 ─────────────────────────────────────────────────────

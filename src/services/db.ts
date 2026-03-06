@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { ClipItem, AppStats, Tag } from '../types';
+import { ClipItem, ClipFormat, ClipboardSnapshot, AppStats, Tag } from '../types';
 
 const DB_COMMANDS = {
   autoClear: 'db_auto_clear',
@@ -7,6 +7,9 @@ const DB_COMMANDS = {
   getHistory: 'db_get_history',
   addClip: 'db_add_clip',
   addClipAndGet: 'db_add_clip_and_get',
+  addClipSnapshot: 'db_add_clip_snapshot',
+  getClipFormats: 'db_get_clip_formats',
+  updateClipFormat: 'db_update_clip_format',
   togglePin: 'db_toggle_pin',
   toggleFavorite: 'db_toggle_favorite',
   deleteClip: 'db_delete_clip',
@@ -118,4 +121,18 @@ export const ClipboardDB = {
 
   removeTagFromItem: (itemId: number, tagId: number) =>
     ipcVoid(DB_COMMANDS.removeTagFromItem, { itemId, tagId }),
+
+  // ── 剪贴板快照 ──
+
+  /** 将剪贴板快照写入数据库并返回完整 ClipItem */
+  addClipSnapshot: (snapshot: ClipboardSnapshot) =>
+    ipc<ClipItem | null>(DB_COMMANDS.addClipSnapshot, { snapshot }),
+
+  /** 按需加载指定条目的附加格式（HTML/RTF/图片） */
+  getClipFormats: (id: number) =>
+    ipc<ClipFormat[]>(DB_COMMANDS.getClipFormats, { id }),
+
+  /** 更新指定条目的某个附加格式内容 */
+  updateClipFormat: (id: number, format: string, content: string) =>
+    ipcVoid(DB_COMMANDS.updateClipFormat, { id, format, content }),
 };

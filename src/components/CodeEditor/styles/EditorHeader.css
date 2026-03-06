@@ -62,6 +62,7 @@
 .code-editor-title {
   font-size: 0.875rem;
   font-weight: 600;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -173,14 +174,21 @@
   border: 0;
   cursor: pointer;
   background: transparent;
+  color: #737373;
 }
 
 .code-editor-font-btn:hover {
   background: #e5e7eb;
+  color: #525252;
+}
+
+.code-editor-header[data-theme='dark'] .code-editor-font-btn {
+  color: #a3a3a3;
 }
 
 .code-editor-header[data-theme='dark'] .code-editor-font-btn:hover {
   background: #404040;
+  color: #d4d4d4;
 }
 
 .code-editor-font-value {
@@ -216,8 +224,12 @@
   }
 }
 
-.code-editor-btn-copy:hover {
+.code-editor-btn-copy:hover:not([data-copied='true']) {
   background: #e5e7eb;
+}
+
+.code-editor-btn-copy:active {
+  transform: scale(0.97);
 }
 
 .code-editor-header[data-theme='dark'] .code-editor-btn-copy {
@@ -225,7 +237,7 @@
   color: #d4d4d4;
 }
 
-.code-editor-header[data-theme='dark'] .code-editor-btn-copy:hover {
+.code-editor-header[data-theme='dark'] .code-editor-btn-copy:hover:not([data-copied='true']) {
   background: #404040;
 }
 
@@ -247,4 +259,38 @@
   .code-editor-copy-text {
     display: inline;
   }
+}
+
+/* Keyboard navigation */
+.code-editor-btn-square:focus-visible,
+.code-editor-btn-copy:focus-visible,
+.code-editor-font-btn:focus-visible {
+  outline: 2px solid rgb(99 102 241 / 0.6);
+  outline-offset: 1px;
+}
+
+/* Format button disabled state */
+.code-editor-btn-square:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.code-editor-btn-square:disabled:hover {
+  background: #f5f5f5;
+  color: #737373;
+}
+
+.code-editor-header[data-theme='dark'] .code-editor-btn-square:disabled:hover {
+  background: #262626;
+  color: #a3a3a3;
+}
+
+/* Spin animation for format loading */
+@keyframes code-editor-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.code-editor-spin {
+  animation: code-editor-spin 0.8s linear infinite;
 }

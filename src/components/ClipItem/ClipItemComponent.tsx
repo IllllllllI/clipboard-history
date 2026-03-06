@@ -57,7 +57,7 @@ export const ClipItemComponent = React.memo(
 
     // --- 衍生状态（提取至 hook） ---
     const {
-      type, isFiles, imageType, isImage, imageUrls, filePaths,
+      type, isFiles, imageType, isImage, imageUrls, filePaths, imageFormat,
       isFilesGallery, accentType, IconComponent,
     } = useClipItemDerivedState(item, settings.showImagePreview);
 
@@ -241,6 +241,8 @@ export const ClipItemComponent = React.memo(
           {/* 标签列表 */}
           <ClipItemTagList
             itemTags={itemTags}
+            isRich={item.content_type === 'rich'}
+            imageFormat={imageFormat}
             isImage={isImage}
             theme={theme}
             darkMode={settings.darkMode}

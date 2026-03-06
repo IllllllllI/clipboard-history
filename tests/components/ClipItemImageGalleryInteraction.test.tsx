@@ -118,6 +118,8 @@ const createMultiImageItem = (): ClipItem => ({
   is_favorite: 0,
   tags: [],
   picked_color: null,
+  content_type: 'image',
+  formats: [],
 });
 
 const createFileListItem = (): ClipItem => ({
@@ -129,6 +131,8 @@ const createFileListItem = (): ClipItem => ({
   is_favorite: 0,
   tags: [],
   picked_color: null,
+  content_type: 'files',
+  formats: [],
 });
 
 const createLargeFileListItem = (): ClipItem => ({
@@ -140,6 +144,8 @@ const createLargeFileListItem = (): ClipItem => ({
   is_favorite: 0,
   tags: [],
   picked_color: null,
+  content_type: 'files',
+  formats: [],
 });
 
 describe('ClipItem + ImageGallery list interaction', () => {

@@ -78,6 +78,8 @@ describe('ImageDisplay - Link URL Display', () => {
       is_favorite: 0,
       tags: [],
       picked_color: null,
+      content_type: 'image',
+      formats: [],
     } as ClipItem;
 
     render(<ImageDisplay item={item} showLinkInfo={true} />);
@@ -97,6 +99,8 @@ describe('ImageDisplay - URL Click Functionality', () => {
     is_favorite: 0,
     tags: [],
     picked_color: null,
+    content_type: 'image',
+    formats: [],
   });
 
   beforeEach(() => {
@@ -216,6 +220,8 @@ describe('ImageDisplay - Lazy Loading', () => {
     is_favorite: 0,
     tags: [],
     picked_color: null,
+    content_type: 'image',
+    formats: [],
   });
 
   it('should have loading="lazy" attribute for browser-native lazy loading', async () => {
@@ -256,6 +262,8 @@ describe('ImageDisplay - Error Handling', () => {
     is_favorite: 0,
     tags: [],
     picked_color: null,
+    content_type: 'image',
+    formats: [],
   });
 
   beforeEach(() => {

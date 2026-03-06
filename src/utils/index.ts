@@ -7,7 +7,7 @@ export { isDateTimeText, parseDateTimeText, getDateTimeFormats, findDateTimesInT
 export type { DateTimeInfo, DateTimeMatch, DateTimeFormatEntry } from './dateTimeDetect';
 
 // 图片 / 内容类型检测
-export { detectType, detectContentType, detectImageType, clearDetectTypeCache } from './imageDetect';
+export { detectType, detectContentType, detectImageType, clearDetectTypeCache, getImageFormat } from './imageDetect';
 
 // 文件路径工具
 export { FILES_PREFIX, encodeFileList, decodeFileList, isFileList, normalizeFilePath, getFileName, getFileExtension, getFileCategory, isLocalFilePath, safeDecodeURIComponent } from './filePath';

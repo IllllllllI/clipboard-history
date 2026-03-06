@@ -15,6 +15,8 @@ import type { ClipItem } from '../../../types';
 
 interface ClipItemTagListProps {
   itemTags: NonNullable<ClipItem['tags']>;
+  isRich: boolean;
+  imageFormat?: string | null;
   isImage: boolean;
   theme: string;
   darkMode: boolean;
@@ -26,13 +28,36 @@ interface ClipItemTagListProps {
  */
 export const ClipItemTagList = React.memo(function ClipItemTagList({
   itemTags,
+  isRich,
+  imageFormat,
   isImage,
   theme,
   darkMode,
 }: ClipItemTagListProps) {
   const tagListRef = useRef<HTMLDivElement>(null);
   const [tagListHeight, setTagListHeight] = useState(0);
-  const hasTags = itemTags.length > 0;
+  const displayTags = React.useMemo(() => {
+    const tags = [...itemTags];
+    if (isRich) {
+      // 插入一个虚拟的「富文本」标签，放在最前面
+      tags.unshift({
+        id: -1,
+        name: '富文本',
+        color: '#a855f7', // 继承紫色的原有设定，由 getTagStyle 自动处理明暗度
+      } as any);
+    }
+    if (imageFormat) {
+      // 插入一个虚拟的「图片格式」标签
+      tags.unshift({
+        id: -2,
+        name: imageFormat,
+        color: '#3b82f6', // 蓝色，代表图片格式
+      } as any);
+    }
+    return tags;
+  }, [itemTags, isRich, imageFormat]);
+
+  const hasTags = displayTags.length > 0;
 
   const getTagStyle = useCallback(
     (color?: string | null) =>
@@ -89,7 +114,7 @@ export const ClipItemTagList = React.memo(function ClipItemTagList({
     observer.observe(element);
 
     return () => observer.disconnect();
-  }, [isImage, hasTags, itemTags]);
+  }, [isImage, hasTags, displayTags]);
 
   // 图片行：简单平铺
   if (isImage) {
@@ -99,7 +124,7 @@ export const ClipItemTagList = React.memo(function ClipItemTagList({
         data-has-tags={hasTags ? 'true' : 'false'}
         data-image-slot="true"
       >
-        <AnimatePresence>{itemTags.map(renderTagPill)}</AnimatePresence>
+        <AnimatePresence>{displayTags.map(renderTagPill)}</AnimatePresence>
       </div>
     );
   }
@@ -134,7 +159,7 @@ export const ClipItemTagList = React.memo(function ClipItemTagList({
           }}
         >
           <div ref={tagListRef} className="clip-item-tag-list" data-has-tags="true">
-            <AnimatePresence>{itemTags.map(renderTagPill)}</AnimatePresence>
+            <AnimatePresence>{displayTags.map(renderTagPill)}</AnimatePresence>
           </div>
         </motion.div>
       )}

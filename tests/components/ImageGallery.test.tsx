@@ -24,6 +24,8 @@ const baseItem: ClipItem = {
   is_favorite: 0,
   tags: [],
   picked_color: null,
+  content_type: 'image',
+  formats: [],
 };
 
 describe('ImageGallery', () => {

@@ -47,6 +47,8 @@ describe('useClipboard', () => {
       is_favorite: 0,
       tags: [],
       picked_color: null,
+      content_type: 'files',
+      formats: [],
     };
 
     await act(async () => {
@@ -80,6 +82,8 @@ describe('useClipboard', () => {
       is_favorite: 0,
       tags: [],
       picked_color: null,
+      content_type: 'files',
+      formats: [],
     };
 
     await act(async () => {
@@ -112,6 +116,8 @@ describe('useClipboard', () => {
       is_favorite: 0,
       tags: [],
       picked_color: null,
+      content_type: 'files',
+      formats: [],
     };
 
     await act(async () => {

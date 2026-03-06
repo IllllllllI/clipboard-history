@@ -254,6 +254,9 @@ fn main() {
             db::db_bulk_delete,
             db::db_bulk_pin,
             db::db_import_data,
+            db::db_add_clip_snapshot,
+            db::db_get_clip_formats,
+            db::db_update_clip_format,
             // 标签操作
             db::db_get_tags,
             db::db_create_tag,

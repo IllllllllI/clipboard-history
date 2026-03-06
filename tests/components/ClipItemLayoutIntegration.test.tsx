@@ -107,6 +107,8 @@ describe('ClipItemComponent Layout Integration', () => {
     is_favorite: 0,
     tags: [],
     picked_color: null,
+    content_type: 'text',
+    formats: [],
   });
 
   beforeEach(() => {

@@ -256,6 +256,59 @@ export function detectType(text: string): string {
 }
 
 /**
+ * 从文本中提取图片格式（如果存在）
+ * @param text 可以是 URL / Base64 / 路径
+ * @returns 统一大写的格式名称，如 'PNG', 'JPEG', 'WEBP'
+ */
+export function getImageFormat(text: string): string | null {
+  if (!text) return null;
+
+  // 1. 处理 Base64
+  if (text.startsWith(DATA_IMAGE_PREFIX)) {
+    // 比如：data:image/jpeg;base64,...
+    const match = text.match(/^data:image\/([a-zA-Z0-9+-]+);/);
+    if (match && match[1]) {
+      let ext = match[1].toUpperCase();
+      if (ext === 'SVG+XML') return 'SVG';
+      // 兼容一些非标准 MIME (jpeg 通常不用转，本身就是 JPEG)
+      return ext;
+    }
+  }
+
+  // 2. 处理普通的扩展名 (本地路径或带明显后缀的 URL)
+  let ext = extractExt(text).toLowerCase();
+  
+  // 处理 Tauri asset URL 可能包裹的场景，还原真实路径以供提取
+  if (text.startsWith(ASSET_HTTP) || text.startsWith(ASSET_HTTPS)) {
+    ext = extractExt(normalizeFilePath(text)).toLowerCase();
+  }
+
+  // 3. 处理 URL 内部带有的后缀片段 (如 /image.png_wh300)
+  if (!ext && (text.startsWith('http://') || text.startsWith('https://'))) {
+    try {
+      const u = new URL(text);
+      const urlPath = u.pathname + u.search;
+      ext = extractExt(urlPath).toLowerCase();
+      if (!ext) {
+        const cdnMatch = urlPath.match(CDN_EXT_FRAGMENT_RE);
+        if (cdnMatch && cdnMatch[1]) {
+          ext = `.${cdnMatch[1].toLowerCase()}`;
+        }
+      }
+    } catch {}
+  }
+
+if (ext && isImageExt(ext)) {
+    // 移除点，如 .png -> png
+    let format = ext.replace(/^\./, '').toUpperCase();
+    if (format === 'JPG') format = 'JPEG';
+    return format;
+  }
+
+  return null;
+}
+
+/**
  * 检测文本内容的 file / text 类别
  */
 export function detectContentType(text: string): 'file' | 'text' {

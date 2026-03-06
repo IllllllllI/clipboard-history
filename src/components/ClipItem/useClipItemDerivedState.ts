@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ClipItem, ImageType } from '../../types';
-import { detectType, detectImageType, decodeFileList } from '../../utils';
+import { detectType, detectImageType, decodeFileList, getImageFormat } from '../../utils';
 import { getItemIcon } from './constants';
 
 export type AccentType = 'code' | 'url' | 'image' | 'files' | 'color' | 'default';
@@ -12,6 +12,7 @@ export interface ClipItemDerivedState {
   isImage: boolean;
   imageUrls: string[];
   filePaths: string[];
+  imageFormat: string | null;
   isFilesGallery: boolean;
   accentType: AccentType;
   IconComponent: ReturnType<typeof getItemIcon>;
@@ -85,7 +86,16 @@ export function useClipItemDerivedState(
     // 6. 图标
     const IconComponent = getItemIcon(is_snippet, type, imageType);
 
-    // 7. 主题色类型
+    // 7. 图片格式提取（根据第一张图）
+    let imageFormat: string | null = null;
+    if (isImage && !isFiles && imageUrls.length > 0) {
+      imageFormat = getImageFormat(imageUrls[0]);
+    } else if (isFilesGallery && filePaths.length > 0) {
+      // 文件类型但作为图库展示，也可以提格式
+      imageFormat = getImageFormat(filePaths[0]);
+    }
+
+    // 8. 主题色类型
     const accentType = resolveAccentType(type, isImage);
 
     return {
@@ -95,6 +105,7 @@ export function useClipItemDerivedState(
       isImage,
       imageUrls,
       filePaths,
+      imageFormat,
       isFilesGallery,
       accentType,
       IconComponent,

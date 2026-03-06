@@ -64,16 +64,17 @@ export function useClipboard(
       do {
         hasPendingRef.current = false;
 
-        const text = await TauriService.captureClipboardSnapshot(imagesDirRef.current);
-        if (text && text !== selfCopyRef.current) {
-          const inserted = await ClipboardDB.addClipAndGet(text);
+        const snapshot = await TauriService.captureClipboardSnapshot(imagesDirRef.current);
+        if (snapshot && snapshot.text && snapshot.text !== selfCopyRef.current) {
+          const inserted = await ClipboardDB.addClipSnapshot(snapshot);
           if (inserted) await onCapturedRef.current(inserted);
         }
 
         // 去重窗口持续到最后一次快照后 DEDUP_RESET_MS
         if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        const snapshotText = snapshot?.text ?? null;
         resetTimerRef.current = setTimeout(() => {
-          if (selfCopyRef.current === text) selfCopyRef.current = null;
+          if (selfCopyRef.current === snapshotText) selfCopyRef.current = null;
         }, DEDUP_RESET_MS);
       } while (hasPendingRef.current);
     } catch (err) {

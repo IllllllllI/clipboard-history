@@ -13,6 +13,7 @@ import type {
   RadialMenuSnapshot,
   RadialMenuActionEvent,
   WindowPlacementSettings,
+  ClipboardSnapshot,
 } from '../types';
 import {
   CLIPITEM_HUD_EVENTS,
@@ -306,9 +307,9 @@ export const TauriService = {
   saveClipboardImage: (saveDir?: string) =>
     ipcSafe<string | null>('save_clipboard_image', { customDir: saveDir || null }, null),
 
-  /** 单次抓取剪贴板快照：文件列表 / 图片 / SVG / 文本（后端按优先级处理） */
+  /** 单次抓取剪贴板快照：文件列表 / 图片 / SVG / HTML / RTF / 文本（后端按优先级处理） */
   captureClipboardSnapshot: (saveDir?: string) =>
-    ipcSafe<string | null>('capture_clipboard_snapshot', { customDir: saveDir || null }, null),
+    ipcSafe<ClipboardSnapshot | null>('capture_clipboard_snapshot', { customDir: saveDir || null }, null),
 
   copyImageFromFile: (path: string) =>
     copyFileViaBackend(path, 'copy_image_from_file'),

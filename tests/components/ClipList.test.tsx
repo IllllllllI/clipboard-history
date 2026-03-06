@@ -92,8 +92,8 @@ describe('ClipList', () => {
 
   it('renders all items in the list', () => {
     const items: ClipItem[] = [
-      { id: 1, text: 'Text item', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
-      { id: 2, text: 'Another text', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
+      { id: 1, text: 'Text item', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'text', formats: [] },
+      { id: 2, text: 'Another text', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'text', formats: [] },
     ];
 
     (useAppContext as any).mockReturnValue(createMockContext({ filteredHistory: items }));
@@ -106,9 +106,9 @@ describe('ClipList', () => {
 
   it('renders image items correctly', () => {
     const items: ClipItem[] = [
-      { id: 1, text: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
-      { id: 2, text: 'https://example.com/image.jpg', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
-      { id: 3, text: '/path/to/local/image.png', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
+      { id: 1, text: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'image', formats: [] },
+      { id: 2, text: 'https://example.com/image.jpg', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'image', formats: [] },
+      { id: 3, text: '/path/to/local/image.png', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'image', formats: [] },
     ];
 
     (useAppContext as any).mockReturnValue(createMockContext({ filteredHistory: items }));
@@ -123,10 +123,10 @@ describe('ClipList', () => {
 
   it('renders mixed content (text and images)', () => {
     const items: ClipItem[] = [
-      { id: 1, text: 'Regular text', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
-      { id: 2, text: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
-      { id: 3, text: 'https://example.com', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
-      { id: 4, text: 'https://example.com/photo.jpg', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
+      { id: 1, text: 'Regular text', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'text', formats: [] },
+      { id: 2, text: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'image', formats: [] },
+      { id: 3, text: 'https://example.com', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'text', formats: [] },
+      { id: 4, text: 'https://example.com/photo.jpg', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'image', formats: [] },
     ];
 
     (useAppContext as any).mockReturnValue(createMockContext({ filteredHistory: items }));
@@ -142,7 +142,7 @@ describe('ClipList', () => {
 
   it('passes correct props to ClipItemComponent', () => {
     const items: ClipItem[] = [
-      { id: 1, text: 'Test item', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
+      { id: 1, text: 'Test item', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'text', formats: [] },
     ];
 
     (useAppContext as any).mockReturnValue(createMockContext({
@@ -168,6 +168,8 @@ describe('ClipList', () => {
       is_favorite: 0,
       tags: [],
       picked_color: null,
+      content_type: 'text',
+      formats: [],
     }));
 
     (useAppContext as any).mockReturnValue(createMockContext({ filteredHistory: items }));
@@ -185,7 +187,7 @@ describe('ClipList', () => {
 
   it('maintains proper layout with images', () => {
     const items: ClipItem[] = [
-      { id: 1, text: 'data:image/png;base64,test', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null },
+      { id: 1, text: 'data:image/png;base64,test', timestamp: Date.now(), is_pinned: 0, is_snippet: 0, is_favorite: 0, tags: [], picked_color: null, content_type: 'image', formats: [] },
     ];
 
     (useAppContext as any).mockReturnValue(createMockContext({ filteredHistory: items }));

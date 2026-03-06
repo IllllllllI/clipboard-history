@@ -20,7 +20,7 @@ use tauri::State;
 
 use crate::error::AppError;
 
-use super::{db_err, sql_placeholders, AppStats, ClipItem, DbState, Tag};
+use super::{db_err, sql_placeholders, AppStats, ClipFormat, ClipItem, DbState, Tag};
 
 // ── 数据结构 ─────────────────────────────────────────────────
 
@@ -94,6 +94,42 @@ fn toggle_field(conn: &Connection, field: ToggleField, id: i64, current: i32) ->
     };
     conn.execute(sql, params![new_val, id])
         .map_err(|e| db_err(&format!("切换{}失败", label), e))?;
+    Ok(())
+}
+
+/// 加载指定条目的附加格式数据
+fn load_formats(conn: &Connection, item_id: i64) -> Result<Vec<ClipFormat>, AppError> {
+    let mut stmt = conn
+        .prepare("SELECT format, content FROM clip_formats WHERE item_id = ?1 ORDER BY format")
+        .map_err(|e| db_err("准备格式查询失败", e))?;
+    let rows = stmt
+        .query_map(params![item_id], |row| {
+            Ok(ClipFormat {
+                format: row.get(0)?,
+                content: row.get(1)?,
+            })
+        })
+        .map_err(|e| db_err("查询格式失败", e))?;
+
+    let mut formats = Vec::new();
+    for row in rows {
+        formats.push(row.map_err(|e| db_err("读取格式行失败", e))?);
+    }
+    Ok(formats)
+}
+
+/// 插入附加格式数据（HTML/RTF/图片路径）
+fn insert_formats(conn: &Connection, item_id: i64, formats: &[(&str, &str)]) -> Result<(), AppError> {
+    if formats.is_empty() {
+        return Ok(());
+    }
+    let mut stmt = conn
+        .prepare("INSERT OR REPLACE INTO clip_formats (item_id, format, content) VALUES (?1, ?2, ?3)")
+        .map_err(|e| db_err("准备格式插入失败", e))?;
+    for &(format, content) in formats {
+        stmt.execute(params![item_id, format, content])
+            .map_err(|e| db_err(&format!("插入格式 {} 失败", format), e))?;
+    }
     Ok(())
 }
 
@@ -176,7 +212,7 @@ fn get_history(conn: &Connection, limit: i64) -> Result<Vec<ClipItem>, AppError>
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, is_pinned, is_snippet, is_favorite, picked_color
+            "SELECT id, text, timestamp, is_pinned, is_snippet, is_favorite, picked_color, content_type
              FROM history
              ORDER BY is_pinned DESC, timestamp DESC
              LIMIT ?1",
@@ -194,6 +230,9 @@ fn get_history(conn: &Connection, limit: i64) -> Result<Vec<ClipItem>, AppError>
                 is_favorite: row.get(5)?,
                 tags: Vec::new(),
                 picked_color: row.get(6)?,
+                content_type: row.get::<_, Option<String>>(7)?
+                    .unwrap_or_else(|| "text".to_string()),
+                formats: Vec::new(),
             })
         })
         .map_err(|e| db_err("查询历史失败", e))?
@@ -220,7 +259,7 @@ fn get_history(conn: &Connection, limit: i64) -> Result<Vec<ClipItem>, AppError>
 fn get_clip_by_id(conn: &Connection, id: i64) -> Result<Option<ClipItem>, AppError> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, is_pinned, is_snippet, is_favorite, picked_color
+            "SELECT id, text, timestamp, is_pinned, is_snippet, is_favorite, picked_color, content_type
              FROM history WHERE id = ?1 LIMIT 1",
         )
         .map_err(|e| db_err("准备按 ID 查询失败", e))?;
@@ -236,6 +275,9 @@ fn get_clip_by_id(conn: &Connection, id: i64) -> Result<Option<ClipItem>, AppErr
                 is_favorite: row.get(5)?,
                 tags: Vec::new(),
                 picked_color: row.get(6)?,
+                content_type: row.get::<_, Option<String>>(7)?
+                    .unwrap_or_else(|| "text".to_string()),
+                formats: Vec::new(),
             })
         })
         .optional()
@@ -247,6 +289,7 @@ fn get_clip_by_id(conn: &Connection, id: i64) -> Result<Option<ClipItem>, AppErr
 
     let mut tags_map = load_tags_batch(conn, &[id])?;
     item.tags = tags_map.remove(&id).unwrap_or_default();
+    item.formats = load_formats(conn, id)?;
     Ok(Some(item))
 }
 
@@ -274,13 +317,91 @@ fn add_clip(conn: &Connection, text: String, is_snippet: i32) -> Result<Option<i
 
     let now = chrono::Utc::now().timestamp_millis();
     conn.execute(
-        "INSERT INTO history (text, timestamp, is_pinned, is_snippet) VALUES (?1, ?2, 0, ?3)",
+        "INSERT INTO history (text, timestamp, is_pinned, is_snippet, content_type) VALUES (?1, ?2, 0, ?3, 'text')",
         params![text, now, is_snippet],
     )
     .map_err(|e| db_err("插入记录失败", e))?;
 
     let inserted_id = conn.last_insert_rowid();
     super::cleanup::sync_item_assets_for_text(conn, inserted_id, &text)?;
+
+    Ok(Some(inserted_id))
+}
+
+/// 剪贴板快照入库参数
+#[derive(Debug, Deserialize)]
+pub struct SnapshotInput {
+    pub content_type: String,
+    pub text: Option<String>,
+    pub html: Option<String>,
+    pub rtf: Option<String>,
+    pub image_path: Option<String>,
+    pub files: Option<Vec<String>>,
+}
+
+/// 将完整的剪贴板快照写入数据库
+///
+/// 根据 `content_type` 确定 `history.text` 的内容：
+/// - `"text"` / `"rich"` → 纯文本
+/// - `"image"` → 图片文件路径
+/// - `"files"` → 编码后的文件列表
+///
+/// 附加格式（HTML / RTF / 图片路径）存入 `clip_formats` 表。
+fn add_clip_snapshot(conn: &Connection, snapshot: SnapshotInput) -> Result<Option<i64>, AppError> {
+    let primary_text = snapshot.text.as_deref().unwrap_or("").trim().to_string();
+    if primary_text.is_empty() {
+        return Ok(None);
+    }
+
+    // 去重：与最后一条记录的 text 比较
+    let last_text: Option<String> = conn
+        .query_row(
+            "SELECT text FROM history ORDER BY timestamp DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    if last_text.as_deref() == Some(&primary_text) {
+        return Ok(None);
+    }
+
+    let content_type = match snapshot.content_type.as_str() {
+        "text" | "image" | "files" | "rich" => snapshot.content_type.as_str(),
+        _ => "text",
+    };
+
+    let now = chrono::Utc::now().timestamp_millis();
+    conn.execute(
+        "INSERT INTO history (text, timestamp, is_pinned, is_snippet, content_type) VALUES (?1, ?2, 0, 0, ?3)",
+        params![primary_text, now, content_type],
+    )
+    .map_err(|e| db_err("快照插入记录失败", e))?;
+
+    let inserted_id = conn.last_insert_rowid();
+
+    // 同步资源映射（图片/SVG 路径）
+    super::cleanup::sync_item_assets_for_text(conn, inserted_id, &primary_text)?;
+
+    // 插入附加格式
+    let mut extra_formats: Vec<(&str, &str)> = Vec::new();
+    if let Some(ref html) = snapshot.html {
+        if !html.trim().is_empty() {
+            extra_formats.push(("html", html));
+        }
+    }
+    if let Some(ref rtf) = snapshot.rtf {
+        if !rtf.trim().is_empty() {
+            extra_formats.push(("rtf", rtf));
+        }
+    }
+    if let Some(ref image_path) = snapshot.image_path {
+        if !image_path.trim().is_empty() {
+            extra_formats.push(("image", image_path));
+            // 图片路径也需要资源映射
+            super::cleanup::sync_item_assets_for_text(conn, inserted_id, image_path)?;
+        }
+    }
+    insert_formats(conn, inserted_id, &extra_formats)?;
 
     Ok(Some(inserted_id))
 }
@@ -474,6 +595,54 @@ pub fn db_import_data(
     items: Vec<ImportItem>,
 ) -> Result<(), AppError> {
     super::with_conn_mut(&state, |conn| import_data(conn, &items))
+}
+
+/// 将剪贴板快照写入数据库并返回完整 ClipItem
+///
+/// 由前端 `useClipboard` 在收到 `ClipboardSnapshot` 后调用，
+/// 替代原来的 `captureClipboardSnapshot + addClipAndGet` 两步调用。
+#[tauri::command]
+pub fn db_add_clip_snapshot(
+    state: State<'_, DbState>,
+    snapshot: SnapshotInput,
+) -> Result<Option<ClipItem>, AppError> {
+    super::with_conn_mut(&state, |conn| {
+        match add_clip_snapshot(conn, snapshot)? {
+            Some(id) => get_clip_by_id(conn, id),
+            None => Ok(None),
+        }
+    })
+}
+
+/// 按需加载指定条目的附加格式数据
+///
+/// 前端在用户展开/查看条目详情时调用，避免列表加载时的性能开销。
+#[tauri::command]
+pub fn db_get_clip_formats(
+    state: State<'_, DbState>,
+    id: i64,
+) -> Result<Vec<ClipFormat>, AppError> {
+    super::with_read_conn(&state, |conn| load_formats(conn, id))
+}
+
+/// 更新指定条目的某个附加格式内容（html / rtf）
+fn update_clip_format(conn: &Connection, id: i64, format: &str, content: &str) -> Result<(), AppError> {
+    conn.execute(
+        "UPDATE clip_formats SET content = ?1 WHERE item_id = ?2 AND format = ?3",
+        params![content, id, format],
+    )
+    .map_err(|e| db_err(&format!("更新格式 {} 失败", format), e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn db_update_clip_format(
+    state: State<'_, DbState>,
+    id: i64,
+    format: String,
+    content: String,
+) -> Result<(), AppError> {
+    super::with_conn_mut(&state, |conn| update_clip_format(conn, id, &format, &content))
 }
 
 #[cfg(test)]

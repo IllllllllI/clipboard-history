@@ -15,7 +15,8 @@ fn setup_conn() -> Connection {
             is_pinned INTEGER DEFAULT 0,
             is_snippet INTEGER DEFAULT 0,
             is_favorite INTEGER DEFAULT 0,
-            picked_color TEXT
+            picked_color TEXT,
+            content_type TEXT NOT NULL DEFAULT 'text'
         );
         CREATE TABLE tags (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +32,12 @@ fn setup_conn() -> Connection {
             item_id INTEGER NOT NULL,
             path TEXT NOT NULL,
             PRIMARY KEY (item_id, path)
+        );
+        CREATE TABLE clip_formats (
+            item_id INTEGER NOT NULL,
+            format TEXT NOT NULL,
+            content TEXT NOT NULL,
+            PRIMARY KEY (item_id, format)
         );"
     ).expect("create schema");
     conn

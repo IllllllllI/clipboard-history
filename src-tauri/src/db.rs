@@ -63,6 +63,13 @@ pub struct Tag {
     pub color: Option<String>,
 }
 
+/// 剪贴板条目的附加格式数据
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipFormat {
+    pub format: String,
+    pub content: String,
+}
+
 /// 剪贴板历史条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipItem {
@@ -75,6 +82,11 @@ pub struct ClipItem {
     pub tags: Vec<Tag>,
     /// 用户在调色板中选择的颜色（不覆盖原始 text）
     pub picked_color: Option<String>,
+    /// 内容类型：text | image | files | rich
+    pub content_type: String,
+    /// 附加格式数据（HTML/RTF/图片路径等）
+    #[serde(default)]
+    pub formats: Vec<ClipFormat>,
 }
 
 /// 应用统计信息
