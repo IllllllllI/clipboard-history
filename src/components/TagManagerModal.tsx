@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, Tag as TagIcon } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
@@ -56,26 +56,26 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [show, editorTarget, pendingDeleteTag, onClose]);
 
-  const openCreateEditor = () => {
+  const openCreateEditor = useCallback(() => {
     setEditorTarget({
       mode: 'create',
       initial: { name: '', color: null },
     });
-  };
+  }, []);
 
-  const openEditEditor = (tag: Tag) => {
+  const openEditEditor = useCallback((tag: Tag) => {
     setEditorTarget({
       id: tag.id,
       mode: 'edit',
       initial: getTagInitialValue(tag),
     });
-  };
+  }, []);
 
-  const closeEditor = () => {
+  const closeEditor = useCallback(() => {
     setEditorTarget(null);
-  };
+  }, []);
 
-  const handleSubmitEditor = async (name: string, color: string | null, target: TagEditorTarget) => {
+  const handleSubmitEditor = useCallback(async (name: string, color: string | null, target: TagEditorTarget) => {
     if (target.mode === 'create') {
       await handleCreateTag(name, color);
       closeEditor();
@@ -85,20 +85,24 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
     if (target.id == null) return;
     await handleUpdateTag(target.id, name, color);
     closeEditor();
-  };
+  }, [handleCreateTag, handleUpdateTag, closeEditor]);
 
-  const requestDelete = (tag: Tag) => {
+  const requestDelete = useCallback((tag: Tag) => {
     setPendingDeleteTag(tag);
-  };
+  }, []);
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = useCallback(async () => {
     if (!pendingDeleteTag) return;
     await handleDeleteTag(pendingDeleteTag.id);
     if (editorTarget?.mode === 'edit' && editorTarget.id === pendingDeleteTag.id) {
       closeEditor();
     }
     setPendingDeleteTag(null);
-  };
+  }, [pendingDeleteTag, handleDeleteTag, editorTarget, closeEditor]);
+
+  const closeDeleteDialog = useCallback(() => {
+    setPendingDeleteTag(null);
+  }, []);
 
   return (
     <AnimatePresence initial={false}>
@@ -121,6 +125,9 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
             exit="exit"
             className="tag-manager-modal-shell"
             data-theme={dark ? 'dark' : 'light'}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tag-manager-title"
           >
             <div className="tag-manager-modal-header" data-theme={dark ? 'dark' : 'light'}>
               <div className="tag-manager-modal-header-left">
@@ -131,11 +138,12 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
                   transition={DURATION_FAST}
                   className="tag-manager-modal-header-icon-wrap"
                   data-theme={dark ? 'dark' : 'light'}
+                  aria-hidden="true"
                 >
                   <TagIcon className="tag-manager-modal-header-icon" />
                 </motion.div>
                 <div>
-                  <h2 className="tag-manager-modal-main-title">标签管理</h2>
+                  <h2 id="tag-manager-title" className="tag-manager-modal-main-title">标签管理</h2>
                   <div className="tag-manager-modal-subline">
                     <p className="tag-manager-modal-subtitle">统一管理标签与颜色</p>
                     <span className="tag-manager-modal-count-badge" data-theme={dark ? 'dark' : 'light'}>
@@ -146,21 +154,25 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
               </div>
               <div className="tag-manager-modal-header-actions">
                 <button
+                  type="button"
                   onClick={openCreateEditor}
                   className="tag-manager-modal-create-btn"
                   title="新建标签 (Alt + N)"
+                  aria-label="新建标签"
                 >
-                  <Plus className="tag-manager-icon-14" />
+                  <Plus className="tag-manager-icon-14" aria-hidden="true" />
                   新建标签
                   <span className="tag-manager-shortcut-kbd">Alt+N</span>
                 </button>
                 <button
+                  type="button"
                   onClick={onClose}
                   className="tag-manager-modal-close-round"
                   data-theme={dark ? 'dark' : 'light'}
-                  title="关闭 (Esc)"
+                  title="关闭窗口 (Esc)"
+                  aria-label="关闭窗口"
                 >
-                  <X className="tag-manager-modal-header-icon" />
+                  <X className="tag-manager-modal-header-icon" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -184,7 +196,7 @@ export const TagManagerModal = React.memo(function TagManagerModal({ show, onClo
             <TagDeleteDialog
               dark={dark}
               tag={pendingDeleteTag}
-              onClose={() => setPendingDeleteTag(null)}
+              onClose={closeDeleteDialog}
               onConfirm={handleConfirmDelete}
             />
           </motion.div>

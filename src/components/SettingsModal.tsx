@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Settings, Keyboard, Monitor, HardDrive } from 'lucide-react';
 import { useAppContext } from '../contexts/AppContext';
@@ -93,6 +93,9 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
 
   // 图片目录信息
   const [imagesInfo, setImagesInfo] = useState<{ path: string; total_size: number; file_count: number } | null>(null);
+  const [isDbMenuOpen, setIsDbMenuOpen] = useState(false);
+  const dbMenuRef = useRef<HTMLDivElement>(null);
+  
   // 数据库信息
   const [dbInfo, setDbInfo] = useState<{ path: string; size: number } | null>(null);
   // 数据库操作加载状态
@@ -152,6 +155,9 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
     const syncBackendProfile = async () => {
       setBackendProfileSyncState('syncing');
       setBackendProfileError(null);
+
+      // 短暂延时，等待 Tauri 后端完全应用设置
+      await wait(100);
 
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
@@ -231,7 +237,9 @@ export const SettingsModal = React.memo(function SettingsModal({ show, onClose }
   const handleOpenDbDir = useCallback(() => {
     if (dbInfo?.path) {
       const dir = dbInfo.path.replace(/[/\\][^/\\]+$/, '');
-      TauriService.openFile(dir);
+      TauriService.openFileLocation(dbInfo.path).catch(err => {
+        console.warn('Failed to open db directory:', err);
+      });
     }
   }, [dbInfo?.path]);
 

@@ -124,10 +124,10 @@ export const ImageDisplay = React.memo(function ImageDisplay({
 
         {!error && imageSrc && (
           <div className="image-display__media-wrap">
-            <div className="image-display__image-box">
+            <div className="image-display__image-box group relative">
               <img
                 src={imageSrc}
-                alt="Clipboard image"
+                alt="剪贴板预览图片"
                 draggable={false}
                 style={{
                   maxWidth: '100%',
@@ -136,7 +136,7 @@ export const ImageDisplay = React.memo(function ImageDisplay({
                 }}
                 className={`image-display__image ${
                   isLoading ? 'opacity-0 absolute' : 'opacity-100'
-                } ${onClick ? 'image-display__image--clickable' : ''}`}
+                } ${onClick ? 'image-display__image--clickable cursor-pointer' : ''}`}
                 onLoad={onImageLoad}
                 onError={onImageError}
                 onClick={handleClick}
@@ -146,7 +146,10 @@ export const ImageDisplay = React.memo(function ImageDisplay({
               {!isLoading && imageSize && (() => {
                 const fmt = extractFormatLabel(item.text);
                 return (
-                  <div className="image-display__meta-chip">
+                  <div 
+                    className="image-display__meta-chip transition-opacity duration-300 opacity-0 group-hover:opacity-100"
+                    aria-label={`图片信息: 尺寸 ${imageSize.width}乘${imageSize.height}, 来源 ${imageSourceLabel}`}
+                  >
                     {fmt && <><span className="image-display__meta-format">{fmt}</span><span className="image-display__meta-sep">|</span></>}
                     <span>{imageSize.width}×{imageSize.height}</span>
                     <span className="image-display__meta-sep">|</span>
