@@ -6,6 +6,7 @@ import { detectImageType } from '../utils';
 import { formatBytes, extractFormatLabel } from '../utils/imageUrl';
 import { useImageResource } from '../hooks/useImageResource';
 import { backdropVariants, SPRING_UI } from '../utils/motionPresets';
+import { toast } from './Toast';
 import './styles/large-image-preview.css';
 
 // ============================================================================
@@ -143,21 +144,38 @@ export const LargeImagePreview = React.memo(function LargeImagePreview({
 
   // ── 复制 / 下载 / 双击 ──
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = useCallback(async (e?: React.MouseEvent | KeyboardEvent) => {
+    e?.stopPropagation();
     if (!url) return;
-    if (url.startsWith('data:image/')) {
-      await TauriService.writeImageBase64(url);
-    } else {
-      await TauriService.copyImageFromFile(url);
+    try {
+      if (url.startsWith('data:image/')) {
+        await TauriService.writeImageBase64(url);
+      } else if (url.startsWith('http')) {
+        await TauriService.downloadAndCopyImage(url, 'large-preview-manual-copy');
+      } else {
+        await TauriService.copyImageFromFile(url);
+      }
+      toast.success('已复制到剪贴板');
+    } catch (err: unknown) {
+      toast.error(`复制图片失败: ${err}`);
+      console.error('Copy large image failed:', err);
     }
   }, [url]);
 
-  const handleDownload = useCallback(async () => {
+  const handleDownload = useCallback(async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!url) return;
-    await TauriService.saveClipboardImage();
+    try {
+      // 通过 Tauri 保存文件(降级调用之前遗漏的函数接口)
+      await TauriService.downloadAndCopyImage(url, 'download-only');
+    } catch (err: unknown) {
+      toast.error(`下载失败: ${err}`);
+      console.error('Download large image failed:', err);
+    }
   }, [url]);
 
-  const handleDoubleClick = useCallback(() => {
+  const handleDoubleClick = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setScale(s => (s === 1 ? 2 : 1));
     setPosition({ x: 0, y: 0 });
   }, []);
