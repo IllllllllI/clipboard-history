@@ -13,7 +13,7 @@
  */
 
 import { ImageType } from '../types';
-import { isFileList, isLocalFilePath, normalizeFilePath } from './filePath';
+import { isFileList, isLocalFilePath, normalizeFilePath, decodeFileList } from './filePath';
 
 // ============================================================================
 // 常量
@@ -354,4 +354,15 @@ export function detectImageType(text: string): ImageType {
   if (hasCodePatterns(text)) return ImageType.None;
 
   return ImageType.None;
+}
+
+/**
+ * 判断 `[FILES]` 格式文本中所有文件是否均为本地图片。
+ *
+ * 用于筛选谓词：纯图片文件列表既属于"文件"也属于"图片"。
+ */
+export function isAllImageFiles(text: string): boolean {
+  if (!isFileList(text)) return false;
+  const paths = decodeFileList(text);
+  return paths.length > 0 && paths.every(p => detectImageType(p) === ImageType.LocalFile);
 }

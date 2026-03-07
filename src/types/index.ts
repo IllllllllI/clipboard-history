@@ -188,7 +188,7 @@ export interface ClipItemHudActionEvent {
 
 // ── 径向菜单独立窗口类型 ──
 
-export type RadialMenuActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste';
+export type RadialMenuActionType = 'copy' | 'favorite' | 'pin' | 'edit' | 'delete' | 'paste' | 'tag';
 
 export interface RadialMenuSnapshot {
   itemId: number;

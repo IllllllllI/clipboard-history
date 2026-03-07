@@ -30,8 +30,6 @@ const NETWORK_RETRY_BASE_DELAY_MS: u64 = 180;
 const BUFFER_INITIAL_CAPACITY: usize = 16 * 1024;
 const DOWNLOAD_CACHE_TTL_SECS: u64 = 25;
 const DOWNLOAD_CACHE_MAX_ENTRIES: usize = 24;
-/// 缓存清理最低间隔（秒），避免每次读写锁内都全量遍历。
-const CACHE_CLEANUP_INTERVAL_SECS: u64 = 5;
 
 impl ImageHandler {
     /// 从 URL 加载图片原始字节。

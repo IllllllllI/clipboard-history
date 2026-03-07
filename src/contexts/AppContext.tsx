@@ -79,6 +79,8 @@ export interface AppContextValue {
   setPreviewImageUrl: (url: string | null) => void;
   editingClip: ClipItem | null;
   setEditingClip: (item: ClipItem | null) => void;
+  taggingClip: ClipItem | null;
+  setTaggingClip: (item: ClipItem | null) => void;
 
   // 下载状态
   downloadState: DownloadState;
@@ -162,6 +164,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
+    taggingClip, setTaggingClip,
     downloadState,
     clearDownloadState,
     handleDragStart: dragStartRaw,
@@ -237,6 +240,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
   const handleTogglePinRef = useRef(handleTogglePin);
   const handleRemoveRef = useRef(handleRemove);
   const setEditingClipRef = useRef(setEditingClip);
+  const setTaggingClipRef = useRef(setTaggingClip);
   const filterHistoryRef = useRef(filterHistory);
   const setSelectedIndexRef = useRef(setSelectedIndex);
   const settingsRef = useRef(settings);
@@ -247,6 +251,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
   handleTogglePinRef.current = handleTogglePin;
   handleRemoveRef.current = handleRemove;
   setEditingClipRef.current = setEditingClip;
+  setTaggingClipRef.current = setTaggingClip;
   filterHistoryRef.current = filterHistory;
   setSelectedIndexRef.current = setSelectedIndex;
   settingsRef.current = settings;
@@ -402,6 +407,10 @@ function AppBridge({ children }: { children: React.ReactNode }) {
       if (payload.action === 'edit') {
         setEditingClipRef.current(target);
       }
+
+      if (payload.action === 'tag') {
+        setTaggingClipRef.current(target);
+      }
     });
     radialListenPromise.then((dispose) => {
       unlistenRadial = dispose;
@@ -442,6 +451,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
+    taggingClip, setTaggingClip,
     downloadState,
     clearDownloadState,
     copyToClipboard, copyText, copiedId,
@@ -468,6 +478,7 @@ function AppBridge({ children }: { children: React.ReactNode }) {
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
+    taggingClip, setTaggingClip,
     downloadState,
     clearDownloadState,
     copyToClipboard, copyText, copiedId,

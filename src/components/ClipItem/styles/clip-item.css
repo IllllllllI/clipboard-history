@@ -403,7 +403,7 @@
 
 .clip-item-time {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   flex-direction: row;
   justify-content: flex-end;
   border: 0;
@@ -412,6 +412,7 @@
   cursor: pointer;
   appearance: none;
   font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
   transition:
     color 0.15s ease,

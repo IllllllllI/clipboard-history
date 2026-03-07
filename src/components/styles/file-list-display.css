@@ -25,12 +25,19 @@
   align-items: center;
   gap: 0.125rem;
   z-index: 5;
-  pointer-events: auto;
+  pointer-events: none;
   padding: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.file-list-item:hover .file-list-display__hover-actions,
+.file-list-item:focus-within .file-list-display__hover-actions {
   opacity: 0.98;
+  pointer-events: auto;
 }
 
 .file-list-display__hover-actions[data-theme='light'] {

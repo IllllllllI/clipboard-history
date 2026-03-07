@@ -4,7 +4,6 @@ import { formatDateParts } from '../../utils';
 import { useClipItemStableContext } from './ClipItemContext';
 import { ClipItemContent } from './ClipItemContent';
 import { ActionButtons } from './actions/ActionButtons';
-import { TagDropdown } from './actions/TagDropdown';
 import { ClipItemTimeMeta } from './favorite/ClipItemTimeMeta';
 import { useFavoriteVisualState } from './favorite/useFavoriteVisualState';
 import { useClipItemHudController } from '../../hud/clipitem/useClipItemHudController';
@@ -44,10 +43,8 @@ export const ClipItemComponent = React.memo(
     const {
       settings, updateSettings,
       copyToClipboard, copyText, addClipEntry,
-      tags,
       handleTogglePin, handleToggleFavorite,
       handleRemove, handleUpdatePickedColor,
-      handleAddTagToItem, handleRemoveTagFromItem,
       setSelectedIndex,
       handleDoubleClick, handleDragStart, handleDragEnd,
       setPreviewImageUrl, setEditingClip,
@@ -204,20 +201,14 @@ export const ClipItemComponent = React.memo(
         {/* 语义化颜色指示线 */}
         <div className="clip-item-accent" data-type={accentType} />
 
-        {/* 左侧图标（标签入口） */}
-        <TagDropdown
-          item={item}
-          tags={tags}
-          darkMode={settings.darkMode}
-          onAddTag={handleAddTagToItem}
-          onRemoveTag={handleRemoveTagFromItem}
-          triggerClassName="clip-item-icon-wrap"
-          triggerVariant="icon"
-          triggerSelected={isSelected}
-          showSelectedCount
-          triggerTitle="标签管理（点击选择标签，Alt+点击快速切换最近标签）"
-          triggerContent={<IconComponent className="clip-item-icon-16" />}
-        />
+        {/* 左侧类型图标 */}
+        <div
+          className="clip-item-icon-wrap"
+          data-selected={isSelected ? 'true' : 'false'}
+          data-theme={theme}
+        >
+          <IconComponent className="clip-item-icon-16" />
+        </div>
 
         {/* 主体内容 */}
         <div className="clip-item-content-wrap">

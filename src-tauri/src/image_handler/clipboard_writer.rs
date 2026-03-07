@@ -410,12 +410,14 @@ mod win32 {
 
     /// 注册自定义剪贴板格式并设置数据。
     unsafe fn set_raw_format(name: &str, data: &[u8]) -> Result<(), ClipboardWriteFailure> {
-        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-        let format_id = RegisterClipboardFormatW(windows::core::PCWSTR(wide.as_ptr()));
-        if format_id == 0 {
-            return Err(ClipboardWriteFailure::fatal(format!("注册格式 '{}' 失败", name)));
+        unsafe {
+            let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+            let format_id = RegisterClipboardFormatW(windows::core::PCWSTR(wide.as_ptr()));
+            if format_id == 0 {
+                return Err(ClipboardWriteFailure::fatal(format!("注册格式 '{}' 失败", name)));
+            }
+            set_global_data(format_id, name, data)
         }
-        set_global_data(format_id, name, data)
     }
 
     /// 将字节写入全局内存并 SetClipboardData。
@@ -424,27 +426,29 @@ mod win32 {
         format_name: &str,
         data: &[u8],
     ) -> Result<(), ClipboardWriteFailure> {
-        let hglobal = GlobalAlloc(GMEM_MOVEABLE, data.len())
-            .map_err(|e| classify_win32_error("GlobalAlloc", format_name, &e))?;
+        unsafe {
+            let hglobal = GlobalAlloc(GMEM_MOVEABLE, data.len())
+                .map_err(|e| classify_win32_error("GlobalAlloc", format_name, &e))?;
 
-        let ptr = GlobalLock(hglobal) as *mut u8;
-        if ptr.is_null() {
-            let _ = GlobalFree(Some(hglobal));
-            return Err(ClipboardWriteFailure::transient("GlobalLock 返回空指针".to_string()));
+            let ptr = GlobalLock(hglobal) as *mut u8;
+            if ptr.is_null() {
+                let _ = GlobalFree(Some(hglobal));
+                return Err(ClipboardWriteFailure::transient("GlobalLock 返回空指针".to_string()));
+            }
+
+            copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+            let _ = GlobalUnlock(hglobal);
+
+            if let Err(e) = SetClipboardData(
+                format_id,
+                Some(HANDLE(hglobal.0)),
+            ) {
+                let _ = GlobalFree(Some(hglobal));
+                return Err(classify_win32_error("SetClipboardData", format_name, &e));
+            }
+
+            Ok(())
         }
-
-        copy_nonoverlapping(data.as_ptr(), ptr, data.len());
-        let _ = GlobalUnlock(hglobal);
-
-        if let Err(e) = SetClipboardData(
-            format_id,
-            Some(HANDLE(hglobal.0)),
-        ) {
-            let _ = GlobalFree(Some(hglobal));
-            return Err(classify_win32_error("SetClipboardData", format_name, &e));
-        }
-
-        Ok(())
     }
 
     fn classify_win32_error(

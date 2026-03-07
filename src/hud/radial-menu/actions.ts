@@ -1,6 +1,6 @@
 import type { ClipItemHudActionType, RadialMenuSnapshot } from '../../types';
 
-export type RadialMenuActionId = Extract<ClipItemHudActionType, 'copy' | 'delete' | 'pin' | 'favorite' | 'paste' | 'edit'>;
+export type RadialMenuActionId = Extract<ClipItemHudActionType, 'copy' | 'delete' | 'pin' | 'favorite' | 'paste' | 'edit'> | 'tag';
 export type RadialMenuActionTone = 'normal' | 'danger';
 
 export interface RadialMenuActionItem {
@@ -22,6 +22,7 @@ const RADIAL_MENU_ACTION_BASE: Array<Omit<RadialMenuActionItem, 'angle'> & { nee
   { id: 'pin', label: '置顶', tone: 'normal' },
   { id: 'favorite', label: '收藏', tone: 'normal' },
   { id: 'paste', label: '粘贴', tone: 'normal' },
+  { id: 'tag', label: '标签', tone: 'normal' },
   { id: 'edit', label: '编辑', tone: 'normal', needsEdit: true },
 ];
 

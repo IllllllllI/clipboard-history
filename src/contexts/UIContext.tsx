@@ -12,24 +12,25 @@ import { PhysicalPosition } from '@tauri-apps/api/window';
 import { ClipItem, AppSettings, DownloadState, ImageType } from '../types';
 import { executeCopyStrategy, resolveCopyStrategy } from '../services/copyRouter';
 import { TauriService, isTauri } from '../services/tauri';
-import { detectType, detectImageType, detectContentType, normalizeFilePath, isFileList, encodeFileList } from '../utils';
+import { detectType, detectImageType, detectContentType, normalizeFilePath, isFileList, encodeFileList, isAllImageFiles } from '../utils';
 import { setClipItemHudDragging, setClipItemHudVisible } from '../hud/clipitem/clipItemHudManager';
 
 // ============================================================================
 // 过滤类型
 // ============================================================================
 
-export type FilterType = 'all' | 'pinned' | 'favorite' | 'url' | 'color' | 'snippet' | 'image' | 'file';
+export type FilterType = 'all' | 'text' | 'pinned' | 'favorite' | 'url' | 'color' | 'snippet' | 'image' | 'file';
 
 // 过滤谓词映射表 — 新增 filter 类型只需加一行
 const FILTER_PREDICATES: Record<FilterType, (item: ClipItem, type: string) => boolean> = {
   all:      () => true,
+  text:     (_item, type) => type === 'text',
   pinned:   (item) => !!item.is_pinned,
   favorite: (item) => !!item.is_favorite,
   url:      (_item, type) => type === 'url',
   color:    (_item, type) => type === 'color',
   snippet:  (item) => !!item.is_snippet,
-  image:    (_item, type) => type === 'image' || type === 'image-url' || type === 'multi-image',
+  image:    (_item, type) => type === 'image' || type === 'image-url' || type === 'multi-image' || (type === 'files' && isAllImageFiles(_item.text)),
   file:     (_item, type) => type === 'files',
 };
 
@@ -239,6 +240,8 @@ export interface UIContextValue {
   setPreviewImageUrl: (url: string | null) => void;
   editingClip: ClipItem | null;
   setEditingClip: (item: ClipItem | null) => void;
+  taggingClip: ClipItem | null;
+  setTaggingClip: (item: ClipItem | null) => void;
 
   // 下载状态
   downloadState: DownloadState;
@@ -286,6 +289,7 @@ export function UIProvider({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [editingClip, setEditingClip] = useState<ClipItem | null>(null);
+  const [taggingClip, setTaggingClip] = useState<ClipItem | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [downloadState, setDownloadState] = useState<DownloadState>({
     isDownloading: false, progress: 0, error: null,
@@ -661,6 +665,7 @@ export function UIProvider({
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
+    taggingClip, setTaggingClip,
     downloadState,
     clearDownloadState,
     handleDragStart, handleDragEnd,
@@ -676,6 +681,7 @@ export function UIProvider({
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
     editingClip, setEditingClip,
+    taggingClip, setTaggingClip,
     downloadState,
     clearDownloadState,
     handleDragStart, handleDragEnd,

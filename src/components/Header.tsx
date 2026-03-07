@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { Search, Plus, Sun, Moon, Settings, X, Tag, List, Pin, PinOff, Star, FileText, Link2, Palette, Image, FolderOpen, type LucideIcon } from 'lucide-react';
+import { Search, Plus, Sun, Moon, Settings, X, Tag, List, Pin, PinOff, Star, FileText, Link2, Palette, Image, FolderOpen, Type, type LucideIcon } from 'lucide-react';
 import { useSettingsContext } from '../contexts/SettingsContext';
 import { useUIContext, FilterType } from '../contexts/UIContext';
 import './styles/header.css';
@@ -13,6 +13,7 @@ const FILTER_TABS: { id: FilterType; label: string; icon: LucideIcon }[] = [
   { id: 'all',      label: '全部', icon: List },
   { id: 'pinned',   label: '置顶', icon: Pin },
   { id: 'favorite', label: '收藏', icon: Star },
+  { id: 'text',     label: '文本', icon: Type },
   { id: 'snippet',  label: '片段', icon: FileText },
   { id: 'url',      label: '链接', icon: Link2 },
   { id: 'color',    label: '颜色', icon: Palette },

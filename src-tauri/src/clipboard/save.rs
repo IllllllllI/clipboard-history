@@ -102,15 +102,6 @@ fn save_image_data(
     custom_dir: Option<String>,
     image_data: arboard::ImageData<'_>,
 ) -> Result<Option<String>, AppError> {
-    if image_data.width < 64 || image_data.height < 64 {
-        log::debug!(
-            "🚫 图片太小 ({}x{})，可能是图标，跳过保存",
-            image_data.width,
-            image_data.height
-        );
-        return Ok(None);
-    }
-
     let width = image_data.width as u32;
     let height = image_data.height as u32;
     let image = image::RgbaImage::from_raw(width, height, image_data.bytes.into_owned())

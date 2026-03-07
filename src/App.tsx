@@ -16,6 +16,7 @@ const AddSnippetModal = lazy(() => import('./components/AddSnippetModal').then(m
 const SettingsModal = lazy(() => import('./components/SettingsModal').then(m => ({ default: m.SettingsModal })));
 const TagManagerModal = lazy(() => import('./components/TagManagerModal').then(m => ({ default: m.TagManagerModal })));
 const LargeImagePreview = lazy(() => import('./components/LargeImagePreview').then(m => ({ default: m.LargeImagePreview })));
+const FloatingTagSelector = lazy(() => import('./components/FloatingTagSelector').then(m => ({ default: m.FloatingTagSelector })));
 
 /**
  * App 内部布局组件
@@ -24,12 +25,16 @@ const LargeImagePreview = lazy(() => import('./components/LargeImagePreview').th
  */
 function AppLayout() {
   const {
+    history,
     settings,
+    tags,
+    handleAddTagToItem, handleRemoveTagFromItem,
     immersiveMode, toggleImmersiveMode,
     showSettings, setShowSettings,
     showAddModal, setShowAddModal,
     showTagManager, setShowTagManager,
     previewImageUrl, setPreviewImageUrl,
+    taggingClip, setTaggingClip,
     downloadState,
     clearDownloadState,
   } = useAppContext();
@@ -215,6 +220,19 @@ function AppLayout() {
           <LargeImagePreview 
             url={previewImageUrl}
             onClose={() => setPreviewImageUrl(null)}
+          />
+        )}
+      </Suspense>
+
+      <Suspense fallback={null}>
+        {taggingClip && (
+          <FloatingTagSelector
+            item={history.find(h => h.id === taggingClip.id) || taggingClip}
+            tags={tags}
+            darkMode={settings.darkMode}
+            onAddTag={handleAddTagToItem}
+            onRemoveTag={handleRemoveTagFromItem}
+            onClose={() => setTaggingClip(null)}
           />
         )}
       </Suspense>

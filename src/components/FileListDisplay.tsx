@@ -295,7 +295,7 @@ const FileItem = React.memo(function FileItem({
   return (
     <div
       ref={rowRef}
-      className="file-list-item group"
+      className="file-list-item"
       data-theme={darkMode ? 'dark' : 'light'}
       data-selected={isSelected ? 'true' : 'false'}
       data-compact={compact ? 'true' : 'false'}
@@ -345,7 +345,7 @@ const FileItem = React.memo(function FileItem({
 
       {/* 悬浮操作按钮 */}
       <div
-        className="file-list-display__hover-actions opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+        className="file-list-display__hover-actions"
         style={{ top: '50%' }}
         data-theme={darkMode ? 'dark' : 'light'}
         onMouseDown={(e) => e.stopPropagation()}

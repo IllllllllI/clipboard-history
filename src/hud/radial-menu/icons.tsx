@@ -43,6 +43,13 @@ export function RadialMenuIcon({ actionId }: { actionId: RadialMenuActionId }) {
           <path d='M9.5 13.5L12 16l2.5-2.5' />
         </svg>
       );
+    case 'tag':
+      return (
+        <svg className='radial-menu-icon-svg' viewBox='0 0 24 24' aria-hidden='true'>
+          <path d='M12 2l.642.005L21 11l-8.5 8.5L3 10V3a1 1 0 0 1 1-1h8z' />
+          <circle cx='7.5' cy='7.5' r='1.5' />
+        </svg>
+      );
     case 'edit':
       return (
         <svg className='radial-menu-icon-svg' viewBox='0 0 24 24' aria-hidden='true'>
